@@ -163,7 +163,7 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
   const { firstName, lastName, email, password, universityId, facultyId, optionId, studyLevelId } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (![firstName, lastName].every(v => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 100) ||
-      !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254 ||
       typeof password !== "string" || password.length < 10 || password.length > 128 ||
       ![universityId, facultyId, optionId, studyLevelId].every(v => Number.isSafeInteger(Number(v)) && Number(v) > 0)) {
     return res.status(400).json({ error: "invalid_registration", message: "Vérifiez les champs et utilisez un mot de passe de 10 caractères minimum." });
@@ -240,7 +240,7 @@ app.post("/api/v1/auth/verify-email", requireDatabase, async (req, res) => {
 app.post("/api/v1/auth/password-reset/request", requireDatabase, async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const generic = { message: "Si cette adresse correspond à un compte actif, un lien de récupération sera envoyé." };
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) return res.json(generic);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.json(generic);
   if (!mailer) return res.status(503).json({ error: "email_service_not_configured" });
   try {
     const found = await pool.query("SELECT id FROM users WHERE email=$1 AND is_active=TRUE AND email_verified_at IS NOT NULL", [email]);
@@ -387,14 +387,14 @@ app.get("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) =>
 app.post("/api/v1/admin/documents", requireAuth, requireAdmin, upload.single("file"), async (req, res) => {
   const subjectId = Number(req.body?.subjectId);
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
-  if (!req.file) return res.status(400).json({ error: "file_required", message: "Joignez un PDF ou une image JPG, PNG ou WebP de 15 Mo maximum." });
+  if (!req.file) return res.status(400).json({ error: "file_required", message: "Joignez un fichier PDF valide de 15 Mo maximum." });
   if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) {
     await unlink(req.file.path).catch(() => {});
     return res.status(400).json({ error: "invalid_document_metadata" });
   }
   const fileHead = await readFile(req.file.path).then(buffer => buffer.subarray(0, 5).toString()).catch(() => "");
   if (!allowedDocumentTypes.has(req.file.mimetype) || fileHead !== "%PDF-") {
-    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
+    await unlink(req.file.path).catch(() => {});
     return res.status(400).json({ error: "unsupported_file_type" });
   }
   try {
