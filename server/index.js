@@ -9,7 +9,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
 import multer from "multer";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, stat, readFile, unlink } from "node:fs/promises";
 
 const { Pool } = pg;
 const app = express();
@@ -360,7 +360,7 @@ app.get("/api/v1/announcements", requireAuth, async (req, res) => {
 });
 
 
-const allowedDocumentTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const allowedDocumentTypes = new Set(["application/pdf"]);
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, callback) => callback(null, privateFilesDir),
@@ -369,15 +369,31 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
 });
+
+app.get("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT s.id,s.name,o.name AS option_name,l.label AS level_label
+       FROM subjects s JOIN options o ON o.id=s.option_id
+       JOIN faculties f ON f.id=o.faculty_id
+       JOIN study_levels l ON l.id=s.study_level_id
+       WHERE f.university_id=$1 AND s.is_active=TRUE
+       ORDER BY o.name,l.sort_order,s.name`,
+      [req.user.university_id]
+    );
+    return res.json({ data: result.rows });
+  } catch { return res.status(503).json({ error: "subjects_unavailable" }); }
+});
 app.post("/api/v1/admin/documents", requireAuth, requireAdmin, upload.single("file"), async (req, res) => {
   const subjectId = Number(req.body?.subjectId);
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   if (!req.file) return res.status(400).json({ error: "file_required", message: "Joignez un PDF ou une image JPG, PNG ou WebP de 15 Mo maximum." });
   if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) {
-    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
+    await unlink(req.file.path).catch(() => {});
     return res.status(400).json({ error: "invalid_document_metadata" });
   }
-  if (!allowedDocumentTypes.has(req.file.mimetype)) {
+  const fileHead = await readFile(req.file.path).then(buffer => buffer.subarray(0, 5).toString()).catch(() => "");
+  if (!allowedDocumentTypes.has(req.file.mimetype) || fileHead !== "%PDF-") {
     await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
     return res.status(400).json({ error: "unsupported_file_type" });
   }
