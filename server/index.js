@@ -314,6 +314,55 @@ app.get("/api/v1/documents", requireAuth, async (req, res) => {
   } catch { return res.status(503).json({ error: "documents_unavailable" }); }
 });
 
+
+app.get("/api/v1/messages/groups", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT g.id,g.group_type FROM message_groups g JOIN group_members gm ON gm.group_id=g.id
+       WHERE gm.user_id=$1 AND g.is_active=TRUE ORDER BY g.id`,
+      [req.user.id]
+    );
+    return res.json({ data: result.rows });
+  } catch { return res.status(503).json({ error: "groups_unavailable" }); }
+});
+app.get("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
+  const groupId = Number(req.params.id);
+  if (!Number.isSafeInteger(groupId) || groupId < 1) return res.status(400).json({ error: "invalid_group_id" });
+  try {
+    const member = await pool.query("SELECT 1 FROM group_members gm JOIN message_groups g ON g.id=gm.group_id WHERE gm.group_id=$1 AND gm.user_id=$2 AND g.is_active=TRUE", [groupId,req.user.id]);
+    if (!member.rowCount) return res.status(404).json({ error: "group_not_found" });
+    const result = await pool.query(
+      `SELECT m.id,m.body,m.created_at,u.first_name,u.last_name FROM messages m
+       JOIN users u ON u.id=m.sender_id WHERE m.group_id=$1 AND m.deleted_at IS NULL
+       ORDER BY m.created_at DESC LIMIT 100`, [groupId]
+    );
+    return res.json({ data: result.rows.reverse() });
+  } catch { return res.status(503).json({ error: "messages_unavailable" }); }
+});
+app.post("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
+  const groupId = Number(req.params.id), body = req.body?.body;
+  if (!Number.isSafeInteger(groupId) || groupId < 1 || typeof body !== "string" || !body.trim() || body.trim().length > 5000) return res.status(400).json({ error: "invalid_message" });
+  try {
+    const member = await pool.query("SELECT 1 FROM group_members gm JOIN message_groups g ON g.id=gm.group_id WHERE gm.group_id=$1 AND gm.user_id=$2 AND g.is_active=TRUE", [groupId,req.user.id]);
+    if (!member.rowCount) return res.status(404).json({ error: "group_not_found" });
+    const result = await pool.query("INSERT INTO messages(group_id,sender_id,body) VALUES($1,$2,$3) RETURNING id,body,created_at", [groupId,req.user.id,body.trim()]);
+    return res.status(201).json({ message: result.rows[0] });
+  } catch { return res.status(503).json({ error: "message_send_failed" }); }
+});
+
+app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, async (req, res) => {
+  const { title, body, facultyId = null, optionId = null, studyLevelId = null, startsAt = null, endsAt = null } = req.body || {};
+  if (typeof title !== "string" || !title.trim() || title.length > 220 || typeof body !== "string" || !body.trim() || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
+  try {
+    const result = await pool.query(
+      `INSERT INTO announcements(university_id,faculty_id,option_id,study_level_id,title,body,is_active,starts_at,ends_at,created_by)
+       VALUES($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9) RETURNING id,title,body,is_active,starts_at,ends_at,created_at`,
+      [req.user.university_id,facultyId,optionId,studyLevelId,title.trim(),body.trim(),startsAt,endsAt,req.user.id]
+    );
+    return res.status(201).json({ announcement: result.rows[0] });
+  } catch { return res.status(400).json({ error: "announcement_create_failed", message: "Vérifiez les dates et les identifiants de ciblage." }); }
+});
+
 app.get("/api/v1/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`SELECT
