@@ -14,7 +14,7 @@
 6. Installer les dépendances avec `npm install`, puis lancer `npm run dev`.
 
 ## Endpoints implémentés dans cette branche
-- Authentification : inscription, confirmation d'adresse, connexion, déconnexion, profil de session.
+- Authentification : inscription, confirmation d'adresse, connexion, déconnexion, profil de session et récupération du mot de passe par e-mail.
 - Notes privées : lecture, création, modification et suppression limitées au propriétaire.
 - Catalogue : universités, facultés, options et niveaux actifs.
 - Documents : liste des métadonnées pour l'option et le niveau du compte. L'envoi et le téléchargement privé des fichiers ne sont pas encore raccordés.
@@ -22,4 +22,4 @@
 - Messagerie : groupes dont l'étudiant est membre, lecture et envoi de messages avec contrôle d'appartenance.
 - Administration : aperçu des statistiques et publication d'annonces.
 
-Les paiements, la synchronisation hors ligne, l'interface complète de gestion des fichiers, la récupération de mot de passe et la connexion de l'interface React à ces endpoints restent à construire. L'API seule ne rend pas encore ces fonctions accessibles depuis tous les écrans de l'application.
+Les paiements, la synchronisation hors ligne, l'interface complète de gestion des fichiers, la connexion de l'interface React à ces endpoints reste à construire. L'API seule ne rend pas encore ces fonctions accessibles depuis tous les écrans de l'application.
