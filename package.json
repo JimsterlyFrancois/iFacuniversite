@@ -1,0 +1,24 @@
+{
+  "name": "ifacuniversite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Base de travail de l'application universitaire iFacuniversite",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite --config client/vite.config.js",
+    "dev:server": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "build": "vite build --config client/vite.config.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "vite": "^7.1.0"
+  }
+}
