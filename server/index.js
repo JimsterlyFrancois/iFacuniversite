@@ -2,6 +2,11 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import bcrypt from "bcryptjs";
+import { randomBytes, createHash } from "node:crypto";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import nodemailer from "nodemailer";
 
 const { Pool } = pg;
 const app = express();
@@ -19,7 +24,45 @@ const pool = databaseUrl
   : null;
 
 app.disable("x-powered-by");
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "1mb" }));
+app.use("/api/v1/auth", rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }));
+const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+  ? nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: process.env.SMTP_SECURE === "true",
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    })
+  : null;
+const hashToken = (token) => createHash("sha256").update(token).digest("hex");
+const makeToken = () => randomBytes(32).toString("base64url");
+const publicUser = (u) => ({
+  id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email,
+  role: u.role, universityId: u.university_id, facultyId: u.faculty_id,
+  optionId: u.option_id, studyLevelId: u.study_level_id
+});
+async function requireAuth(req, res, next) {
+  if (!pool) return res.status(503).json({ error: "service_unavailable" });
+  const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(req.get("authorization") || "");
+  if (!match) return res.status(401).json({ error: "authentication_required" });
+  try {
+    const result = await pool.query(
+      `SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id
+       WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
+       AND u.is_active=TRUE AND u.email_verified_at IS NOT NULL`,
+      [hashToken(match[1])]
+    );
+    if (!result.rowCount) return res.status(401).json({ error: "invalid_or_expired_session" });
+    req.user = result.rows[0];
+    next();
+  } catch {
+    return res.status(503).json({ error: "service_unavailable" });
+  }
+}
+const requireAdmin = (req, res, next) => req.user?.role === "admin"
+  ? next()
+  : res.status(403).json({ error: "administrator_required" });
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
@@ -108,6 +151,178 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
   }
+});
+
+
+app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
+  const { firstName, lastName, email, password, universityId, facultyId, optionId, studyLevelId } = req.body || {};
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (![firstName, lastName].every(v => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 100) ||
+      !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254 ||
+      typeof password !== "string" || password.length < 10 || password.length > 128 ||
+      ![universityId, facultyId, optionId, studyLevelId].every(v => Number.isSafeInteger(Number(v)) && Number(v) > 0)) {
+    return res.status(400).json({ error: "invalid_registration", message: "Vérifiez les champs et utilisez un mot de passe de 10 caractères minimum." });
+  }
+  if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant d'accepter les inscriptions." });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const profile = await client.query(
+      `SELECT 1 FROM universities u JOIN faculties f ON f.university_id=u.id
+       JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
+       WHERE u.id=$1 AND f.id=$2 AND o.id=$3 AND l.id=$4
+       AND u.is_active AND f.is_active AND o.is_active AND l.is_active`,
+      [Number(universityId), Number(facultyId), Number(optionId), Number(studyLevelId)]
+    );
+    if (!profile.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "invalid_academic_profile" });
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+    const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "student";
+    const created = await client.query(
+      `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [Number(universityId), Number(facultyId), Number(optionId), Number(studyLevelId), firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
+    );
+    const rawToken = makeToken();
+    await client.query(
+      "INSERT INTO email_tokens (user_id, token_hash, purpose, expires_at) VALUES ($1,$2,'verify_email',NOW()+INTERVAL '30 minutes')",
+      [created.rows[0].id, hashToken(rawToken)]
+    );
+    await client.query("COMMIT");
+    const verifyUrl = new URL("/verify-email", process.env.APP_BASE_URL || "http://localhost:3435");
+    verifyUrl.searchParams.set("token", rawToken);
+    try {
+      await mailer.sendMail({
+        from: process.env.MAIL_FROM || process.env.SMTP_USER,
+        to: normalizedEmail,
+        subject: "Confirmez votre adresse e-mail — iFac universite",
+        text: `Pour confirmer votre adresse, ouvrez ce lien dans les 30 minutes : ${verifyUrl.toString()}`
+      });
+    } catch {
+      await pool.query("DELETE FROM users WHERE id=$1", [created.rows[0].id]).catch(() => {});
+      return res.status(503).json({ error: "verification_email_failed", message: "L'e-mail de confirmation n'a pas pu être envoyé. Réessayez plus tard." });
+    }
+    return res.status(201).json({ message: "Compte créé. Consultez votre e-mail pour le confirmer avant de vous connecter." });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (error?.code === "23505") return res.status(409).json({ error: "email_already_registered" });
+    return res.status(503).json({ error: "registration_unavailable" });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/v1/auth/verify-email", requireDatabase, async (req, res) => {
+  const token = req.body?.token;
+  if (typeof token !== "string" || token.length < 20 || token.length > 200) return res.status(400).json({ error: "invalid_token" });
+  try {
+    const result = await pool.query(
+      `UPDATE users SET email_verified_at=NOW(), updated_at=NOW()
+       WHERE id=(SELECT user_id FROM email_tokens WHERE token_hash=$1 AND purpose='verify_email' AND used_at IS NULL AND expires_at>NOW())
+       RETURNING id`,
+      [hashToken(token)]
+    );
+    if (!result.rowCount) return res.status(400).json({ error: "invalid_or_expired_token" });
+    await pool.query("UPDATE email_tokens SET used_at=NOW() WHERE token_hash=$1", [hashToken(token)]);
+    return res.json({ message: "Adresse e-mail confirmée. Vous pouvez vous connecter." });
+  } catch { return res.status(503).json({ error: "verification_unavailable" }); }
+});
+
+app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const password = req.body?.password;
+  if (!email || typeof password !== "string" || password.length > 128) return res.status(400).json({ error: "invalid_credentials" });
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
+    const user = result.rows[0];
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "invalid_credentials" });
+    if (!user.email_verified_at) return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail avant de vous connecter." });
+    const token = makeToken();
+    await pool.query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+INTERVAL '7 days')", [user.id, hashToken(token)]);
+    res.set("Cache-Control", "no-store");
+    return res.json({ token, expiresIn: 604800, user: publicUser(user) });
+  } catch { return res.status(503).json({ error: "login_unavailable" }); }
+});
+
+app.post("/api/v1/auth/logout", requireAuth, async (req, res) => {
+  const token = req.get("authorization").slice(7);
+  try {
+    await pool.query("UPDATE sessions SET revoked_at=NOW() WHERE token_hash=$1 AND revoked_at IS NULL", [hashToken(token)]);
+    return res.status(204).end();
+  } catch { return res.status(503).json({ error: "logout_unavailable" }); }
+});
+app.get("/api/v1/auth/me", requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
+
+app.get("/api/v1/notes", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT id,title,body,created_at,updated_at FROM personal_notes WHERE user_id=$1 ORDER BY updated_at DESC", [req.user.id]);
+    return res.json({ data: result.rows });
+  } catch { return res.status(503).json({ error: "notes_unavailable" }); }
+});
+app.post("/api/v1/notes", requireAuth, async (req, res) => {
+  const { title, body = "" } = req.body || {};
+  if (typeof title !== "string" || !title.trim() || title.length > 180 || typeof body !== "string" || body.length > 50000) return res.status(400).json({ error: "invalid_note" });
+  try {
+    const result = await pool.query("INSERT INTO personal_notes(user_id,title,body) VALUES($1,$2,$3) RETURNING id,title,body,created_at,updated_at", [req.user.id,title.trim(),body]);
+    return res.status(201).json({ note: result.rows[0] });
+  } catch { return res.status(503).json({ error: "note_save_failed" }); }
+});
+app.patch("/api/v1/notes/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id), { title, body } = req.body || {};
+  if (!Number.isSafeInteger(id) || id < 1 || typeof title !== "string" || !title.trim() || title.length > 180 || typeof body !== "string" || body.length > 50000) return res.status(400).json({ error: "invalid_note" });
+  try {
+    const result = await pool.query("UPDATE personal_notes SET title=$1,body=$2,updated_at=NOW() WHERE id=$3 AND user_id=$4 RETURNING id,title,body,created_at,updated_at", [title.trim(),body,id,req.user.id]);
+    return result.rowCount ? res.json({ note: result.rows[0] }) : res.status(404).json({ error: "note_not_found" });
+  } catch { return res.status(503).json({ error: "note_update_failed" }); }
+});
+app.delete("/api/v1/notes/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_note_id" });
+  try {
+    const result = await pool.query("DELETE FROM personal_notes WHERE id=$1 AND user_id=$2", [id,req.user.id]);
+    return result.rowCount ? res.status(204).end() : res.status(404).json({ error: "note_not_found" });
+  } catch { return res.status(503).json({ error: "note_delete_failed" }); }
+});
+
+app.get("/api/v1/announcements", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id,title,body,starts_at,ends_at,created_at FROM announcements
+       WHERE university_id=$1 AND is_active=TRUE AND (starts_at IS NULL OR starts_at<=NOW())
+       AND (ends_at IS NULL OR ends_at>NOW())
+       AND (faculty_id IS NULL OR faculty_id=$2) AND (option_id IS NULL OR option_id=$3)
+       AND (study_level_id IS NULL OR study_level_id=$4) ORDER BY created_at DESC LIMIT 100`,
+      [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
+    );
+    return res.json({ data: result.rows });
+  } catch { return res.status(503).json({ error: "announcements_unavailable" }); }
+});
+
+app.get("/api/v1/documents", requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT d.id,d.title,d.mime_type,d.file_size_bytes,d.created_at,s.name AS subject
+       FROM documents d JOIN subjects s ON s.id=d.subject_id
+       WHERE d.is_active=TRUE AND s.is_active=TRUE AND s.option_id=$1 AND s.study_level_id=$2
+       ORDER BY s.name,d.title LIMIT 300`,
+      [req.user.option_id,req.user.study_level_id]
+    );
+    return res.json({ data: result.rows, message: "Seules les métadonnées sont exposées; le stockage privé des fichiers doit être raccordé." });
+  } catch { return res.status(503).json({ error: "documents_unavailable" }); }
+});
+
+app.get("/api/v1/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const result = await pool.query(`SELECT
+      (SELECT COUNT(*)::int FROM users) AS users,
+      (SELECT COUNT(*)::int FROM documents WHERE is_active=TRUE) AS documents,
+      (SELECT COUNT(*)::int FROM announcements WHERE is_active=TRUE) AS announcements,
+      (SELECT COUNT(*)::int FROM feedback) AS feedback`);
+    return res.json({ data: result.rows[0] });
+  } catch { return res.status(503).json({ error: "admin_overview_unavailable" }); }
 });
 
 if (process.env.NODE_ENV === "production") {
