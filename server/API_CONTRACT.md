@@ -1,7 +1,7 @@
 # Contrat API — iFac universite (phase 3)
 
 ## Statut
-Ce document définit les routes et leurs contrôles attendus. Le serveur actuel ne possède encore qu'une route de santé et une route d'information. Les routes ci-dessous ne doivent pas être considérées comme actives tant qu'elles ne sont pas implémentées, reliées à PostgreSQL et testées.
+Ce document définit les routes et leurs contrôles attendus. Les routes de santé et de lecture du catalogue sont maintenant présentes dans le code. Elles nécessitent PostgreSQL configuré et le schéma appliqué. Les routes d'authentification, de notes, de documents, de messagerie et d'administration restent à développer.
 
 ## Principes obligatoires
 - Préfixe API : `/api/v1`.
@@ -14,6 +14,10 @@ Ce document définit les routes et leurs contrôles attendus. Le serveur actuel 
 - Les erreurs ne doivent pas révéler si une adresse e-mail possède un compte.
 - Le catalogue officiel UPNCH doit être validé avant activation. Aucune option ni aucun niveau ne doit être inventé.
 - Les données des autres universités restent inactives par défaut.
+
+## Routes
+
+Les routes marquées « prévues » ne sont pas encore opérationnelles.
 
 ## Routes prévues
 
