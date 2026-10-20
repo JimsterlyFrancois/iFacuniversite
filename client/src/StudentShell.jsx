@@ -20,7 +20,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [messageBody, setMessageBody] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
-  const [adminStats, setAdminStats] = useState(null);\n  const [subjects, setSubjects] = useState([]);
+  const [adminStats, setAdminStats] = useState(null);
+  const [subjects, setSubjects] = useState([]);
   const page = destinations.find(x => x.id === active);
 
   async function load() {
@@ -46,7 +47,12 @@ export default function StudentShell({ token, user, onLogout, request }) {
     try { await request("/notes", { token, method: "POST", body: JSON.stringify({ title: noteTitle, body: noteBody }) }); setNoteTitle(""); setNoteBody(""); await load(); setFeedback("Note enregistrée."); }
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
-  async function uploadDocument(e) {\n    e.preventDefault(); const form = new FormData(e.currentTarget); setBusy(true); setFeedback("");\n    try { await request("/admin/documents", { token, method: "POST", body: form }); e.currentTarget.reset(); setFeedback("Document ajouté à la bibliothèque."); }\n    catch (err) { setFeedback(err.message); } finally { setBusy(false); }\n  }\n  async function deleteNote(id) {
+  async function uploadDocument(e) {
+    e.preventDefault(); const formElement = e.currentTarget; const form = new FormData(formElement); setBusy(true); setFeedback("");
+    try { await request("/admin/documents", { token, method: "POST", body: form }); formElement.reset(); setFeedback("Document ajouté à la bibliothèque."); }
+    catch (err) { setFeedback(err.message); } finally { setBusy(false); }
+  }
+  async function deleteNote(id) {
     if (!window.confirm("Supprimer cette note privée ?")) return;
     try { await request(`/notes/${id}`, { token, method: "DELETE" }); await load(); }
     catch (e) { setFeedback(e.message); }
