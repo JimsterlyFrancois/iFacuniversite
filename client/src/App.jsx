@@ -74,6 +74,12 @@ export default function App() {
     setFeedback("");
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setPassword("");
+    setConfirmPassword("");
+  }
+
+  function handlePasswordReset() {
+    setFeedback("La récupération du mot de passe sera activée lorsque le service e-mail sécurisé sera configuré.");
   }
 
   function handleSubmit(event) {
@@ -227,7 +233,7 @@ export default function App() {
                     onToggle={() => setShowPassword((current) => !current)}
                     autoComplete="current-password"
                   />
-                  <div className="forgot-row"><a href="mailto:support@ifacuniversite.ht?subject=Mot%20de%20passe%20oubli%C3%A9">Mot de passe oublié ?</a></div>
+                  <div className="forgot-row"><button type="button" onClick={handlePasswordReset}>Mot de passe oublié ?</button></div>
                   <button className="submit-button" type="submit">Se connecter <span aria-hidden="true">→</span></button>
                   <p className="verification-note"><span className="lock-mark" aria-hidden="true">✓</span> L’adresse e-mail doit être confirmée pour activer le compte.</p>
                 </>
