@@ -1,0 +1,18 @@
+{
+  "name": "iFac universite",
+  "forwardPorts": [
+    3434,
+    3435
+  ],
+  "portsAttributes": {
+    "3434": {
+      "label": "iFac API",
+      "onAutoForward": "notify"
+    },
+    "3435": {
+      "label": "iFac interface",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm install"
+}
