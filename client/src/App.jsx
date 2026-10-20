@@ -101,14 +101,14 @@ export default function App() {
   return (
     <main className="page-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Accueil iFacuniversite">
+        <a className="brand" href="/" aria-label="Accueil iFac universite">
           <span className="brand-mark">iF</span>
-          <span>iFac<span className="brand-light">universite</span></span>
+          <span>iFac <span className="brand-light">universite</span></span>
         </a>
         <span className="campus-label"><span className="status-dot" /> Première version · UPNCH</span>
       </header>
 
-      <section className="auth-layout" aria-label="Inscription et connexion à iFacuniversite">
+      <section className="auth-layout" aria-label="Inscription et connexion à iFac universite">
         <aside className="visual-panel">
           <img
             className="campus-image"
@@ -247,7 +247,7 @@ export default function App() {
       </section>
 
       <footer className="site-footer">
-        <span>iFacuniversite</span>
+        <span>iFac universite</span>
         <span>Prototype d’interface · UPNCH au lancement</span>
       </footer>
     </main>
