@@ -67,8 +67,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .verification-note { display: flex; align-items: flex-start; gap: 9px; color: #a5a5ad; font-size: 10px; line-height: 1.65; margin: 0; }
 .lock-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #6f5a12; border-radius: 50%; color: var(--gold); font-size: 10px; }
 .forgot-row { display: flex; justify-content: flex-end; margin-top: -5px; }
-.forgot-row a { color: var(--gold-light); font-size: 11px; }
-.forgot-row a:hover { text-decoration: underline; }
+.forgot-row button { padding: 0; border: 0; background: transparent; color: var(--gold-light); font-size: 11px; cursor: pointer; }
+.forgot-row button:hover { text-decoration: underline; }
 .form-feedback { border: 1px solid #6f5a12; border-radius: 8px; background: #211d0d; color: #f4df8c; padding: 11px 12px; font-size: 11px; line-height: 1.6; margin: 0; }
 .form-footer { color: #74747c; font-size: 10px; line-height: 1.65; margin: 19px 0 0; }
 .site-footer { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 15px; color: #77777e; font-size: 10px; }
