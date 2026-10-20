@@ -1,17 +1,22 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import pg from "pg";
 import bcrypt from "bcryptjs";
 import { randomBytes, createHash } from "node:crypto";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
+import multer from "multer";
+import { mkdir, stat } from "node:fs/promises";
 
 const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT) || 3434;
 const here = path.dirname(fileURLToPath(import.meta.url));
+const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || path.join(here, "private-uploads"));
+await mkdir(privateFilesDir, { recursive: true });
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl
   ? new Pool({
@@ -352,6 +357,77 @@ app.get("/api/v1/announcements", requireAuth, async (req, res) => {
     );
     return res.json({ data: result.rows });
   } catch { return res.status(503).json({ error: "announcements_unavailable" }); }
+});
+
+
+const allowedDocumentTypes = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, privateFilesDir),
+    filename: (_req, _file, callback) => callback(null, randomUUID())
+  }),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
+});
+app.post("/api/v1/admin/documents", requireAuth, requireAdmin, upload.single("file"), async (req, res) => {
+  const subjectId = Number(req.body?.subjectId);
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  if (!req.file) return res.status(400).json({ error: "file_required", message: "Joignez un PDF ou une image JPG, PNG ou WebP de 15 Mo maximum." });
+  if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) {
+    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
+    return res.status(400).json({ error: "invalid_document_metadata" });
+  }
+  if (!allowedDocumentTypes.has(req.file.mimetype)) {
+    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
+    return res.status(400).json({ error: "unsupported_file_type" });
+  }
+  try {
+    const subject = await pool.query(
+      `SELECT s.id FROM subjects s JOIN options o ON o.id=s.option_id
+       JOIN faculties f ON f.id=o.faculty_id
+       WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.university_id=$2`,
+      [subjectId, req.user.university_id]
+    );
+    if (!subject.rowCount) {
+      await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
+      return res.status(400).json({ error: "invalid_subject" });
+    }
+    const result = await pool.query(
+      `INSERT INTO documents(subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active)
+       VALUES($1,$2,$3,$4,$5,$6,TRUE) RETURNING id,title,mime_type,file_size_bytes,created_at`,
+      [subjectId,title,req.file.filename,req.file.mimetype,req.file.size,req.user.id]
+    );
+    return res.status(201).json({ document: result.rows[0] });
+  } catch {
+    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
+    return res.status(503).json({ error: "document_upload_failed" });
+  }
+});
+app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
+  try {
+    const result = await pool.query(
+      `SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d
+       JOIN subjects s ON s.id=d.subject_id
+       WHERE d.id=$1 AND d.is_active=TRUE AND s.is_active=TRUE
+       AND s.option_id=$2 AND s.study_level_id=$3`,
+      [id,req.user.option_id,req.user.study_level_id]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
+    const file = path.resolve(privateFilesDir, result.rows[0].file_key);
+    if (path.dirname(file) !== privateFilesDir) return res.status(400).json({ error: "invalid_file_key" });
+    await stat(file);
+    res.set("Content-Type", result.rows[0].mime_type);
+    res.set("Content-Length", String(result.rows[0].file_size_bytes));
+    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}"`);
+    res.set("X-Content-Type-Options", "nosniff");
+    res.set("Cache-Control", "private, no-store");
+    return res.sendFile(file);
+  } catch (error) {
+    if (error?.code === "ENOENT") return res.status(404).json({ error: "document_file_missing" });
+    return res.status(503).json({ error: "document_download_failed" });
+  }
 });
 
 app.get("/api/v1/documents", requireAuth, async (req, res) => {
