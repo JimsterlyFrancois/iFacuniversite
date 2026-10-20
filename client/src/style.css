@@ -233,3 +233,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .student-campus-badge { padding: 6px 8px; }
   .profile-preferences { align-items: flex-start; flex-direction: column; }
 }
+
+
+.student-card { padding: 18px; margin-bottom: 16px; min-width: 0; }
+.student-card h2 { margin: 0 0 12px; font-size: 16px; }
+.student-data-list { display: flex; flex-direction: column; gap: 12px; }
+.student-data-item { padding: 14px; border: 1px solid var(--student-border); border-radius: 11px; overflow-wrap: anywhere; }
+.student-data-item p { color: var(--student-muted); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.student-data-item small { display: block; color: var(--student-muted); font-size: 10px; margin: 8px 0; }
+.note-form { display: flex; flex-direction: column; gap: 12px; }
+.student-card input, .student-card textarea, .student-card select { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid var(--student-border); border-radius: 9px; background: var(--student-bg); color: var(--student-text); }
+.student-card textarea { resize: vertical; line-height: 1.5; }
+.student-card .field { display: flex; flex-direction: column; gap: 7px; color: var(--student-muted); font-size: 12px; font-weight: 700; }
+.student-card form { display: flex; flex-direction: column; gap: 12px; }
+.theme-button, .subtle-button { min-height: 38px; padding: 0 13px; border: 1px solid var(--student-border); border-radius: 9px; background: var(--student-panel-alt); color: var(--student-text); font-size: 12px; font-weight: 750; cursor: pointer; }
+.theme-button:disabled { opacity: .55; cursor: wait; }
+@media (max-width: 760px) {
+  .student-card { padding: 14px; }
+  .student-data-item { padding: 12px; }
+}
