@@ -6,7 +6,7 @@ const schools = [
     options: ["Psychopédagogie", "Administration scolaire", "Mathématiques et Physique", "Histoire et Géographie"]
   },
   {
-    name: "École des Sciences de la Santé Publique (ESSAP)",
+    name: "ESSAP / Médecine Tropicale / Travail Social (ESSAP/MT/TS)",
     options: ["Santé Publique", "Médecine Tropicale", "Travail Social"]
   },
   {
