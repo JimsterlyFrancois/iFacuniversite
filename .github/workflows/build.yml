@@ -21,5 +21,7 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Check server syntax
+        run: node --check server/index.js
       - name: Build frontend
         run: npm run build
