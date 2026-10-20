@@ -24,7 +24,10 @@ app.get("/api/info", (_req, res) => {
 if (process.env.NODE_ENV === "production") {
   const clientDist = path.resolve(here, "../client/dist");
   app.use(express.static(clientDist));
-  app.get("*", (_req, res) => res.sendFile(path.join(clientDist, "index.html")));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api/")) return next();
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
 }
 
 app.listen(port, "0.0.0.0", () => {
