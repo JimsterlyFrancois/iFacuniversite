@@ -1,93 +1,83 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const destinations = [
-  { id: "class", label: "Classe", short: "Classe" },
-  { id: "messages", label: "Messages", short: "Messages" },
-  { id: "home", label: "Accueil", short: "Accueil" },
-  { id: "notes", label: "Notes", short: "Notes" },
+  { id: "class", label: "Annonces", short: "Classe" },
+  { id: "messages", label: "Messagerie", short: "Messages" },
+  { id: "home", label: "Documents", short: "Documents" },
+  { id: "notes", label: "Notes privées", short: "Notes" },
   { id: "profile", label: "Profil", short: "Profil" }
 ];
 
-const content = {
-  class: { title: "Ma classe", intro: "Les annonces destinées à votre parcours apparaîtront ici.", empty: "Aucune annonce pour l’instant." },
-  messages: { title: "Messages", intro: "Les groupes seront disponibles après la configuration des comptes et des autorisations.", empty: "Aucune conversation disponible." },
-  home: { title: "Bibliothèque", intro: "Les documents seront classés par matière selon votre profil universitaire.", empty: "Aucun document pour l’instant." },
-  notes: { title: "Mes notes", intro: "Vos notes personnelles seront privées et associées à votre compte après activation du service.", empty: "Aucune note pour l’instant." },
-  profile: { title: "Mon profil", intro: "Les informations du compte et les préférences apparaîtront ici.", empty: "Le profil étudiant sera disponible après la mise en place de l’authentification." }
-};
-
-export default function StudentShell({ onBack }) {
+export default function StudentShell({ token, user, onLogout, request }) {
   const [active, setActive] = useState("home");
   const [dark, setDark] = useState(true);
-  const page = content[active];
+  const [items, setItems] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const [messageBody, setMessageBody] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [adminStats, setAdminStats] = useState(null);
+  const page = destinations.find(x => x.id === active);
 
-  return (
-    <main className={dark ? "student-app student-dark" : "student-app student-light"}>
-      <header className="student-topbar">
-        <a className="brand" href="#accueil" onClick={(event) => { event.preventDefault(); setActive("home"); }} aria-label="Accueil iFac universite">
-          <span className="brand-mark">iF</span>
-          <span>iFac <span className="brand-light">universite</span></span>
-        </a>
-        <div className="student-top-actions">
-          <span className="preview-pill">Aperçu de l’interface</span>
-          <button className="subtle-button" type="button" onClick={onBack}>Retour connexion</button>
-        </div>
-      </header>
+  async function load() {
+    setBusy(true); setFeedback("");
+    try {
+      if (active === "home") { const r = await request("/documents", { token }); setItems(r.data || []); }
+      if (active === "class") { const r = await request("/announcements", { token }); setItems(r.data || []); }
+      if (active === "notes") { const r = await request("/notes", { token }); setItems(r.data || []); }
+      if (active === "messages") {
+        const r = await request("/messages/groups", { token }); setGroups(r.data || []);
+        if (selectedGroup && (r.data || []).some(g => String(g.id) === String(selectedGroup))) {
+          const m = await request(`/messages/groups/${selectedGroup}`, { token }); setMessages(m.data || []);
+        } else { setMessages([]); if (r.data?.length) setSelectedGroup(String(r.data[0].id)); }
+      }
+      if (active === "profile") {
+        if (user.role === "admin") { const r = await request("/admin/overview", { token }); setAdminStats(r.data); }
+      }
+    } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+  }
+  useEffect(() => { load(); }, [active, selectedGroup]);
+  async function saveNote(e) {
+    e.preventDefault(); setBusy(true); setFeedback("");
+    try { await request("/notes", { token, method: "POST", body: JSON.stringify({ title: noteTitle, body: noteBody }) }); setNoteTitle(""); setNoteBody(""); await load(); setFeedback("Note enregistrée."); }
+    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+  }
+  async function deleteNote(id) {
+    if (!window.confirm("Supprimer cette note privée ?")) return;
+    try { await request(`/notes/${id}`, { token, method: "DELETE" }); await load(); }
+    catch (e) { setFeedback(e.message); }
+  }
+  async function sendMessage(e) {
+    e.preventDefault(); if (!selectedGroup) return;
+    try { await request(`/messages/groups/${selectedGroup}`, { token, method: "POST", body: JSON.stringify({ body: messageBody }) }); setMessageBody(""); await load(); }
+    catch (e) { setFeedback(e.message); }
+  }
+  async function downloadDocument(id, title) {
+    try {
+      const response = await fetch(`/api/v1/documents/${id}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) { const r = await response.json().catch(() => ({})); throw new Error(r.message || r.error || "Téléchargement impossible."); }
+      const blob = await response.blob(); const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = title || `document-${id}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (e) { setFeedback(e.message); }
+  }
 
-      <div className="student-body">
-        <aside className="student-sidebar" aria-label="Navigation principale">
-          <p className="student-nav-caption">ESPACE ÉTUDIANT</p>
-          {destinations.map((item) => (
-            <button key={item.id} type="button" className={active === item.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(item.id)} aria-current={active === item.id ? "page" : undefined}>
-              <span className={"nav-symbol nav-symbol-" + item.id} aria-hidden="true">{({ class: "C", messages: "M", home: "A", notes: "N", profile: "P" })[item.id]}</span>
-              <span>{item.label}</span>
-            </button>
-          ))}
-          <div className="student-sidebar-note">UPNCH au lancement</div>
-        </aside>
-
-        <section className="student-main" aria-live="polite">
-          <div className="student-welcome">
-            <div>
-              <p className="student-eyebrow">ESPACE UNIVERSITAIRE</p>
-              <h1>{page.title}</h1>
-              <p>{page.intro}</p>
-            </div>
-            <span className="student-campus-badge">UPNCH</span>
-          </div>
-
-          {active === "home" && (
-            <div className="student-filter-row">
-              <label>Faculté / école <select disabled defaultValue=""><option value="">À configurer</option></select></label>
-              <label>Option <select disabled defaultValue=""><option value="">À configurer</option></select></label>
-              <label>Niveau <select disabled defaultValue=""><option value="">À configurer</option></select></label>
-            </div>
-          )}
-
-          {active === "profile" && (
-            <section className="student-card profile-preferences">
-              <div><h2>Préférences d’affichage</h2><p>Choisissez l’apparence de l’interface.</p></div>
-              <button type="button" className="theme-button" onClick={() => setDark((value) => !value)}>{dark ? "Passer au thème clair" : "Passer au thème sombre"}</button>
-            </section>
-          )}
-
-          <section className="student-empty-card">
-            <div className="empty-illustration" aria-hidden="true"><span /></div>
-            <h2>{page.empty}</h2>
-            <p>Cette page est préparée. Son contenu sera affiché lorsqu’il sera relié à une source de données vérifiée.</p>
-          </section>
-          <p className="student-prototype-note">Mode aperçu uniquement : aucune connexion, donnée personnelle, note, annonce ou document réel n’est chargé ou enregistré.</p>
-        </section>
-      </div>
-
-      <nav className="student-mobile-nav" aria-label="Navigation mobile">
-        {destinations.map((item) => (
-          <button key={item.id} type="button" className={active === item.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(item.id)} aria-current={active === item.id ? "page" : undefined}>
-            <span className={"mobile-nav-symbol nav-symbol-" + item.id} aria-hidden="true">{({ class: "C", messages: "M", home: "A", notes: "N", profile: "P" })[item.id]}</span>
-            <span>{item.short}</span>
-          </button>
-        ))}
-      </nav>
-    </main>
-  );
+  const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
+  return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
+    <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
+    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{destinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span></button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
+      <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
+        {active === "profile" && <section className="student-card profile-preferences"><div><h2>Préférences d’affichage</h2><p>Choisissez l’apparence de l’interface.</p></div><button className="theme-button" onClick={() => setDark(v => !v)}>{dark ? "Thème clair" : "Thème sombre"}</button><p><strong>Compte :</strong> {user.email}</p><p><strong>Rôle :</strong> {user.role}</p>{adminStats && <p>Administration — utilisateurs : {adminStats.users} · documents : {adminStats.documents} · annonces : {adminStats.announcements}</p>}</section>}
+        {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
+        {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>Groupe {g.id} · {g.group_type}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small></article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
+        {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>}</article>)}</section>}
+        {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
+        {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
+      </section></div>
+    <nav className="student-mobile-nav" aria-label="Navigation mobile">{destinations.map(x => <button key={x.id} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}><span className={"mobile-nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.short}</span></button>)}</nav>
+  </main>;
 }
