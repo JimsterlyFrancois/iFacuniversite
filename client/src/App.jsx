@@ -1,257 +1,102 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import StudentShell from "./StudentShell.jsx";
 
-const schools = [
-  {
-    name: "Faculté des Sciences de l’Éducation (FSE)",
-    options: ["Psychopédagogie", "Administration scolaire", "Mathématiques et Physique", "Histoire et Géographie"]
-  },
-  {
-    name: "ESSAP / Médecine Tropicale / Travail Social (ESSAP/MT/TS)",
-    options: ["Santé Publique", "Médecine Tropicale", "Travail Social"]
-  },
-  {
-    name: "École Supérieure Universitaire de Tourisme et d’Hôtellerie (ESUTH)",
-    options: ["Gestion Touristique", "Hôtellerie et Restauration"]
-  },
-  {
-    name: "Faculté de Droit, de Sciences Politiques et de Relations Internationales (FDSPRI)",
-    options: ["Sciences Juridiques / Droit", "Science Politique", "Relations Internationales"]
-  }
-];
-
-const levels = [
-  "1re année (L1)",
-  "2e année (L2)",
-  "3e année (L3)",
-  "4e année (L4)"
-];
-
-function PasswordField({ id, label, value, onChange, visible, onToggle, autoComplete, minLength }) {
-  return (
-    <div className="field">
-      <label htmlFor={id}>{label} <span aria-hidden="true">*</span></label>
-      <div className="password-wrap">
-        <input
-          id={id}
-          name={id}
-          type={visible ? "text" : "password"}
-          value={value}
-          onChange={onChange}
-          autoComplete={autoComplete}
-          minLength={minLength}
-          required
-        />
-        <button
-          className="password-toggle"
-          type="button"
-          onClick={onToggle}
-          aria-label={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-        >
-          {visible ? "Masquer" : "Afficher"}
-        </button>
-      </div>
-    </div>
-  );
+const API = "/api/v1";
+async function request(path, { token, ...options } = {}) {
+  const headers = { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers };
+  const response = await fetch(`${API}${path}`, { ...options, headers });
+  const data = response.status === 204 ? null : await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.message || data?.error || "Une erreur est survenue.");
+  return data;
 }
+function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label>; }
 
 export default function App() {
-  const [view, setView] = useState("auth");
-  const [mode, setMode] = useState("signup");
-  const [schoolName, setSchoolName] = useState("");
-  const [option, setOption] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [token, setToken] = useState(() => sessionStorage.getItem("ifac_token") || "");
+  const [user, setUser] = useState(null);
+  const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [universities, setUniversities] = useState([]);
+  const [faculties, setFaculties] = useState([]);
+  const [options, setOptions] = useState([]);
+  const [levels, setLevels] = useState([]);
+  const [universityId, setUniversityId] = useState("");
+  const [facultyId, setFacultyId] = useState("");
+  const [optionId, setOptionId] = useState("");
+  const [studyLevelId, setStudyLevelId] = useState("");
 
-  const selectedSchool = useMemo(
-    () => schools.find((school) => school.name === schoolName),
-    [schoolName]
-  );
+  useEffect(() => { request("/catalog/universities").then(r => setUniversities(r.data || [])).catch(() => {}); }, []);
+  useEffect(() => { setFaculties([]); setOptions([]); setLevels([]); setFacultyId(""); setOptionId(""); setStudyLevelId(""); if (universityId) request(`/catalog/faculties?universityId=${universityId}`).then(r => setFaculties(r.data || [])).catch(e => setFeedback(e.message)); }, [universityId]);
+  useEffect(() => { setOptions([]); setLevels([]); setOptionId(""); setStudyLevelId(""); if (facultyId) request(`/catalog/options?facultyId=${facultyId}`).then(r => setOptions(r.data || [])).catch(e => setFeedback(e.message)); }, [facultyId]);
+  useEffect(() => { setLevels([]); setStudyLevelId(""); if (optionId) request(`/catalog/levels?optionId=${optionId}`).then(r => setLevels(r.data || [])).catch(e => setFeedback(e.message)); }, [optionId]);
+  useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
 
-  function changeMode(nextMode) {
-    setMode(nextMode);
-    setFeedback("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-    setPassword("");
-    setConfirmPassword("");
+  async function submit(event) {
+    event.preventDefault(); setBusy(true); setFeedback("");
+    const form = new FormData(event.currentTarget);
+    try {
+      if (mode === "signup") {
+        if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
+        await request("/auth/register", { method: "POST", body: JSON.stringify({
+          firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"),
+          password: form.get("password"), universityId: Number(universityId), facultyId: Number(facultyId),
+          optionId: Number(optionId), studyLevelId: Number(studyLevelId)
+        }) });
+        setMode("login"); setFeedback("Inscription envoyée. Consultez votre e-mail pour confirmer votre adresse avant de vous connecter.");
+      } else {
+        const result = await request("/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
+        sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user);
+      }
+    } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
 
-  function handlePasswordReset() {
-    setFeedback("La récupération du mot de passe sera activée lorsque le service e-mail sécurisé sera configuré.");
+  async function resetPassword() {
+    const email = window.prompt("Entrez l’adresse e-mail de votre compte :");
+    if (!email) return;
+    setFeedback("");
+    try { const r = await request("/auth/password-reset/request", { method: "POST", body: JSON.stringify({ email }) }); setFeedback(r.message); }
+    catch (e) { setFeedback(e.message); }
   }
 
-  function handleSubmit(event) {
-    event.preventDefault();
-    setFeedback("");
+  async function logout() {
+    try { await request("/auth/logout", { method: "POST", token }); } catch {}
+    sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); setMode("login"); setFeedback("Vous êtes déconnecté.");
+  }
 
-    if (mode === "signup" && password !== confirmPassword) {
-      setFeedback("Les deux mots de passe ne correspondent pas.");
-      return;
+  const verifyToken = new URLSearchParams(window.location.search).get("token");
+  useEffect(() => {
+    if (window.location.pathname === "/verify-email" && verifyToken) {
+      request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token: verifyToken }) })
+        .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
+        .catch(e => setFeedback(e.message));
     }
+  }, [verifyToken]);
 
-    setFeedback(
-      mode === "signup"
-        ? "Formulaire vérifié. L’inscription réelle et l’e-mail de confirmation doivent encore être reliés au serveur avant le lancement."
-        : "La connexion sécurisée doit encore être reliée au serveur. Aucun compte n’a été connecté."
-    );
-  }
+  if (token && user) return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
 
-  return (
-    <main className="page-shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="Accueil iFac universite">
-          <span className="brand-mark">iF</span>
-          <span>iFac <span className="brand-light">universite</span></span>
-        </a>
-        <div className="topbar-actions"><span className="campus-label"><span className="status-dot" /> Première version · UPNCH</span><button className="preview-open-button" type="button" onClick={() => setView("preview")}>Aperçu de l’application</button></div>
-      </header>
-
-      <section className="auth-layout" aria-label="Inscription et connexion à iFac universite">
-        <aside className="visual-panel">
-          <img
-            className="campus-image"
-            src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&q=80"
-            alt="Étudiants réunis sur un campus universitaire"
-            fetchPriority="high"
-          />
-          <div className="visual-overlay" />
-          <div className="visual-content">
-            <p className="eyebrow">VOTRE AVENIR, VOTRE ESPACE</p>
-            <h1>Apprendre.<br /><span>Progresser.</span><br />Réussir.</h1>
-            <p>Les ressources universitaires de l’UPNCH, réunies dans un espace conçu pour les étudiants.</p>
-            <div className="visual-footnote"><span className="gold-line" /> Un projet conçu pour évoluer avec les universités publiques haïtiennes.</div>
-          </div>
-          <div className="decor-orbit orbit-one" />
-          <div className="decor-orbit orbit-two" />
-        </aside>
-
-        <section className="form-panel">
-          <div className="form-inner">
-            <div className="form-heading">
-              <p className="eyebrow">{mode === "signup" ? "REJOINDRE IFAC" : "BON RETOUR"}</p>
-              <h2>{mode === "signup" ? "Créer votre compte" : "Se connecter"}</h2>
-              <p>{mode === "signup" ? "Renseignez vos informations pour préparer votre espace étudiant." : "Connectez-vous avec l’adresse e-mail associée à votre compte."}</p>
-            </div>
-
-            <div className="auth-tabs" role="tablist" aria-label="Choisir une action">
-              <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => changeMode("signup")}>Inscription</button>
-              <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => changeMode("login")}>Connexion</button>
-            </div>
-
-            <form className="auth-form" onSubmit={handleSubmit}>
-              {mode === "signup" ? (
-                <>
-                  <div className="field-row">
-                    <div className="field">
-                      <label htmlFor="lastName">Nom <span aria-hidden="true">*</span></label>
-                      <input id="lastName" name="lastName" type="text" autoComplete="family-name" required />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="firstName">Prénom <span aria-hidden="true">*</span></label>
-                      <input id="firstName" name="firstName" type="text" autoComplete="given-name" required />
-                    </div>
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="signupEmail">Adresse e-mail <span aria-hidden="true">*</span></label>
-                    <input id="signupEmail" name="email" type="email" autoComplete="email" placeholder="vous@exemple.com" required />
-                  </div>
-
-                  <div className="field">
-                    <label htmlFor="school">Faculté / école <span aria-hidden="true">*</span></label>
-                    <select
-                      id="school"
-                      name="school"
-                      value={schoolName}
-                      onChange={(event) => {
-                        setSchoolName(event.target.value);
-                        setOption("");
-                      }}
-                      required
-                    >
-                      <option value="">Choisir une faculté ou une école</option>
-                      {schools.map((school) => <option key={school.name} value={school.name}>{school.name}</option>)}
-                    </select>
-                  </div>
-
-                  {selectedSchool?.options.length > 0 && (
-                    <div className="field">
-                      <label htmlFor="option">Option <span aria-hidden="true">*</span></label>
-                      <select id="option" name="option" value={option} onChange={(event) => setOption(event.target.value)} required>
-                        <option value="">Choisir votre option</option>
-                        {selectedSchool.options.map((item) => <option key={item} value={item}>{item}</option>)}
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="field">
-                    <label htmlFor="level">Niveau d’études <span aria-hidden="true">*</span></label>
-                    <select id="level" name="level" required defaultValue="">
-                      <option value="" disabled>Choisir votre niveau</option>
-                      {levels.map((level) => <option key={level} value={level}>{level}</option>)}
-                    </select>
-                  </div>
-
-                  <PasswordField
-                    id="signupPassword"
-                    label="Mot de passe"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    visible={showPassword}
-                    onToggle={() => setShowPassword((current) => !current)}
-                    autoComplete="new-password"
-                    minLength={8}
-                  />
-                  <p className="field-hint">8 caractères minimum.</p>
-                  <PasswordField
-                    id="confirmPassword"
-                    label="Confirmer le mot de passe"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    visible={showConfirmPassword}
-                    onToggle={() => setShowConfirmPassword((current) => !current)}
-                    autoComplete="new-password"
-                    minLength={8}
-                  />
-                  <button className="submit-button" type="submit">Créer mon compte <span aria-hidden="true">→</span></button>
-                  <p className="verification-note"><span className="lock-mark" aria-hidden="true">✓</span> Une confirmation par e-mail sera nécessaire avant l’activation complète du compte.</p>
-                </>
-              ) : (
-                <>
-                  <div className="field">
-                    <label htmlFor="loginEmail">Adresse e-mail <span aria-hidden="true">*</span></label>
-                    <input id="loginEmail" name="email" type="email" autoComplete="email" placeholder="vous@exemple.com" required />
-                  </div>
-                  <PasswordField
-                    id="loginPassword"
-                    label="Mot de passe"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    visible={showPassword}
-                    onToggle={() => setShowPassword((current) => !current)}
-                    autoComplete="current-password"
-                  />
-                  <div className="forgot-row"><button type="button" onClick={handlePasswordReset}>Mot de passe oublié ?</button></div>
-                  <button className="submit-button" type="submit">Se connecter <span aria-hidden="true">→</span></button>
-                  <p className="verification-note"><span className="lock-mark" aria-hidden="true">✓</span> L’adresse e-mail doit être confirmée pour activer le compte.</p>
-                </>
-              )}
-
-              {feedback && <p className="form-feedback" role="status">{feedback}</p>}
-            </form>
-            <p className="form-footer">En continuant, vous utilisez une interface en préparation. N’entrez pas encore de mot de passe que vous utilisez sur un autre service.</p>
-          </div>
-        </section>
-      </section>
-
-      <footer className="site-footer">
-        <span>iFac universite</span>
-        <span>Prototype d’interface · UPNCH au lancement</span>
-      </footer>
-    </main>
-  );
+  return <main className="page-shell">
+    <header className="topbar"><a className="brand" href="/"><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><span className="campus-label"><span className="status-dot" /> Première version · UPNCH</span></header>
+    <section className="auth-layout" aria-label="Connexion et inscription">
+      <aside className="visual-panel"><img className="campus-image" src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&q=80" alt="Étudiants sur un campus" /><div className="visual-overlay" /><div className="visual-content"><p className="eyebrow">VOTRE AVENIR, VOTRE ESPACE</p><h1>Apprendre.<br /><span>Progresser.</span><br />Réussir.</h1><p>Les ressources universitaires réunies dans un espace conçu pour les étudiants.</p></div></aside>
+      <section className="form-panel"><div className="form-inner"><div className="form-heading"><p className="eyebrow">iFAC UNIVERSITE</p><h2>{mode === "signup" ? "Créer votre compte" : "Se connecter"}</h2><p>{mode === "signup" ? "Choisissez votre parcours universitaire." : "Accédez à votre espace étudiant."}</p></div>
+        <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
+        <form className="auth-form" onSubmit={submit}>
+          {mode === "signup" && <><div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>
+          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">Choisir l’université</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">Choisir la faculté</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">Choisir l’option</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">Choisir le niveau</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select></Field></>}
+          <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
+          <Field label="Mot de passe"><input name="password" type="password" required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>
+          {mode === "signup" && <Field label="Confirmer le mot de passe"><input name="confirmPassword" type="password" required minLength="10" maxLength="128" autoComplete="new-password" /></Field>}
+          {mode === "login" && <div className="forgot-row"><button type="button" onClick={resetPassword}>Mot de passe oublié ?</button></div>}
+          <button className="submit-button" type="submit" disabled={busy}>{busy ? "Veuillez patienter…" : mode === "signup" ? "Créer mon compte →" : "Se connecter →"}</button>
+          {feedback && <p className="form-feedback" role="status">{feedback}</p>}
+          <p className="form-footer">Les inscriptions exigent un catalogue activé et un service e-mail configuré. N’utilisez pas un mot de passe déjà utilisé ailleurs.</p>
+        </form>
+      </div></section>
+    </section>
+    <footer className="site-footer"><span>iFac universite</span><span>Prototype en construction · UPNCH au lancement</span></footer>
+  </main>;
 }
