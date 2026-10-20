@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import StudentShell from "./StudentShell.jsx";
 
 const schools = [
   {
@@ -55,6 +56,7 @@ function PasswordField({ id, label, value, onChange, visible, onToggle, autoComp
 }
 
 export default function App() {
+  const [view, setView] = useState("auth");
   const [mode, setMode] = useState("signup");
   const [schoolName, setSchoolName] = useState("");
   const [option, setOption] = useState("");
@@ -105,7 +107,7 @@ export default function App() {
           <span className="brand-mark">iF</span>
           <span>iFac <span className="brand-light">universite</span></span>
         </a>
-        <span className="campus-label"><span className="status-dot" /> Première version · UPNCH</span>
+        <div className="topbar-actions"><span className="campus-label"><span className="status-dot" /> Première version · UPNCH</span><button className="preview-open-button" type="button" onClick={() => setView("preview")}>Aperçu de l’application</button></div>
       </header>
 
       <section className="auth-layout" aria-label="Inscription et connexion à iFac universite">
