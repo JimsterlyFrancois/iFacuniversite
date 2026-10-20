@@ -150,3 +150,86 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .form-panel { padding: 20px 12px; }
   .form-heading h2 { font-size: 24px; }
 }
+
+
+/* Identité teal et navigation responsive iFac universite */
+:root {
+  --gold: #0f766e;
+  --gold-light: #2dd4bf;
+  --teal: #0f766e;
+  --teal-light: #2dd4bf;
+}
+.brand-mark, .status-dot { background: var(--teal); }
+.eyebrow, .visual-content h1 span, .password-toggle, .forgot-row button { color: var(--teal-light); }
+.auth-tab.active, .submit-button { background: var(--teal); color: #ffffff; }
+.submit-button:hover { background: #0d9488; box-shadow: 0 7px 20px #0f766e30; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline-color: var(--teal-light); }
+.field input:focus, .field select:focus { border-color: var(--teal); }
+.lock-mark { border-color: #0f766e; color: var(--teal-light); }
+.topbar-actions, .student-top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.preview-open-button, .subtle-button, .theme-button {
+  min-height: 38px; border: 1px solid #28645f; border-radius: 9px; padding: 0 13px;
+  background: #12302e; color: #d8fffa; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.preview-open-button:hover, .subtle-button:hover, .theme-button:hover { background: #164640; }
+.student-app { min-height: 100vh; width: 100%; padding: 0 max(20px, calc((100vw - 1240px) / 2)); transition: background .2s ease, color .2s ease; }
+.student-dark { --student-bg: #0b1111; --student-panel: #121c1b; --student-panel-alt: #182422; --student-text: #f2f7f6; --student-muted: #9eaeaa; --student-border: #293b38; --student-accent: #2dd4bf; background: var(--student-bg); color: var(--student-text); }
+.student-light { --student-bg: #f3f8f7; --student-panel: #ffffff; --student-panel-alt: #e8f4f1; --student-text: #142321; --student-muted: #526663; --student-border: #d2e3df; --student-accent: #0f766e; background: var(--student-bg); color: var(--student-text); }
+.student-topbar { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--student-border); }
+.student-dark .brand-light { color: #a9b8b4; }
+.student-light .brand-light { color: #526663; }
+.preview-pill { padding: 6px 9px; border: 1px solid var(--student-border); border-radius: 999px; color: var(--student-muted); font-size: 11px; }
+.student-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; padding: 28px 0 40px; }
+.student-sidebar { min-height: 470px; padding: 16px 12px; border: 1px solid var(--student-border); border-radius: 16px; background: var(--student-panel); display: flex; flex-direction: column; gap: 7px; }
+.student-nav-caption, .student-eyebrow { color: var(--student-accent); font-size: 10px; font-weight: 850; letter-spacing: .15em; }
+.student-nav-caption { margin: 8px 9px 14px; }
+.student-nav-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; padding: 0 11px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--student-muted); text-align: left; font-size: 13px; font-weight: 650; cursor: pointer; }
+.student-nav-item.selected { color: var(--student-text); background: var(--student-panel-alt); border-color: var(--student-border); }
+.nav-symbol, .mobile-nav-symbol { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 8px; background: #0f766e22; color: var(--student-accent); font-size: 11px; font-weight: 900; }
+.student-sidebar-note { margin-top: auto; padding: 14px 9px 5px; border-top: 1px solid var(--student-border); color: var(--student-muted); font-size: 11px; }
+.student-main { min-width: 0; }
+.student-welcome { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 12px 0 23px; }
+.student-eyebrow { margin: 0 0 10px; }
+.student-welcome h1 { margin: 0; font-size: clamp(29px, 4vw, 42px); letter-spacing: -.05em; }
+.student-welcome p:not(.student-eyebrow) { max-width: 650px; margin: 10px 0 0; color: var(--student-muted); font-size: 13px; line-height: 1.7; }
+.student-campus-badge { padding: 8px 11px; border: 1px solid var(--student-border); border-radius: 9px; color: var(--student-accent); font-size: 11px; font-weight: 850; }
+.student-filter-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.student-filter-row label { display: flex; flex-direction: column; gap: 8px; color: var(--student-muted); font-size: 11px; font-weight: 700; }
+.student-filter-row select { min-width: 0; min-height: 43px; border: 1px solid var(--student-border); border-radius: 9px; padding: 0 10px; background: var(--student-panel); color: var(--student-muted); }
+.student-empty-card, .student-card { border: 1px solid var(--student-border); border-radius: 16px; background: var(--student-panel); }
+.student-empty-card { min-height: 310px; padding: 36px 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.empty-illustration { width: 68px; height: 68px; display: grid; place-items: center; border-radius: 22px; background: #0f766e1c; margin-bottom: 17px; }
+.empty-illustration span { width: 27px; height: 34px; display: block; border: 2px solid var(--student-accent); border-radius: 5px; position: relative; }
+.empty-illustration span::before, .empty-illustration span::after { content: ""; position: absolute; left: 5px; right: 5px; height: 2px; background: var(--student-accent); }
+.empty-illustration span::before { top: 10px; } .empty-illustration span::after { top: 18px; }
+.student-empty-card h2 { max-width: 540px; margin: 0; font-size: 17px; }
+.student-empty-card p { max-width: 490px; margin: 10px 0 0; color: var(--student-muted); font-size: 12px; line-height: 1.7; }
+.profile-preferences { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px; margin-bottom: 18px; }
+.profile-preferences h2 { margin: 0; font-size: 14px; }
+.profile-preferences p { margin: 6px 0 0; color: var(--student-muted); font-size: 12px; }
+.student-prototype-note { color: var(--student-muted); font-size: 10px; line-height: 1.7; margin: 15px 2px 0; }
+.student-mobile-nav { display: none; }
+@media (max-width: 760px) {
+  .student-app { padding: 0 16px 90px; }
+  .student-topbar { min-height: 66px; }
+  .student-top-actions { gap: 7px; }
+  .student-top-actions .subtle-button { min-height: 34px; padding: 0 9px; font-size: 10px; }
+  .preview-pill { display: none; }
+  .student-body { display: block; padding-top: 22px; }
+  .student-sidebar { display: none; }
+  .student-welcome { padding-top: 5px; }
+  .student-filter-row { grid-template-columns: 1fr; }
+  .student-empty-card { min-height: 260px; padding: 26px 18px; }
+  .student-mobile-nav { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 8px 5px max(8px, env(safe-area-inset-bottom)); border-top: 1px solid var(--student-border); background: var(--student-panel); box-shadow: 0 -8px 24px #00000016; }
+  .mobile-nav-item { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 54px; border: 0; border-radius: 9px; background: transparent; color: var(--student-muted); font-size: 9px; font-weight: 700; cursor: pointer; }
+  .mobile-nav-item.selected { color: var(--student-accent); background: var(--student-panel-alt); }
+  .mobile-nav-symbol { width: 24px; height: 24px; flex-basis: 24px; border-radius: 7px; }
+}
+@media (max-width: 390px) {
+  .student-app { padding-left: 10px; padding-right: 10px; }
+  .student-topbar .brand { font-size: 13px; gap: 6px; }
+  .student-topbar .brand-mark { width: 29px; height: 29px; flex-basis: 29px; }
+  .student-top-actions .subtle-button { max-width: 106px; white-space: normal; line-height: 1.2; padding: 4px 7px; }
+  .student-campus-badge { padding: 6px 8px; }
+  .profile-preferences { align-items: flex-start; flex-direction: column; }
+}
