@@ -231,6 +231,59 @@ app.post("/api/v1/auth/verify-email", requireDatabase, async (req, res) => {
   } catch { return res.status(503).json({ error: "verification_unavailable" }); }
 });
 
+
+app.post("/api/v1/auth/password-reset/request", requireDatabase, async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const generic = { message: "Si cette adresse correspond à un compte actif, un lien de récupération sera envoyé." };
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 254) return res.json(generic);
+  if (!mailer) return res.status(503).json({ error: "email_service_not_configured" });
+  try {
+    const found = await pool.query("SELECT id FROM users WHERE email=$1 AND is_active=TRUE AND email_verified_at IS NOT NULL", [email]);
+    if (found.rowCount) {
+      const token = makeToken();
+      await pool.query("INSERT INTO email_tokens(user_id,token_hash,purpose,expires_at) VALUES($1,$2,'reset_password',NOW()+INTERVAL '30 minutes')", [found.rows[0].id,hashToken(token)]);
+      const url = new URL("/reset-password", process.env.APP_BASE_URL || "http://localhost:3435");
+      url.searchParams.set("token",token);
+      await mailer.sendMail({
+        from: process.env.MAIL_FROM || process.env.SMTP_USER,
+        to: email,
+        subject: "Réinitialisation du mot de passe — iFac universite",
+        text: `Pour choisir un nouveau mot de passe, ouvrez ce lien dans les 30 minutes : ${url.toString()}`
+      });
+    }
+    return res.json(generic);
+  } catch { return res.status(503).json({ error: "password_reset_unavailable" }); }
+});
+
+app.post("/api/v1/auth/password-reset/confirm", requireDatabase, async (req, res) => {
+  const token = req.body?.token, password = req.body?.password;
+  if (typeof token !== "string" || token.length < 20 || token.length > 200 || typeof password !== "string" || password.length < 10 || password.length > 128) {
+    return res.status(400).json({ error: "invalid_reset_request", message: "Le lien doit être valide et le nouveau mot de passe contenir au moins 10 caractères." });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const match = await client.query(
+      "SELECT user_id FROM email_tokens WHERE token_hash=$1 AND purpose='reset_password' AND used_at IS NULL AND expires_at>NOW() FOR UPDATE",
+      [hashToken(token)]
+    );
+    if (!match.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "invalid_or_expired_token" });
+    }
+    const passwordHash = await bcrypt.hash(password,12);
+    const userId = match.rows[0].user_id;
+    await client.query("UPDATE users SET password_hash=$1,updated_at=NOW() WHERE id=$2", [passwordHash,userId]);
+    await client.query("UPDATE email_tokens SET used_at=NOW() WHERE user_id=$1 AND purpose='reset_password' AND used_at IS NULL", [userId]);
+    await client.query("UPDATE sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL", [userId]);
+    await client.query("COMMIT");
+    return res.json({ message: "Mot de passe modifié. Connectez-vous avec le nouveau mot de passe." });
+  } catch {
+    await client.query("ROLLBACK").catch(() => {});
+    return res.status(503).json({ error: "password_reset_unavailable" });
+  } finally { client.release(); }
+});
+
 app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const password = req.body?.password;
