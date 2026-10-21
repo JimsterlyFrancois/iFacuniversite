@@ -63,7 +63,7 @@ async function requireAuth(req, res, next) {
     const result = await pool.query(
       `SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id
        WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at > NOW()
-       AND u.is_active=TRUE AND u.email_verified_at IS NOT NULL`,
+       AND u.is_active=TRUE`,
       [hashToken(match[1])]
     );
     if (!result.rowCount) return res.status(401).json({ error: "invalid_or_expired_session" });
@@ -176,7 +176,6 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
       ![universityCode, facultyCode, optionCode, studyLevelCode].every(v => typeof v === "string" && /^[A-Z0-9_]{2,64}$/.test(v))) {
     return res.status(400).json({ error: "invalid_registration", message: "Vérifiez les champs et utilisez un mot de passe de 10 caractères minimum." });
   }
-  if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant d'accepter les inscriptions." });
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -200,26 +199,10 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
-    const rawToken = makeToken();
-    await client.query(
-      "INSERT INTO email_tokens (user_id, token_hash, purpose, expires_at) VALUES ($1,$2,'verify_email',NOW()+INTERVAL '30 minutes')",
-      [created.rows[0].id, hashToken(rawToken)]
-    );
+    // Mode provisoire : le compte est activé sans confirmation e-mail.
+    await client.query("UPDATE users SET email_verified_at=NOW(), updated_at=NOW() WHERE id=$1", [created.rows[0].id]);
     await client.query("COMMIT");
-    const verifyUrl = new URL("/verify-email", process.env.APP_BASE_URL || "http://localhost:3435");
-    verifyUrl.searchParams.set("token", rawToken);
-    try {
-      await mailer.sendMail({
-        from: process.env.MAIL_FROM || process.env.SMTP_USER,
-        to: normalizedEmail,
-        subject: "Confirmez votre adresse e-mail — iFac universite",
-        text: `Pour confirmer votre adresse, ouvrez ce lien dans les 30 minutes : ${verifyUrl.toString()}`
-      });
-    } catch {
-      await pool.query("DELETE FROM users WHERE id=$1", [created.rows[0].id]).catch(() => {});
-      return res.status(503).json({ error: "verification_email_failed", message: "L'e-mail de confirmation n'a pas pu être envoyé. Réessayez plus tard." });
-    }
-    return res.status(201).json({ message: "Compte créé. Consultez votre e-mail pour le confirmer avant de vous connecter." });
+    return res.status(201).json({ message: "Compte créé avec succès. Vous pouvez maintenant vous connecter." });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error?.code === "23505") return res.status(409).json({ error: "email_already_registered" });
@@ -306,7 +289,6 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
     const result = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
     const user = result.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "invalid_credentials" });
-    if (!user.email_verified_at) return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail avant de vous connecter." });
     const token = makeToken();
     await pool.query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+INTERVAL '7 days')", [user.id, hashToken(token)]);
     res.set("Cache-Control", "no-store");
