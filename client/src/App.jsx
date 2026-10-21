@@ -100,8 +100,8 @@ export default function App() {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
         await request("/auth/register", { method: "POST", body: JSON.stringify({
           firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"),
-          password: form.get("password"), universityId: Number(universityId), facultyId: Number(facultyId),
-          optionId: Number(optionId), studyLevelId: Number(studyLevelId)
+          password: form.get("password"), universityCode: universityId, facultyCode: facultyId,
+          optionCode: optionId, studyLevelCode: studyLevelId
         }) });
         setMode("login"); setFeedback("Inscription envoyée. Consultez votre e-mail pour confirmer votre adresse avant de vous connecter.");
       } else {
