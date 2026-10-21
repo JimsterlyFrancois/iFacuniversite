@@ -105,7 +105,7 @@ export default function App() {
           password: form.get("password"), universityCode: universityId, facultyCode: facultyId,
           optionCode: optionId, studyLevelCode: studyLevelId
         }) });
-        setMode("login"); setFeedback("Inscription envoyée. Consultez votre e-mail pour confirmer votre adresse avant de vous connecter.");
+        setMode("login"); setFeedback("Inscription réussie. Vous pouvez maintenant vous connecter.");
       } else {
         const result = await request("/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
         sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user);
