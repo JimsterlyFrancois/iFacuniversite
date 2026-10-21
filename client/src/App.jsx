@@ -76,10 +76,10 @@ export default function App() {
   if (token && user) return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
 
   return <main className="page-shell">
-    <header className="topbar"><a className="brand" href="/"><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><span className="campus-label"><span className="status-dot" /> Première version · UPNCH</span></header>
+    <header className="topbar"><a className="brand" href="/"><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a></header>
     <section className="auth-layout" aria-label="Connexion et inscription">
-      <aside className="visual-panel"><img className="campus-image" src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&q=80" alt="Étudiants sur un campus" /><div className="visual-overlay" /><div className="visual-content"><p className="eyebrow">VOTRE AVENIR, VOTRE ESPACE</p><h1>Apprendre.<br /><span>Progresser.</span><br />Réussir.</h1><p>Les ressources universitaires réunies dans un espace conçu pour les étudiants.</p></div></aside>
-      <section className="form-panel"><div className="form-inner"><div className="form-heading"><p className="eyebrow">iFAC UNIVERSITE</p><h2>{mode === "signup" ? "Créer votre compte" : "Se connecter"}</h2><p>{mode === "signup" ? "Choisissez votre parcours universitaire." : "Accédez à votre espace étudiant."}</p></div>
+      <aside className="visual-panel"><img className="campus-image" src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1600&q=85" alt="Groupe d’étudiants universitaires réunis sur un campus" /><div className="visual-overlay" /><div className="visual-content"><p className="eyebrow">L’ESPACE DES ÉTUDIANTS HAÏTIENS</p><h1 className="hero-message">Votre parcours universitaire,<br /><span>mieux organisé.</span></h1><p>Retrouvez vos documents de cours, vos notes personnelles et les informations utiles à vos études dans un seul espace.</p><div className="hero-student-tags"><span>Documents de cours</span><span>Notes privées</span><span>Vie universitaire</span></div><button type="button" className="hero-login-button" onClick={() => { setMode("login"); setFeedback(""); document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Se connecter <span aria-hidden="true">→</span></button></div></aside>
+      <section className="form-panel" id="auth-card"><div className="form-inner"><div className="form-heading"><p className="eyebrow">iFAC UNIVERSITE</p><h2>{mode === "signup" ? "Créer votre compte" : "Se connecter"}</h2><p>{mode === "signup" ? "Choisissez votre parcours universitaire." : "Accédez à votre espace étudiant."}</p></div>
         <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
         <form className="auth-form" onSubmit={submit}>
           {mode === "signup" && <><div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>
@@ -93,10 +93,10 @@ export default function App() {
           {mode === "login" && <div className="forgot-row"><button type="button" onClick={resetPassword}>Mot de passe oublié ?</button></div>}
           <button className="submit-button" type="submit" disabled={busy}>{busy ? "Veuillez patienter…" : mode === "signup" ? "Créer mon compte →" : "Se connecter →"}</button>
           {feedback && <p className="form-feedback" role="status">{feedback}</p>}
-          <p className="form-footer">Les inscriptions exigent un catalogue activé et un service e-mail configuré. N’utilisez pas un mot de passe déjà utilisé ailleurs.</p>
+          <p className="form-footer">Protégez votre compte en utilisant un mot de passe unique.</p>
         </form>
       </div></section>
     </section>
-    <footer className="site-footer"><span>iFac universite</span><span>Prototype en construction · UPNCH au lancement</span></footer>
+    <footer className="site-footer"><span>iFac universite</span><span>Votre espace pour mieux réussir à l’université.</span></footer>
   </main>;
 }
