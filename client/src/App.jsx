@@ -25,11 +25,53 @@ export default function App() {
   const [facultyId, setFacultyId] = useState("");
   const [optionId, setOptionId] = useState("");
   const [studyLevelId, setStudyLevelId] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState({ universities: false, faculties: false, options: false, levels: false });
+  const [catalogErrors, setCatalogErrors] = useState({ universities: "", faculties: "", options: "", levels: "" });
 
-  useEffect(() => { request("/catalog/universities").then(r => setUniversities(r.data || [])).catch(() => {}); }, []);
-  useEffect(() => { setFaculties([]); setOptions([]); setLevels([]); setFacultyId(""); setOptionId(""); setStudyLevelId(""); if (universityId) request(`/catalog/faculties?universityId=${universityId}`).then(r => setFaculties(r.data || [])).catch(e => setFeedback(e.message)); }, [universityId]);
-  useEffect(() => { setOptions([]); setLevels([]); setOptionId(""); setStudyLevelId(""); if (facultyId) request(`/catalog/options?facultyId=${facultyId}`).then(r => setOptions(r.data || [])).catch(e => setFeedback(e.message)); }, [facultyId]);
-  useEffect(() => { setLevels([]); setStudyLevelId(""); if (optionId) request(`/catalog/levels?optionId=${optionId}`).then(r => setLevels(r.data || [])).catch(e => setFeedback(e.message)); }, [optionId]);
+  useEffect(() => {
+    let active = true;
+    setCatalogLoading(s => ({ ...s, universities: true }));
+    request("/catalog/universities")
+      .then(r => { if (!active) return; const rows = r.data || []; setUniversities(rows); setCatalogErrors(s => ({ ...s, universities: rows.length ? "" : "Aucune université active n’est encore disponible dans le catalogue." })); })
+      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, universities: `${e.message} Vérifiez la base de données et le catalogue universitaire.` })); })
+      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, universities: false })); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setFaculties([]); setOptions([]); setLevels([]); setFacultyId(""); setOptionId(""); setStudyLevelId("");
+    setCatalogErrors(s => ({ ...s, faculties: "", options: "", levels: "" }));
+    if (!universityId) return;
+    setCatalogLoading(s => ({ ...s, faculties: true }));
+    request(`/catalog/faculties?universityId=${universityId}`)
+      .then(r => { if (!active) return; const rows = r.data || []; setFaculties(rows); setCatalogErrors(s => ({ ...s, faculties: rows.length ? "" : "Aucune faculté active n’est enregistrée pour cette université." })); })
+      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, faculties: e.message })); })
+      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, faculties: false })); });
+    return () => { active = false; };
+  }, [universityId]);
+  useEffect(() => {
+    let active = true;
+    setOptions([]); setLevels([]); setOptionId(""); setStudyLevelId("");
+    setCatalogErrors(s => ({ ...s, options: "", levels: "" }));
+    if (!facultyId) return;
+    setCatalogLoading(s => ({ ...s, options: true }));
+    request(`/catalog/options?facultyId=${facultyId}`)
+      .then(r => { if (!active) return; const rows = r.data || []; setOptions(rows); setCatalogErrors(s => ({ ...s, options: rows.length ? "" : "Aucune option active n’est enregistrée pour cette faculté." })); })
+      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, options: e.message })); })
+      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, options: false })); });
+    return () => { active = false; };
+  }, [facultyId]);
+  useEffect(() => {
+    let active = true;
+    setLevels([]); setStudyLevelId(""); setCatalogErrors(s => ({ ...s, levels: "" }));
+    if (!optionId) return;
+    setCatalogLoading(s => ({ ...s, levels: true }));
+    request(`/catalog/levels?optionId=${optionId}`)
+      .then(r => { if (!active) return; const rows = r.data || []; setLevels(rows); setCatalogErrors(s => ({ ...s, levels: rows.length ? "" : "Aucun niveau actif n’est enregistré pour cette option." })); })
+      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, levels: e.message })); })
+      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, levels: false })); });
+    return () => { active = false; };
+  }, [optionId]);
   useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
 
   async function submit(event) {
@@ -83,10 +125,10 @@ export default function App() {
         <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
         <form className="auth-form" onSubmit={submit}>
           {mode === "signup" && <><div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>
-          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">Choisir l’université</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">Choisir la faculté</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">Choisir l’option</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">Choisir le niveau</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select></Field></>}
+          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
+          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
+          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
+          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
           <Field label="Mot de passe"><input name="password" type="password" required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>
           {mode === "signup" && <Field label="Confirmer le mot de passe"><input name="confirmPassword" type="password" required minLength="10" maxLength="128" autoComplete="new-password" /></Field>}
