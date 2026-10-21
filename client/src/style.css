@@ -27,8 +27,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 12px #eab30855; }
 .auth-layout { display: grid; grid-template-columns: minmax(0, .95fr) minmax(440px, 1.05fr); min-height: 680px; margin: 30px 0 38px; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; background: #111113; box-shadow: 0 25px 80px #00000038; animation: panel-enter .55s ease-out both; }
 .visual-panel { min-height: 680px; position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: clamp(30px, 5vw, 62px); isolation: isolate; background: #252116; }
-.campus-image { position: absolute; inset: 0; z-index: -3; width: 100%; height: 100%; object-fit: cover; object-position: center; animation: image-enter .8s ease-out both; }
-.visual-overlay { position: absolute; inset: 0; z-index: -2; background: linear-gradient(180deg, #08080830 0%, #0a0a0ad9 82%), linear-gradient(100deg, #0a0a0a48, transparent 80%); }
+.campus-image { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; animation: image-enter .8s ease-out both; }
+.visual-overlay { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #08080830 0%, #0a0a0ad9 82%), linear-gradient(100deg, #0a0a0a48, transparent 80%); }
+.visual-content { position: relative; z-index: 2; }
 .visual-content { max-width: 440px; animation: content-enter .65s .1s ease-out both; }
 .eyebrow { color: var(--gold); font-size: 10px; font-weight: 850; letter-spacing: .19em; margin: 0 0 17px; }
 .visual-content h1 { margin: 0; font-size: clamp(39px, 4.5vw, 61px); line-height: 1.03; letter-spacing: -.065em; font-weight: 790; }
