@@ -306,3 +306,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .brand-mark, .hero-student-tags span, .hero-login-button { animation: none !important; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+
+/* Bouton Connexion toujours visible dès l’en-tête */
+.top-login-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  min-height: 42px; padding: 0 16px; border: 1px solid #2dd4bf;
+  border-radius: 10px; background: #0f766e; color: #fff;
+  font-size: 12px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 5px 18px #0f766e35;
+  animation: ifac-soft-glow 3.8s ease-in-out infinite;
+  transition: transform .2s ease, background .2s ease;
+}
+.top-login-button:hover { background: #0d9488; transform: translateY(-2px); }
+.top-login-button span { font-size: 16px; }
+@media (max-width: 520px) {
+  .topbar { flex-wrap: nowrap; }
+  .top-login-button { min-height: 38px; padding: 0 11px; font-size: 11px; gap: 6px; flex-shrink: 0; }
+}
