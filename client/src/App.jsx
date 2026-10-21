@@ -17,60 +17,78 @@ export default function App() {
   const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
-  const [universities, setUniversities] = useState([]);
-  const [faculties, setFaculties] = useState([]);
-  const [options, setOptions] = useState([]);
-  const [levels, setLevels] = useState([]);
-  const [universityId, setUniversityId] = useState("");
+  const [universityId, setUniversityId] = useState("UPNCH");
   const [facultyId, setFacultyId] = useState("");
   const [optionId, setOptionId] = useState("");
   const [studyLevelId, setStudyLevelId] = useState("");
-  const [catalogLoading, setCatalogLoading] = useState({ universities: false, faculties: false, options: false, levels: false });
-  const [catalogErrors, setCatalogErrors] = useState({ universities: "", faculties: "", options: "", levels: "" });
+
+  // Catalogue statique : les listes d'inscription ne dépendent plus d'un appel à Neon.
+  // UPNCH uniquement dans cette version. Les autres universités pourront être ajoutées plus tard.
+  const universities = [{ code: "UPNCH", name: "Université Publique du Nord au Cap-Haïtien" }];
+  const academicUnits = {
+    UPNCH: [
+      {
+        code: "FSE",
+        name: "Faculté des Sciences de l’Éducation",
+        options: [
+          { code: "PSYCHOPEDAGOGIE", name: "Psychopédagogie" },
+          { code: "ADMINISTRATION_SCOLAIRE", name: "Administration scolaire" },
+          { code: "MATHEMATIQUES_PHYSIQUE", name: "Mathématiques et Physique" },
+          { code: "HISTOIRE_GEOGRAPHIE", name: "Histoire et Géographie" }
+        ]
+      },
+      {
+        code: "ESSAP_MT_TS",
+        name: "École de Santé Publique, Médecine Tropicale et Travail Social",
+        options: [
+          { code: "SANTE_PUBLIQUE", name: "Santé Publique" },
+          { code: "MEDECINE_TROPICALE", name: "Médecine Tropicale" },
+          { code: "TRAVAIL_SOCIAL", name: "Travail Social" }
+        ]
+      },
+      {
+        code: "ESUTH",
+        name: "École Supérieure Universitaire de Tourisme et d’Hôtellerie",
+        options: [
+          { code: "GESTION_TOURISTIQUE", name: "Gestion Touristique" },
+          { code: "HOTELLERIE_RESTAURATION", name: "Hôtellerie et Restauration" }
+        ]
+      },
+      {
+        code: "FDSPRI",
+        name: "Faculté de Droit, Sciences Politiques et Relations Internationales",
+        options: [
+          { code: "SCIENCES_JURIDIQUES_DROIT", name: "Sciences Juridiques / Droit" },
+          { code: "SCIENCE_POLITIQUE", name: "Science Politique" },
+          { code: "RELATIONS_INTERNATIONALES", name: "Relations Internationales" }
+        ]
+      }
+    ]
+  };
+  const faculties = academicUnits[universityId] || [];
+  const selectedFaculty = faculties.find(x => x.code === facultyId);
+  const options = selectedFaculty?.options || [];
+  const selectedOption = options.find(x => x.code === optionId);
+  const levels = selectedOption ? [
+    { code: "L1", label: "1ère année" },
+    { code: "L2", label: "2ème année" },
+    { code: "L3", label: "3ème année" },
+    { code: "L4", label: "4ème année" }
+  ] : [];
+  const catalogLoading = { universities: false, faculties: false, options: false, levels: false };
+  const catalogErrors = { universities: "", faculties: "", options: "", levels: "" };
 
   useEffect(() => {
-    let active = true;
-    setCatalogLoading(s => ({ ...s, universities: true }));
-    request("/catalog/universities")
-      .then(r => { if (!active) return; const rows = r.data || []; setUniversities(rows); setCatalogErrors(s => ({ ...s, universities: rows.length ? "" : "Aucune université active n’est encore disponible dans le catalogue." })); })
-      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, universities: `${e.message} Vérifiez la base de données et le catalogue universitaire.` })); })
-      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, universities: false })); });
-    return () => { active = false; };
-  }, []);
-  useEffect(() => {
-    let active = true;
-    setFaculties([]); setOptions([]); setLevels([]); setFacultyId(""); setOptionId(""); setStudyLevelId("");
-    setCatalogErrors(s => ({ ...s, faculties: "", options: "", levels: "" }));
-    if (!universityId) return;
-    setCatalogLoading(s => ({ ...s, faculties: true }));
-    request(`/catalog/faculties?universityId=${universityId}`)
-      .then(r => { if (!active) return; const rows = r.data || []; setFaculties(rows); setCatalogErrors(s => ({ ...s, faculties: rows.length ? "" : "Aucune faculté active n’est enregistrée pour cette université." })); })
-      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, faculties: e.message })); })
-      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, faculties: false })); });
-    return () => { active = false; };
+    setFacultyId("");
+    setOptionId("");
+    setStudyLevelId("");
   }, [universityId]);
   useEffect(() => {
-    let active = true;
-    setOptions([]); setLevels([]); setOptionId(""); setStudyLevelId("");
-    setCatalogErrors(s => ({ ...s, options: "", levels: "" }));
-    if (!facultyId) return;
-    setCatalogLoading(s => ({ ...s, options: true }));
-    request(`/catalog/options?facultyId=${facultyId}`)
-      .then(r => { if (!active) return; const rows = r.data || []; setOptions(rows); setCatalogErrors(s => ({ ...s, options: rows.length ? "" : "Aucune option active n’est enregistrée pour cette faculté." })); })
-      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, options: e.message })); })
-      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, options: false })); });
-    return () => { active = false; };
+    setOptionId("");
+    setStudyLevelId("");
   }, [facultyId]);
   useEffect(() => {
-    let active = true;
-    setLevels([]); setStudyLevelId(""); setCatalogErrors(s => ({ ...s, levels: "" }));
-    if (!optionId) return;
-    setCatalogLoading(s => ({ ...s, levels: true }));
-    request(`/catalog/levels?optionId=${optionId}`)
-      .then(r => { if (!active) return; const rows = r.data || []; setLevels(rows); setCatalogErrors(s => ({ ...s, levels: rows.length ? "" : "Aucun niveau actif n’est enregistré pour cette option." })); })
-      .catch(e => { if (active) setCatalogErrors(s => ({ ...s, levels: e.message })); })
-      .finally(() => { if (active) setCatalogLoading(s => ({ ...s, levels: false })); });
-    return () => { active = false; };
+    setStudyLevelId("");
   }, [optionId]);
   useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
 
@@ -125,10 +143,10 @@ export default function App() {
         <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
         <form className="auth-form" onSubmit={submit}>
           {mode === "signup" && <><div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>
-          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
-          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
-          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
-          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
+          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
+          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
+          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
+          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.code} value={x.code}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
           <Field label="Mot de passe"><input name="password" type="password" required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>
           {mode === "signup" && <Field label="Confirmer le mot de passe"><input name="confirmPassword" type="password" required minLength="10" maxLength="128" autoComplete="new-password" /></Field>}
