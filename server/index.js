@@ -205,6 +205,12 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     return res.status(201).json({ message: "Compte créé avec succès. Vous pouvez maintenant vous connecter." });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    console.error("Échec inscription iFac:", {
+      code: error?.code || "unknown",
+      message: error?.message || "Erreur inconnue",
+      detail: error?.detail || null,
+      constraint: error?.constraint || null
+    });
     if (error?.code === "23505") return res.status(409).json({ error: "email_already_registered" });
     return res.status(503).json({ error: "registration_unavailable" });
   } finally {
