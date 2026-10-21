@@ -252,3 +252,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .student-card { padding: 14px; }
   .student-data-item { padding: 12px; }
 }
+
+
+/* Accueil : message principal large et accès direct à la connexion */
+.visual-panel { align-items: center; }
+.visual-content { width: 100%; max-width: 620px; }
+.visual-content .hero-message { max-width: 620px; font-size: clamp(37px, 4.2vw, 58px); line-height: 1.08; letter-spacing: -.055em; overflow-wrap: normal; }
+.visual-content .hero-message span { display: inline; }
+.visual-content > p:not(.eyebrow) { max-width: 470px; }
+.hero-student-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+.hero-student-tags span { padding: 8px 11px; border: 1px solid #ffffff45; border-radius: 999px; background: #11111155; color: #fff; font-size: 11px; font-weight: 650; backdrop-filter: blur(8px); }
+.hero-login-button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; min-height: 47px; padding: 0 18px; border: 0; border-radius: 9px; background: var(--teal, #0f766e); color: #fff; font-size: 13px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px #00000030; transition: transform .18s ease, background .18s ease; }
+.hero-login-button:hover { background: #0d9488; transform: translateY(-2px); }
+.hero-login-button span { font-size: 18px; }
+#auth-card { scroll-margin-top: 18px; }
+@media (max-width: 950px) {
+  .visual-panel { min-height: 360px; }
+  .visual-content .hero-message { font-size: clamp(35px, 6vw, 48px); }
+}
+@media (max-width: 600px) {
+  .visual-panel { min-height: 330px; }
+  .visual-content .hero-message { font-size: clamp(31px, 8.2vw, 39px); line-height: 1.12; }
+  .hero-student-tags { gap: 6px; margin-bottom: 17px; }
+  .hero-student-tags span { font-size: 10px; padding: 7px 9px; }
+  .hero-login-button { min-height: 46px; width: 100%; }
+}
