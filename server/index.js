@@ -33,14 +33,21 @@ app.disable("x-powered-by");
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "1mb" }));
 app.use("/api/v1/auth", rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }));
-const mailer = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+const smtpPort = Number(process.env.SMTP_PORT || 465);
+const mailer = process.env.SMTP_USER && process.env.SMTP_PASS
   ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === "true",
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: smtpPort,
+      secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : smtpPort === 465,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
     })
   : null;
+
+if (mailer) {
+  mailer.verify()
+    .then(() => console.log("Service e-mail SMTP prêt."))
+    .catch(error => console.error("Vérification SMTP échouée :", error.message));
+}
 const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const makeToken = () => randomBytes(32).toString("base64url");
 const publicUser = (u) => ({
