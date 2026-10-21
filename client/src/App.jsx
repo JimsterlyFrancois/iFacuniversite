@@ -17,6 +17,8 @@ export default function App() {
   const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [universityId, setUniversityId] = useState("");
   const [facultyId, setFacultyId] = useState("");
   const [optionId, setOptionId] = useState("");
@@ -148,8 +150,8 @@ export default function App() {
           <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
           <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.code} value={x.code}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
-          <Field label="Mot de passe"><input name="password" type="password" required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>
-          {mode === "signup" && <Field label="Confirmer le mot de passe"><input name="confirmPassword" type="password" required minLength="10" maxLength="128" autoComplete="new-password" /></Field>}
+          <Field label="Mot de passe"><div className="password-wrap"><input name="password" type={showPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /><button className="password-toggle" type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? "Masquer" : "Voir"}</button></div></Field>
+          {mode === "signup" && <Field label="Confirmer le mot de passe"><div className="password-wrap"><input name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete="new-password" /><button className="password-toggle" type="button" onClick={() => setShowConfirmPassword(v => !v)} aria-label={showConfirmPassword ? "Masquer la confirmation" : "Afficher la confirmation"}>{showConfirmPassword ? "Masquer" : "Voir"}</button></div></Field>}
           {mode === "login" && <div className="forgot-row"><button type="button" onClick={resetPassword}>Mot de passe oublié ?</button></div>}
           <button className="submit-button" type="submit" disabled={busy}>{busy ? "Veuillez patienter…" : mode === "signup" ? "Créer mon compte →" : "Se connecter →"}</button>
           {feedback && <p className="form-feedback" role="status">{feedback}</p>}
