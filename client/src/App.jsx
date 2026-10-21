@@ -17,7 +17,7 @@ export default function App() {
   const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
-  const [universityId, setUniversityId] = useState("UPNCH");
+  const [universityId, setUniversityId] = useState("");
   const [facultyId, setFacultyId] = useState("");
   const [optionId, setOptionId] = useState("");
   const [studyLevelId, setStudyLevelId] = useState("");
