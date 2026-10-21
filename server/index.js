@@ -161,12 +161,12 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
 
 
 app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
-  const { firstName, lastName, email, password, universityId, facultyId, optionId, studyLevelId } = req.body || {};
+  const { firstName, lastName, email, password, universityCode, facultyCode, optionCode, studyLevelCode } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (![firstName, lastName].every(v => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 100) ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 254 ||
       typeof password !== "string" || password.length < 10 || password.length > 128 ||
-      ![universityId, facultyId, optionId, studyLevelId].every(v => Number.isSafeInteger(Number(v)) && Number(v) > 0)) {
+      ![universityCode, facultyCode, optionCode, studyLevelCode].every(v => typeof v === "string" && /^[A-Z0-9_]{2,64}$/.test(v))) {
     return res.status(400).json({ error: "invalid_registration", message: "Vérifiez les champs et utilisez un mot de passe de 10 caractères minimum." });
   }
   if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant d'accepter les inscriptions." });
@@ -174,11 +174,12 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
   try {
     await client.query("BEGIN");
     const profile = await client.query(
-      `SELECT 1 FROM universities u JOIN faculties f ON f.university_id=u.id
+      `SELECT u.id AS university_id, f.id AS faculty_id, o.id AS option_id, l.id AS study_level_id
+       FROM universities u JOIN faculties f ON f.university_id=u.id
        JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
-       WHERE u.id=$1 AND f.id=$2 AND o.id=$3 AND l.id=$4
+       WHERE u.code=$1 AND f.code=$2 AND o.code=$3 AND l.code=$4
        AND u.is_active AND f.is_active AND o.is_active AND l.is_active`,
-      [Number(universityId), Number(facultyId), Number(optionId), Number(studyLevelId)]
+      [universityCode, facultyCode, optionCode, studyLevelCode]
     );
     if (!profile.rowCount) {
       await client.query("ROLLBACK");
@@ -190,7 +191,7 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     const created = await client.query(
       `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-      [Number(universityId), Number(facultyId), Number(optionId), Number(studyLevelId), firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
+      [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
     const rawToken = makeToken();
     await client.query(
