@@ -16,7 +16,7 @@ const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT) || 3434;
 const here = path.dirname(fileURLToPath(import.meta.url));
-const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || path.join(here, "private-uploads"));
+const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || (process.env.VERCEL ? "/tmp/ifac-private-uploads" : path.join(here, "private-uploads")));
 await mkdir(privateFilesDir, { recursive: true });
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl
@@ -525,15 +525,19 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`iFac universite API disponible sur le port ${port}`);
-});
-
-async function shutdown() {
-  server.close(async () => {
-    if (pool) await pool.end().catch(() => {});
-    process.exit(0);
+if (!process.env.VERCEL) {
+  const server = app.listen(port, "0.0.0.0", () => {
+    console.log(`iFac universite API disponible sur le port ${port}`);
   });
+
+  async function shutdown() {
+    server.close(async () => {
+      if (pool) await pool.end().catch(() => {});
+      process.exit(0);
+    });
+  }
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+
+export default app;
