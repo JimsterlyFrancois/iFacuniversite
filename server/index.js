@@ -190,7 +190,8 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
 });
 
 
-app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {\n  if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant de créer un compte." });
+app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
+  if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant de créer un compte." });
   const { firstName, lastName, email, password, universityCode, facultyCode, optionCode, studyLevelCode } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (![firstName, lastName].every(v => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 100) ||
