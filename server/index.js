@@ -19,7 +19,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || path.join(here, "private-uploads"));
 if (!process.env.SUPABASE_URL) await mkdir(privateFilesDir, { recursive: true });
 const storageUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
-const storageKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const storageKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const storageBucket = process.env.SUPABASE_STORAGE_BUCKET || "ifac-documents";
 const persistentStorageReady = Boolean(storageUrl && storageKey && storageBucket);
 function storageObjectUrl(key) {
