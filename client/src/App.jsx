@@ -89,12 +89,12 @@ export default function App() {
     try {
       if (mode === "signup") {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
-        await request("/auth/register", { method: "POST", body: JSON.stringify({
+        const result = await request("/auth/register", { method: "POST", body: JSON.stringify({
           firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"),
           password: form.get("password"), universityCode: selectedUniversity?.code, facultyCode: selectedFaculty?.code,
           optionCode: selectedOption?.code, studyLevelCode: levels.find(x => String(x.id) === String(studyLevelId))?.code
         }) });
-        setMode("login"); setFeedback("Inscription réussie. Vous pouvez maintenant vous connecter.");
+        setMode("login"); setFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte.");
       } else {
         const result = await request("/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
         sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user);
