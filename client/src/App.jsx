@@ -24,74 +24,63 @@ export default function App() {
   const [optionId, setOptionId] = useState("");
   const [studyLevelId, setStudyLevelId] = useState("");
 
-  // Catalogue statique : les listes d'inscription ne dépendent plus d'un appel à Neon.
-  // UPNCH uniquement dans cette version. Les autres universités pourront être ajoutées plus tard.
-  const universities = [{ code: "UPNCH", name: "Université Publique du Nord au Cap-Haïtien" }];
-  const academicUnits = {
-    UPNCH: [
-      {
-        code: "FSE",
-        name: "Faculté des Sciences de l’Éducation",
-        options: [
-          { code: "PSYCHOPEDAGOGIE", name: "Psychopédagogie" },
-          { code: "ADMINISTRATION_SCOLAIRE", name: "Administration scolaire" },
-          { code: "MATHEMATIQUES_PHYSIQUE", name: "Mathématiques et Physique" },
-          { code: "HISTOIRE_GEOGRAPHIE", name: "Histoire et Géographie" }
-        ]
-      },
-      {
-        code: "ESSAP_MT_TS",
-        name: "École de Santé Publique, Médecine Tropicale et Travail Social",
-        options: [
-          { code: "SANTE_PUBLIQUE", name: "Santé Publique" },
-          { code: "MEDECINE_TROPICALE", name: "Médecine Tropicale" },
-          { code: "TRAVAIL_SOCIAL", name: "Travail Social" }
-        ]
-      },
-      {
-        code: "ESUTH",
-        name: "École Supérieure Universitaire de Tourisme et d’Hôtellerie",
-        options: [
-          { code: "GESTION_TOURISTIQUE", name: "Gestion Touristique" },
-          { code: "HOTELLERIE_RESTAURATION", name: "Hôtellerie et Restauration" }
-        ]
-      },
-      {
-        code: "FDSPRI",
-        name: "Faculté de Droit, Sciences Politiques et Relations Internationales",
-        options: [
-          { code: "SCIENCES_JURIDIQUES_DROIT", name: "Sciences Juridiques / Droit" },
-          { code: "SCIENCE_POLITIQUE", name: "Science Politique" },
-          { code: "RELATIONS_INTERNATIONALES", name: "Relations Internationales" }
-        ]
-      }
-    ]
-  };
-  const faculties = academicUnits[universityId] || [];
-  const selectedFaculty = faculties.find(x => x.code === facultyId);
-  const options = selectedFaculty?.options || [];
-  const selectedOption = options.find(x => x.code === optionId);
-  const levels = selectedOption ? [
-    { code: "L1", label: "1ère année" },
-    { code: "L2", label: "2ème année" },
-    { code: "L3", label: "3ème année" },
-    { code: "L4", label: "4ème année" }
-  ] : [];
-  const catalogLoading = { universities: false, faculties: false, options: false, levels: false };
-  const catalogErrors = { universities: "", faculties: "", options: "", levels: "" };
+  // Le catalogue est chargé depuis l'API et la base de données.
+  const [universities, setUniversities] = useState([]);
+  const [faculties, setFaculties] = useState([]);
+  const [options, setOptions] = useState([]);
+  const [levels, setLevels] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState({ universities: false, faculties: false, options: false, levels: false });
+  const [catalogErrors, setCatalogErrors] = useState({ universities: "", faculties: "", options: "", levels: "" });
+
+  const selectedUniversity = universities.find(x => String(x.id) === String(universityId));
+  const selectedFaculty = faculties.find(x => String(x.id) === String(facultyId));
+  const selectedOption = options.find(x => String(x.id) === String(optionId));
+
+  async function loadCatalogList(kind, path, setter) {
+    setCatalogLoading(previous => ({ ...previous, [kind]: true }));
+    setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
+    try {
+      const result = await request(path);
+      setter(result.data || []);
+    } catch {
+      setter([]);
+      setCatalogErrors(previous => ({ ...previous, [kind]: "Impossible de charger cette liste. Vérifiez la connexion au serveur." }));
+    } finally {
+      setCatalogLoading(previous => ({ ...previous, [kind]: false }));
+    }
+  }
+
+  useEffect(() => {
+    loadCatalogList("universities", "/catalog/universities", setUniversities);
+  }, []);
 
   useEffect(() => {
     setFacultyId("");
     setOptionId("");
     setStudyLevelId("");
+    setFaculties([]);
+    setOptions([]);
+    setLevels([]);
+    if (!universityId) return;
+    loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties);
   }, [universityId]);
+
   useEffect(() => {
     setOptionId("");
     setStudyLevelId("");
+    setOptions([]);
+    setLevels([]);
+    if (!facultyId) return;
+    loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions);
   }, [facultyId]);
+
   useEffect(() => {
     setStudyLevelId("");
+    setLevels([]);
+    if (!optionId) return;
+    loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels);
   }, [optionId]);
+
   useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
 
   async function submit(event) {
@@ -102,8 +91,8 @@ export default function App() {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
         await request("/auth/register", { method: "POST", body: JSON.stringify({
           firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"),
-          password: form.get("password"), universityCode: universityId, facultyCode: facultyId,
-          optionCode: optionId, studyLevelCode: studyLevelId
+          password: form.get("password"), universityCode: selectedUniversity?.code, facultyCode: selectedFaculty?.code,
+          optionCode: selectedOption?.code, studyLevelCode: levels.find(x => String(x.id) === String(studyLevelId))?.code
         }) });
         setMode("login"); setFeedback("Inscription réussie. Vous pouvez maintenant vous connecter.");
       } else {
@@ -145,10 +134,10 @@ export default function App() {
         <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
         <form className="auth-form" onSubmit={submit}>
           {mode === "signup" && <><div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>
-          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
-          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
-          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.code} value={x.code}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
-          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.code} value={x.code}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
+          <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
+          <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
+          <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
+          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
           <Field label="Mot de passe"><div className="password-wrap"><input name="password" type={showPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /><button className="password-toggle" type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? "Masquer" : "Voir"}</button></div></Field>
           {mode === "signup" && <Field label="Confirmer le mot de passe"><div className="password-wrap"><input name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete="new-password" /><button className="password-toggle" type="button" onClick={() => setShowConfirmPassword(v => !v)} aria-label={showConfirmPassword ? "Masquer la confirmation" : "Afficher la confirmation"}>{showConfirmPassword ? "Masquer" : "Voir"}</button></div></Field>}
