@@ -391,6 +391,17 @@ const upload = multer({
   fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
 });
 
+app.get("/api/v1/admin/catalog", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [faculties, options, levels] = await Promise.all([
+      pool.query("SELECT id,code,name FROM faculties WHERE university_id=$1 AND is_active=TRUE ORDER BY name", [req.user.university_id]),
+      pool.query("SELECT o.id,o.code,o.name,o.faculty_id FROM options o JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=$1 AND f.is_active=TRUE AND o.is_active=TRUE ORDER BY o.name", [req.user.university_id]),
+      pool.query("SELECT l.id,l.code,l.label,l.option_id,l.sort_order FROM study_levels l JOIN options o ON o.id=l.option_id JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=$1 AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE ORDER BY l.sort_order", [req.user.university_id])
+    ]);
+    return res.json({ data: { faculties: faculties.rows, options: options.rows, levels: levels.rows } });
+  } catch { return res.status(503).json({ error: "admin_catalog_unavailable" }); }
+});
+
 app.get("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
