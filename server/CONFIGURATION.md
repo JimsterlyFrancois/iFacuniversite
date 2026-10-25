@@ -12,7 +12,7 @@
 2. Définir `DATABASE_URL` avec la chaîne de connexion PostgreSQL fournie par Supabase (section Connect) ou par la base PostgreSQL déjà choisie pour iFac.
 3. Définir `APP_BASE_URL` sur l'URL publique de l'application et `ADMIN_EMAIL` sur l'adresse exacte du compte administrateur.
 4. Configurer `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` et `MAIL_FROM`. Le SMTP est requis pour l'inscription, la confirmation de l'adresse et la récupération du mot de passe. L'inscription est refusée si le service e-mail est absent ou si l'envoi échoue. La connexion est refusée tant que l'adresse n'est pas confirmée.
-5. Créer dans Supabase Storage un bucket nommé `ifac-documents`, en le laissant **privé**, avec une limite de fichier de 15 Mo et le type autorisé PDF. Configurer `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` et `SUPABASE_STORAGE_BUCKET=ifac-documents` dans l'environnement du serveur.
+5. Créer dans Supabase Storage un bucket nommé `ifac-documents`, en le laissant **privé**, avec une limite de fichier de 15 Mo et le type autorisé PDF. Configurer `SUPABASE_URL`, `SUPABASE_SECRET_KEY` et `SUPABASE_STORAGE_BUCKET=ifac-documents` (ou l’ancienne variable `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY`) dans l'environnement du serveur.
 6. Ne jamais exposer `SUPABASE_SERVICE_ROLE_KEY` au navigateur, ne jamais lui donner un préfixe `VITE_` et ne jamais l'ajouter au dépôt GitHub.
 7. Appliquer le schéma à la base ciblée : `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/db/schema.sql`. Exécuter ensuite `server/db/seed_upnch.sql` si le catalogue UPNCH n'y est pas déjà présent.
 8. Installer les dépendances avec `npm install`, puis lancer `npm run dev`.
