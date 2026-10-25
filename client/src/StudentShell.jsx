@@ -22,6 +22,16 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [busy, setBusy] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [subjects, setSubjects] = useState([]);
+  const [adminCatalog, setAdminCatalog] = useState({ faculties: [], options: [], levels: [] });
+  const [adminFacultyId, setAdminFacultyId] = useState("");
+  const [adminOptionId, setAdminOptionId] = useState("");
+  const [adminLevelId, setAdminLevelId] = useState("");
+  const [subjectName, setSubjectName] = useState("");
+  const [announcementTitle, setAnnouncementTitle] = useState("");
+  const [announcementBody, setAnnouncementBody] = useState("");
+  const [groupType, setGroupType] = useState("faculty");
+  const [feedbackCategory, setFeedbackCategory] = useState("suggestion");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
   const page = destinations.find(x => x.id === active);
 
   async function load() {
@@ -37,7 +47,11 @@ export default function StudentShell({ token, user, onLogout, request }) {
         } else { setMessages([]); if (r.data?.length) setSelectedGroup(String(r.data[0].id)); }
       }
       if (active === "profile") {
-        if (user.role === "admin") { const r = await request("/admin/overview", { token }); setAdminStats(r.data); const s = await request("/admin/subjects", { token }); setSubjects(s.data || []); }
+        if (user.role === "admin") {
+          const [overview, subjectResult, catalog] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token })]);
+          setAdminStats(overview.data); setSubjects(subjectResult.data || []);
+          setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
+        }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
@@ -55,6 +69,32 @@ export default function StudentShell({ token, user, onLogout, request }) {
   async function deleteNote(id) {
     if (!window.confirm("Supprimer cette note privée ?")) return;
     try { await request(`/notes/${id}`, { token, method: "DELETE" }); await load(); }
+    catch (e) { setFeedback(e.message); }
+  }
+  async function createSubject(e) {
+    e.preventDefault(); setBusy(true); setFeedback("");
+    try { await request("/admin/subjects", { token, method: "POST", body: JSON.stringify({ optionId: adminOptionId, studyLevelId: adminLevelId, name: subjectName }) }); setSubjectName(""); setFeedback("Matière créée."); await load(); }
+    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+  }
+  async function createAnnouncement(e) {
+    e.preventDefault(); setBusy(true); setFeedback("");
+    try { await request("/admin/announcements", { token, method: "POST", body: JSON.stringify({ title: announcementTitle, body: announcementBody }) }); setAnnouncementTitle(""); setAnnouncementBody(""); setFeedback("Annonce publiée."); await load(); }
+    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+  }
+  async function createGroup(e) {
+    e.preventDefault(); setBusy(true); setFeedback("");
+    const body = { groupType, facultyId: user.facultyId, optionId: groupType === "faculty" ? null : user.optionId, studyLevelId: groupType === "class" ? user.studyLevelId : null };
+    try { await request("/admin/groups", { token, method: "POST", body: JSON.stringify(body) }); setFeedback("Groupe créé et membres correspondants ajoutés."); await load(); }
+    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+  }
+  async function submitFeedback(e) {
+    e.preventDefault(); setBusy(true); setFeedback("");
+    try { const result = await request("/feedback", { token, method: "POST", body: JSON.stringify({ category: feedbackCategory, message: feedbackMessage }) }); setFeedback(result.message || "Avis envoyé."); setFeedbackMessage(""); }
+    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+  }
+  async function deleteDocument(id) {
+    if (!window.confirm("Retirer ce document de la bibliothèque ?")) return;
+    try { await request("/admin/documents/" + id, { token, method: "DELETE" }); await load(); setFeedback("Document retiré."); }
     catch (e) { setFeedback(e.message); }
   }
   async function sendMessage(e) {
@@ -76,11 +116,34 @@ export default function StudentShell({ token, user, onLogout, request }) {
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{destinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span></button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
-        {active === "profile" && <section className="student-card profile-preferences"><div><h2>Préférences d’affichage</h2><p>Choisissez l’apparence de l’interface.</p></div><button className="theme-button" onClick={() => setDark(v => !v)}>{dark ? "Thème clair" : "Thème sombre"}</button><p><strong>Compte :</strong> {user.email}</p><p><strong>Rôle :</strong> {user.role}</p>{adminStats && <p>Administration — utilisateurs : {adminStats.users} · documents : {adminStats.documents} · annonces : {adminStats.announcements}</p>}{user.role === "admin" && <form className="student-card note-form" onSubmit={uploadDocument}><h2>Ajouter un document PDF</h2><label className="field">Matière<select name="subjectId" required defaultValue=""><option value="">Choisir la matière</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name} — {s.option_name} / {s.level_label}</option>)}</select></label><label className="field">Titre<input name="title" maxLength="220" required /></label><label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label><p>PDF uniquement, 15 Mo maximum. Les fichiers restent dans le stockage privé du serveur.</p><button className="theme-button" disabled={busy}>Téléverser le document</button></form>}</section>}
+        {active === "profile" && <section className="student-card profile-preferences"><div><h2>Préférences d’affichage</h2><p>Choisissez l’apparence de l’interface.</p></div><button className="theme-button" onClick={() => setDark(v => !v)}>{dark ? "Thème clair" : "Thème sombre"}</button><p><strong>Compte :</strong> {user.email}</p><p><strong>Rôle :</strong> {user.role}</p>{adminStats && <p>Administration — utilisateurs : {adminStats.users} · documents : {adminStats.documents} · annonces : {adminStats.announcements}</p>}{user.role === "admin" && <form className="student-card note-form" onSubmit={uploadDocument}><h2>Ajouter un document PDF</h2><label className="field">Matière<select name="subjectId" required defaultValue=""><option value="">Choisir la matière</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name} — {s.option_name} / {s.level_label}</option>)}</select></label><label className="field">Titre<input name="title" maxLength="220" required /></label><label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label><p>PDF uniquement, 15 Mo maximum. Les fichiers restent dans le stockage privé du serveur.</p><button className="theme-button" disabled={busy}>Téléverser le document</button></form>}
+          {user.role === "admin" && <form className="student-card note-form" onSubmit={createSubject}>
+            <h2>Créer une matière</h2>
+            <label className="field">Faculté<select required value={adminFacultyId} onChange={e => { setAdminFacultyId(e.target.value); setAdminOptionId(""); setAdminLevelId(""); }}><option value="">Choisir la faculté</option>{adminCatalog.faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+            <label className="field">Option<select required value={adminOptionId} onChange={e => { setAdminOptionId(e.target.value); setAdminLevelId(""); }} disabled={!adminFacultyId}><option value="">Choisir l’option</option>{adminCatalog.options.filter(o => String(o.faculty_id) === String(adminFacultyId)).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+            <label className="field">Niveau<select required value={adminLevelId} onChange={e => setAdminLevelId(e.target.value)} disabled={!adminOptionId}><option value="">Choisir le niveau</option>{adminCatalog.levels.filter(l => String(l.option_id) === String(adminOptionId)).map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+            <label className="field">Nom de la matière<input value={subjectName} onChange={e => setSubjectName(e.target.value)} maxLength="180" required /></label>
+            <button className="theme-button" disabled={busy}>Créer la matière</button>
+          </form>}
+          {user.role === "admin" && <form className="student-card note-form" onSubmit={createAnnouncement}>
+            <h2>Publier une annonce générale</h2><label className="field">Titre<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} maxLength="220" required /></label>
+            <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} maxLength="20000" rows="4" required /></label>
+            <button className="theme-button" disabled={busy}>Publier l’annonce</button>
+          </form>}
+          {user.role === "admin" && <form className="student-card note-form" onSubmit={createGroup}>
+            <h2>Créer un groupe de messagerie</h2><label className="field">Portée du groupe<select value={groupType} onChange={e => setGroupType(e.target.value)}><option value="faculty">Toute ma faculté</option><option value="option">Mon option</option><option value="class">Mon niveau</option></select></label>
+            <p>Les étudiants correspondant à votre profil seront ajoutés automatiquement.</p><button className="theme-button" disabled={busy}>Créer le groupe</button>
+          </form>}
+          <form className="student-card note-form" onSubmit={submitFeedback}>
+            <h2>Envoyer un avis à l’équipe iFac</h2><label className="field">Type d’avis<select value={feedbackCategory} onChange={e => setFeedbackCategory(e.target.value)}><option value="suggestion">Suggestion</option><option value="question">Question</option><option value="rating">Évaluation</option></select></label>
+            <label className="field">Votre message<textarea value={feedbackMessage} onChange={e => setFeedbackMessage(e.target.value)} maxLength="5000" rows="3" required /></label>
+            <button className="theme-button" disabled={busy}>Envoyer l’avis</button>
+          </form>
+        </section>}
         {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
         {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>Groupe {g.id} · {g.group_type}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small></article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
         {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
-        {active !== "profile" && active !== "notes" && active !== "messages" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>}</article>)}</section>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
