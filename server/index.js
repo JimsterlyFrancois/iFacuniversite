@@ -10,14 +10,37 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
 import multer from "multer";
-import { mkdir, stat, readFile, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT) || 3434;
 const here = path.dirname(fileURLToPath(import.meta.url));
-const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || (process.env.VERCEL ? "/tmp/ifac-private-uploads" : path.join(here, "private-uploads")));
-await mkdir(privateFilesDir, { recursive: true });
+const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || path.join(here, "private-uploads"));
+if (!process.env.SUPABASE_URL) await mkdir(privateFilesDir, { recursive: true });
+const storageUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const storageKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const storageBucket = process.env.SUPABASE_STORAGE_BUCKET || "ifac-documents";
+const persistentStorageReady = Boolean(storageUrl && storageKey && storageBucket);
+function storageObjectUrl(key) {
+  return `${storageUrl}/storage/v1/object/${encodeURIComponent(storageBucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+async function storePrivateObject(key, buffer, contentType) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const response = await fetch(storageObjectUrl(key), { method: "POST", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}`, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
+  if (!response.ok) throw new Error(`storage_upload_failed_${response.status}`);
+}
+async function readPrivateObject(key) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const response = await fetch(storageObjectUrl(key), { headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  if (!response.ok) throw new Error(response.status === 404 ? "storage_object_missing" : `storage_download_failed_${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+async function deletePrivateObject(key) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const response = await fetch(storageObjectUrl(key), { method: "DELETE", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  if (!response.ok && response.status !== 404) throw new Error(`storage_delete_failed_${response.status}`);
+}
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl
   ? new Pool({
@@ -167,7 +190,7 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
 });
 
 
-app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
+app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {\n  if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant de créer un compte." });
   const { firstName, lastName, email, password, universityCode, facultyCode, optionCode, studyLevelCode } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (![firstName, lastName].every(v => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 100) ||
@@ -199,10 +222,13 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
-    // Mode provisoire : le compte est activé sans confirmation e-mail.
-    await client.query("UPDATE users SET email_verified_at=NOW(), updated_at=NOW() WHERE id=$1", [created.rows[0].id]);
+    const verificationToken = makeToken();
+    await client.query("INSERT INTO email_tokens(user_id,token_hash,purpose,expires_at) VALUES($1,$2,'verify_email',NOW()+INTERVAL '24 hours')", [created.rows[0].id, hashToken(verificationToken)]);
+    const verificationUrl = new URL("/verify-email", process.env.APP_BASE_URL || "http://localhost:3435");
+    verificationUrl.searchParams.set("token", verificationToken);
+    await mailer.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to: normalizedEmail, subject: "Confirmez votre adresse e-mail — iFac universite", text: `Pour activer votre compte iFac universite, ouvrez ce lien dans les 24 heures : ${verificationUrl.toString()}\nSi vous n'avez pas demandé ce compte, ignorez ce message.` });
     await client.query("COMMIT");
-    return res.status(201).json({ message: "Compte créé avec succès. Vous pouvez maintenant vous connecter." });
+    return res.status(201).json({ message: "Compte créé. Consultez votre boîte e-mail pour confirmer votre adresse avant de vous connecter." });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Échec inscription iFac:", {
@@ -295,6 +321,7 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
     const result = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
     const user = result.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "invalid_credentials" });
+    if (!user.email_verified_at) return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail à partir du lien reçu avant de vous connecter." });
     const token = makeToken();
     await pool.query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+INTERVAL '7 days')", [user.id, hashToken(token)]);
     res.set("Cache-Control", "no-store");
@@ -359,10 +386,7 @@ app.get("/api/v1/announcements", requireAuth, async (req, res) => {
 
 const allowedDocumentTypes = new Set(["application/pdf"]);
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, callback) => callback(null, privateFilesDir),
-    filename: (_req, _file, callback) => callback(null, randomUUID())
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
 });
@@ -385,60 +409,39 @@ app.post("/api/v1/admin/documents", requireAuth, requireAdmin, upload.single("fi
   const subjectId = Number(req.body?.subjectId);
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   if (!req.file) return res.status(400).json({ error: "file_required", message: "Joignez un fichier PDF valide de 15 Mo maximum." });
-  if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) {
-    await unlink(req.file.path).catch(() => {});
-    return res.status(400).json({ error: "invalid_document_metadata" });
-  }
-  const fileHead = await readFile(req.file.path).then(buffer => buffer.subarray(0, 5).toString()).catch(() => "");
-  if (!allowedDocumentTypes.has(req.file.mimetype) || fileHead !== "%PDF-") {
-    await unlink(req.file.path).catch(() => {});
-    return res.status(400).json({ error: "unsupported_file_type" });
-  }
+  if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) return res.status(400).json({ error: "invalid_document_metadata" });
+  if (!persistentStorageReady) return res.status(503).json({ error: "persistent_storage_not_configured", message: "Le stockage privé des documents doit être configuré avant les téléversements." });
+  if (!allowedDocumentTypes.has(req.file.mimetype) || req.file.buffer.subarray(0, 5).toString() !== "%PDF-") return res.status(400).json({ error: "unsupported_file_type", message: "Le fichier doit être un vrai PDF." });
+  const fileKey = `${randomUUID()}.pdf`;
   try {
-    const subject = await pool.query(
-      `SELECT s.id FROM subjects s JOIN options o ON o.id=s.option_id
-       JOIN faculties f ON f.id=o.faculty_id
-       WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.university_id=$2`,
-      [subjectId, req.user.university_id]
-    );
-    if (!subject.rowCount) {
-      await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
-      return res.status(400).json({ error: "invalid_subject" });
-    }
-    const result = await pool.query(
-      `INSERT INTO documents(subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active)
-       VALUES($1,$2,$3,$4,$5,$6,TRUE) RETURNING id,title,mime_type,file_size_bytes,created_at`,
-      [subjectId,title,req.file.filename,req.file.mimetype,req.file.size,req.user.id]
-    );
-    return res.status(201).json({ document: result.rows[0] });
-  } catch {
-    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
-    return res.status(503).json({ error: "document_upload_failed" });
+    const subject = await pool.query(`SELECT s.id FROM subjects s JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.university_id=$2`, [subjectId, req.user.university_id]);
+    if (!subject.rowCount) return res.status(400).json({ error: "invalid_subject" });
+    await storePrivateObject(fileKey, req.file.buffer, "application/pdf");
+    try {
+      const result = await pool.query(`INSERT INTO documents(subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active) VALUES($1,$2,$3,$4,$5,$6,TRUE) RETURNING id,title,mime_type,file_size_bytes,created_at`, [subjectId,title,fileKey,"application/pdf",req.file.size,req.user.id]);
+      return res.status(201).json({ document: result.rows[0] });
+    } catch (error) { await deletePrivateObject(fileKey).catch(() => {}); throw error; }
+  } catch (error) {
+    console.error("Téléversement document échoué:", error.message);
+    return res.status(503).json({ error: "document_upload_failed", message: "Le document n'a pas pu être enregistré." });
   }
 });
 app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
   try {
-    const result = await pool.query(
-      `SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d
-       JOIN subjects s ON s.id=d.subject_id
-       WHERE d.id=$1 AND d.is_active=TRUE AND s.is_active=TRUE
-       AND s.option_id=$2 AND s.study_level_id=$3`,
-      [id,req.user.option_id,req.user.study_level_id]
-    );
+    const result = await pool.query(`SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d JOIN subjects s ON s.id=d.subject_id WHERE d.id=$1 AND d.is_active=TRUE AND s.is_active=TRUE AND s.option_id=$2 AND s.study_level_id=$3`, [id,req.user.option_id,req.user.study_level_id]);
     if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
-    const file = path.resolve(privateFilesDir, result.rows[0].file_key);
-    if (path.dirname(file) !== privateFilesDir) return res.status(400).json({ error: "invalid_file_key" });
-    await stat(file);
+    const file = await readPrivateObject(result.rows[0].file_key);
     res.set("Content-Type", result.rows[0].mime_type);
-    res.set("Content-Length", String(result.rows[0].file_size_bytes));
-    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}"`);
+    res.set("Content-Length", String(file.length));
+    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}.pdf"`);
     res.set("X-Content-Type-Options", "nosniff");
     res.set("Cache-Control", "private, no-store");
-    return res.sendFile(file);
+    return res.send(file);
   } catch (error) {
-    if (error?.code === "ENOENT") return res.status(404).json({ error: "document_file_missing" });
+    if (error.message === "storage_object_missing") return res.status(404).json({ error: "document_file_missing" });
+    if (error.message === "persistent_storage_not_configured") return res.status(503).json({ error: "persistent_storage_not_configured" });
     return res.status(503).json({ error: "document_download_failed" });
   }
 });
@@ -452,7 +455,7 @@ app.get("/api/v1/documents", requireAuth, async (req, res) => {
        ORDER BY s.name,d.title LIMIT 300`,
       [req.user.option_id,req.user.study_level_id]
     );
-    return res.json({ data: result.rows, message: "Seules les métadonnées sont exposées; le stockage privé des fichiers doit être raccordé." });
+    return res.json({ data: result.rows });
   } catch { return res.status(503).json({ error: "documents_unavailable" }); }
 });
 
@@ -503,6 +506,65 @@ app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, async (req, r
     );
     return res.status(201).json({ announcement: result.rows[0] });
   } catch { return res.status(400).json({ error: "announcement_create_failed", message: "Vérifiez les dates et les identifiants de ciblage." }); }
+});
+
+app.post("/api/v1/feedback", requireAuth, async (req, res) => {
+  const { category, message, rating = null } = req.body || {};
+  if (!["suggestion","question","rating"].includes(category) || typeof message !== "string" || !message.trim() || message.trim().length > 5000 ||
+      (rating !== null && (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5))) return res.status(400).json({ error: "invalid_feedback" });
+  try {
+    const result = await pool.query("INSERT INTO feedback(user_id,category,message,rating) VALUES($1,$2,$3,$4) RETURNING id,created_at", [req.user.id,category,message.trim(),rating === null ? null : Number(rating)]);
+    return res.status(201).json({ feedback: result.rows[0], message: "Votre avis a été envoyé." });
+  } catch { return res.status(503).json({ error: "feedback_unavailable" }); }
+});
+
+app.post("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) => {
+  const optionId = Number(req.body?.optionId), studyLevelId = Number(req.body?.studyLevelId);
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!Number.isSafeInteger(optionId) || optionId < 1 || !Number.isSafeInteger(studyLevelId) || studyLevelId < 1 || !name || name.length > 180) return res.status(400).json({ error: "invalid_subject" });
+  try {
+    const valid = await pool.query(`SELECT 1 FROM options o JOIN faculties f ON f.id=o.faculty_id JOIN study_levels l ON l.option_id=o.id WHERE o.id=$1 AND l.id=$2 AND o.is_active=TRUE AND f.university_id=$3 AND l.is_active=TRUE`, [optionId,studyLevelId,req.user.university_id]);
+    if (!valid.rowCount) return res.status(400).json({ error: "invalid_academic_profile" });
+    const result = await pool.query("INSERT INTO subjects(option_id,study_level_id,name,is_active) VALUES($1,$2,$3,TRUE) RETURNING id,name,option_id,study_level_id", [optionId,studyLevelId,name]);
+    return res.status(201).json({ subject: result.rows[0] });
+  } catch (error) {
+    if (error?.code === "23505") return res.status(409).json({ error: "subject_already_exists" });
+    return res.status(503).json({ error: "subject_create_failed" });
+  }
+});
+
+app.delete("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
+  try {
+    const found = await pool.query(`SELECT d.id,d.file_key FROM documents d JOIN subjects s ON s.id=d.subject_id JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE d.id=$1 AND f.university_id=$2 AND d.is_active=TRUE`, [id,req.user.university_id]);
+    if (!found.rowCount) return res.status(404).json({ error: "document_not_found" });
+    await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1", [id]);
+    await deletePrivateObject(found.rows[0].file_key).catch(error => console.error("Nettoyage fichier document:",error.message));
+    return res.status(204).end();
+  } catch { return res.status(503).json({ error: "document_delete_failed" }); }
+});
+
+app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => {
+  const { groupType, facultyId = null, optionId = null, studyLevelId = null } = req.body || {};
+  if (!["faculty","option","class"].includes(groupType)) return res.status(400).json({ error: "invalid_group_type" });
+  const ids = [facultyId,optionId,studyLevelId].map(v => v === null || v === "" ? null : Number(v));
+  if (ids.some(v => v !== null && (!Number.isSafeInteger(v) || v < 1)) ||
+      (groupType === "faculty" && (!ids[0] || ids[1] || ids[2])) ||
+      (groupType === "option" && (!ids[0] || !ids[1] || ids[2])) ||
+      (groupType === "class" && (!ids[0] || !ids[1] || !ids[2]))) return res.status(400).json({ error: "invalid_group_scope" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const scope = await client.query(`SELECT 1 FROM faculties f LEFT JOIN options o ON o.id=$2 AND o.faculty_id=f.id LEFT JOIN study_levels l ON l.id=$3 AND l.option_id=o.id WHERE f.id=$1 AND f.university_id=$4 AND f.is_active=TRUE AND ($2::bigint IS NULL OR o.id IS NOT NULL) AND ($3::bigint IS NULL OR l.id IS NOT NULL)`, [ids[0],ids[1],ids[2],req.user.university_id]);
+    if (!scope.rowCount) { await client.query("ROLLBACK"); return res.status(400).json({ error: "invalid_group_scope" }); }
+    const created = await client.query("INSERT INTO message_groups(university_id,faculty_id,option_id,study_level_id,group_type,is_active) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id,group_type,faculty_id,option_id,study_level_id", [req.user.university_id,ids[0],ids[1],ids[2],groupType]);
+    const g = created.rows[0];
+    await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
+    await client.query("COMMIT");
+    return res.status(201).json({ group:g, message:"Groupe créé et membres inscrits automatiquement." });
+  } catch { await client.query("ROLLBACK").catch(() => {}); return res.status(503).json({ error:"group_create_failed" }); }
+  finally { client.release(); }
 });
 
 app.get("/api/v1/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
