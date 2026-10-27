@@ -116,13 +116,18 @@ export default function App() {
   }
 
   const verifyToken = new URLSearchParams(window.location.search).get("token");
+  const authAccessToken = new URLSearchParams(window.location.hash.slice(1)).get("access_token");
   useEffect(() => {
-    if (window.location.pathname === "/verify-email" && verifyToken) {
-      request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token: verifyToken }) })
-        .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
-        .catch(e => setFeedback(e.message));
+    if (window.location.pathname !== "/verify-email") return;
+    const token = authAccessToken || verifyToken;
+    if (!token) {
+      setFeedback("Le lien de confirmation est incomplet. Ouvrez le lien reçu dans votre e-mail ou recommencez l’inscription.");
+      return;
     }
-  }, [verifyToken]);
+    request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) })
+      .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
+      .catch(e => setFeedback(e.message));
+  }, [verifyToken, authAccessToken]);
 
   if (token && user) return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
 
