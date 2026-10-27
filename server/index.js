@@ -71,6 +71,23 @@ if (mailer) {
     .then(() => console.log("Service e-mail SMTP prêt."))
     .catch(error => console.error("Vérification SMTP échouée :", error.message));
 }
+// Supabase Auth sends confirmation messages through the project's configured email service.
+const supabaseAuthUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const supabaseAuthKey = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+async function supabaseAuth(pathname, { method = "GET", token, body } = {}) {
+  if (!supabaseAuthUrl || !supabaseAuthKey) throw new Error("supabase_auth_not_configured");
+  const response = await fetch(`${supabaseAuthUrl}/auth/v1${pathname}`, {
+    method,
+    headers: {
+      apikey: supabaseAuthKey,
+      Authorization: `Bearer ${token || supabaseAuthKey}`,
+      ...(body ? { "Content-Type": "application/json" } : {})
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
 const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const makeToken = () => randomBytes(32).toString("base64url");
 const publicUser = (u) => ({
@@ -191,7 +208,6 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
 
 
 app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
-  if (!mailer) return res.status(503).json({ error: "email_service_not_configured", message: "Le service e-mail doit être configuré avant de créer un compte." });
   const { firstName, lastName, email, password, universityCode, facultyCode, optionCode, studyLevelCode } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (![firstName, lastName].every(v => typeof v === "string" && v.trim().length >= 1 && v.trim().length <= 100) ||
@@ -213,21 +229,43 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     );
     if (!profile.rowCount) {
       await client.query("ROLLBACK");
-      return res.status(400).json({ error: "invalid_academic_profile" });
+      return res.status(400).json({ error: "invalid_academic_profile", message: "Le parcours universitaire sélectionné n’est pas valide." });
     }
-    const passwordHash = await bcrypt.hash(password, 12);
+    const existing = await client.query("SELECT id FROM users WHERE email=$1", [normalizedEmail]);
+    if (existing.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "email_already_registered", message: "Cette adresse e-mail est déjà associée à un compte." });
+    }
+
+    const verificationUrl = new URL("/verify-email", process.env.APP_BASE_URL || "http://localhost:3435");
+    const signup = await supabaseAuth(`/signup?redirect_to=${encodeURIComponent(verificationUrl.toString())}`, {
+      method: "POST",
+      body: { email: normalizedEmail, password, data: { first_name: firstName.trim(), last_name: lastName.trim() } }
+    });
+    if (!signup.response.ok) {
+      await client.query("ROLLBACK");
+      const details = String(signup.data?.code || signup.data?.error_code || signup.data?.msg || signup.data?.message || signup.data?.error_description || "");
+      if (signup.response.status === 429) return res.status(429).json({ error: "email_rate_limited", message: "Supabase limite temporairement les e-mails de confirmation. Réessayez plus tard." });
+      if (/email_address_not_authorized/i.test(details)) {
+        return res.status(403).json({ error: "email_address_not_authorized", message: "L’e-mail intégré de Supabase est limité aux membres de l’équipe du projet. Pour recevoir les confirmations de tous les étudiants, un service d’e-mail devra être configuré." });
+      }
+      if (/already registered|already been registered|user already exists|email_exists/i.test(details)) {
+        return res.status(409).json({ error: "email_already_registered", message: "Cette adresse e-mail possède déjà un compte d’authentification." });
+      }
+      console.error("Échec Supabase Auth à l’inscription:", { status: signup.response.status, details });
+      return res.status(503).json({ error: "registration_unavailable", message: "Supabase n’a pas pu créer le compte ou envoyer le message de confirmation. Vérifiez les paramètres Auth." });
+    }
+
+    // Supabase Auth stores and verifies the real password. This legacy column receives
+    // an unusable random hash so no duplicate usable password is stored by iFac.
+    const passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"), 12);
     const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
     const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "student";
-    const created = await client.query(
+    await client.query(
       `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
-    const verificationToken = makeToken();
-    await client.query("INSERT INTO email_tokens(user_id,token_hash,purpose,expires_at) VALUES($1,$2,'verify_email',NOW()+INTERVAL '24 hours')", [created.rows[0].id, hashToken(verificationToken)]);
-    const verificationUrl = new URL("/verify-email", process.env.APP_BASE_URL || "http://localhost:3435");
-    verificationUrl.searchParams.set("token", verificationToken);
-    await mailer.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to: normalizedEmail, subject: "Confirmez votre adresse e-mail — iFac universite", text: `Pour activer votre compte iFac universite, ouvrez ce lien dans les 24 heures : ${verificationUrl.toString()}\nSi vous n'avez pas demandé ce compte, ignorez ce message.` });
     await client.query("COMMIT");
     return res.status(201).json({ message: "Compte créé. Consultez votre boîte e-mail pour confirmer votre adresse avant de vous connecter." });
   } catch (error) {
@@ -247,20 +285,34 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
 
 app.post("/api/v1/auth/verify-email", requireDatabase, async (req, res) => {
   const token = req.body?.token;
-  if (typeof token !== "string" || token.length < 20 || token.length > 200) return res.status(400).json({ error: "invalid_token" });
+  if (typeof token !== "string" || token.length < 20 || token.length > 4096) return res.status(400).json({ error: "invalid_token" });
   try {
-    const result = await pool.query(
+    const verified = await supabaseAuth("/user", { token });
+    const email = typeof verified.data?.email === "string" ? verified.data.email.trim().toLowerCase() : "";
+    if (verified.response.ok && email && (verified.data.email_confirmed_at || verified.data.confirmed_at)) {
+      const updated = await pool.query(
+        "UPDATE users SET email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE email=$1 RETURNING id",
+        [email]
+      );
+      if (!updated.rowCount) return res.status(404).json({ error: "profile_not_found", message: "L’adresse est confirmée, mais le profil étudiant est introuvable. Contactez l’administrateur." });
+      return res.json({ message: "Adresse e-mail confirmée. Vous pouvez vous connecter." });
+    }
+
+    // Accept one-time links generated by the previous version during transition.
+    const legacy = await pool.query(
       `UPDATE users SET email_verified_at=NOW(), updated_at=NOW()
        WHERE id=(SELECT user_id FROM email_tokens WHERE token_hash=$1 AND purpose='verify_email' AND used_at IS NULL AND expires_at>NOW())
        RETURNING id`,
       [hashToken(token)]
     );
-    if (!result.rowCount) return res.status(400).json({ error: "invalid_or_expired_token" });
+    if (!legacy.rowCount) return res.status(400).json({ error: "invalid_or_expired_token", message: "Le lien de confirmation est invalide ou expiré." });
     await pool.query("UPDATE email_tokens SET used_at=NOW() WHERE token_hash=$1", [hashToken(token)]);
     return res.json({ message: "Adresse e-mail confirmée. Vous pouvez vous connecter." });
-  } catch { return res.status(503).json({ error: "verification_unavailable" }); }
+  } catch (error) {
+    console.error("Échec confirmation e-mail:", error?.message || "unknown");
+    return res.status(503).json({ error: "verification_unavailable", message: "Impossible de vérifier le lien pour le moment." });
+  }
 });
-
 
 app.post("/api/v1/auth/password-reset/request", requireDatabase, async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
@@ -319,15 +371,45 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
   const password = req.body?.password;
   if (!email || typeof password !== "string" || password.length > 128) return res.status(400).json({ error: "invalid_credentials" });
   try {
-    const result = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
-    const user = result.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "invalid_credentials" });
-    if (!user.email_verified_at) return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail à partir du lien reçu avant de vous connecter." });
+    let user = null;
+    let authError = "";
+    try {
+      const auth = await supabaseAuth("/token?grant_type=password", { method: "POST", body: { email, password } });
+      if (auth.response.ok && auth.data?.access_token) {
+        const result = await pool.query(
+          "UPDATE users SET email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE email=$1 AND is_active=TRUE RETURNING *",
+          [email]
+        );
+        user = result.rows[0] || null;
+      } else {
+        authError = String(auth.data?.code || auth.data?.error_code || auth.data?.msg || auth.data?.message || "");
+      }
+    } catch (error) {
+      console.error("Supabase Auth login indisponible:", error?.message || "unknown");
+    }
+
+    // Preserve login for verified accounts created before this authentication transition.
+    if (!user) {
+      const legacy = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
+      const candidate = legacy.rows[0];
+      if (candidate && candidate.email_verified_at && await bcrypt.compare(password, candidate.password_hash)) user = candidate;
+    }
+
+    if (!user) {
+      if (/email_not_confirmed|email not confirmed/i.test(authError)) {
+        return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail à partir du lien reçu avant de vous connecter." });
+      }
+      return res.status(401).json({ error: "invalid_credentials", message: "Adresse e-mail ou mot de passe incorrect." });
+    }
+    if (!user.email_verified_at) return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail avant de vous connecter." });
     const token = makeToken();
     await pool.query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+INTERVAL '7 days')", [user.id, hashToken(token)]);
     res.set("Cache-Control", "no-store");
     return res.json({ token, expiresIn: 604800, user: publicUser(user) });
-  } catch { return res.status(503).json({ error: "login_unavailable" }); }
+  } catch (error) {
+    console.error("Échec connexion iFac:", error?.message || "unknown");
+    return res.status(503).json({ error: "login_unavailable", message: "Le service de connexion est temporairement indisponible." });
+  }
 });
 
 app.post("/api/v1/auth/logout", requireAuth, async (req, res) => {
