@@ -89,12 +89,12 @@ export default function App() {
     try {
       if (mode === "signup") {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
-        await request("/auth/register", { method: "POST", body: JSON.stringify({
+        const result = await request("/auth/register", { method: "POST", body: JSON.stringify({
           firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"),
           password: form.get("password"), universityCode: selectedUniversity?.code, facultyCode: selectedFaculty?.code,
           optionCode: selectedOption?.code, studyLevelCode: levels.find(x => String(x.id) === String(studyLevelId))?.code
         }) });
-        setMode("login"); setFeedback("Inscription réussie. Vous pouvez maintenant vous connecter.");
+        setMode("login"); setFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte.");
       } else {
         const result = await request("/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
         sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user);
@@ -116,13 +116,18 @@ export default function App() {
   }
 
   const verifyToken = new URLSearchParams(window.location.search).get("token");
+  const authAccessToken = new URLSearchParams(window.location.hash.slice(1)).get("access_token");
   useEffect(() => {
-    if (window.location.pathname === "/verify-email" && verifyToken) {
-      request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token: verifyToken }) })
-        .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
-        .catch(e => setFeedback(e.message));
+    if (window.location.pathname !== "/verify-email") return;
+    const token = authAccessToken || verifyToken;
+    if (!token) {
+      setFeedback("Le lien de confirmation est incomplet. Ouvrez le lien reçu dans votre e-mail ou recommencez l’inscription.");
+      return;
     }
-  }, [verifyToken]);
+    request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) })
+      .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
+      .catch(e => setFeedback(e.message));
+  }, [verifyToken, authAccessToken]);
 
   if (token && user) return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
 
@@ -137,7 +142,7 @@ export default function App() {
           <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
           <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
           <Field label="Option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir l’option"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field>
-          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
+          <Field label="Niveau"><select required value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Choisir le niveau"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
           <Field label="Mot de passe"><div className="password-wrap"><input name="password" type={showPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete={mode === "signup" ? "new-password" : "current-password"} /><button className="password-toggle" type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? "Masquer" : "Voir"}</button></div></Field>
           {mode === "signup" && <Field label="Confirmer le mot de passe"><div className="password-wrap"><input name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete="new-password" /><button className="password-toggle" type="button" onClick={() => setShowConfirmPassword(v => !v)} aria-label={showConfirmPassword ? "Masquer la confirmation" : "Afficher la confirmation"}>{showConfirmPassword ? "Masquer" : "Voir"}</button></div></Field>}

@@ -10,14 +10,37 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
 import multer from "multer";
-import { mkdir, stat, readFile, unlink } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
 const app = express();
 const port = Number(process.env.PORT) || 3434;
 const here = path.dirname(fileURLToPath(import.meta.url));
-const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || (process.env.VERCEL ? "/tmp/ifac-private-uploads" : path.join(here, "private-uploads")));
-await mkdir(privateFilesDir, { recursive: true });
+const privateFilesDir = path.resolve(process.env.FILE_STORAGE_DIR || path.join(here, "private-uploads"));
+if (!process.env.SUPABASE_URL) await mkdir(privateFilesDir, { recursive: true });
+const storageUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const storageKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const storageBucket = process.env.SUPABASE_STORAGE_BUCKET || "ifac-documents";
+const persistentStorageReady = Boolean(storageUrl && storageKey && storageBucket);
+function storageObjectUrl(key) {
+  return `${storageUrl}/storage/v1/object/${encodeURIComponent(storageBucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+async function storePrivateObject(key, buffer, contentType) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const response = await fetch(storageObjectUrl(key), { method: "POST", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}`, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
+  if (!response.ok) throw new Error(`storage_upload_failed_${response.status}`);
+}
+async function readPrivateObject(key) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const response = await fetch(storageObjectUrl(key), { headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  if (!response.ok) throw new Error(response.status === 404 ? "storage_object_missing" : `storage_download_failed_${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+async function deletePrivateObject(key) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const response = await fetch(storageObjectUrl(key), { method: "DELETE", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  if (!response.ok && response.status !== 404) throw new Error(`storage_delete_failed_${response.status}`);
+}
 const databaseUrl = process.env.DATABASE_URL;
 const pool = databaseUrl
   ? new Pool({
@@ -47,6 +70,23 @@ if (mailer) {
   mailer.verify()
     .then(() => console.log("Service e-mail SMTP prêt."))
     .catch(error => console.error("Vérification SMTP échouée :", error.message));
+}
+// Supabase Auth sends confirmation messages through the project's configured email service.
+const supabaseAuthUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const supabaseAuthKey = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+async function supabaseAuth(pathname, { method = "GET", token, body } = {}) {
+  if (!supabaseAuthUrl || !supabaseAuthKey) throw new Error("supabase_auth_not_configured");
+  const response = await fetch(`${supabaseAuthUrl}/auth/v1${pathname}`, {
+    method,
+    headers: {
+      apikey: supabaseAuthKey,
+      Authorization: `Bearer ${token || supabaseAuthKey}`,
+      ...(body ? { "Content-Type": "application/json" } : {})
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
 }
 const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const makeToken = () => randomBytes(32).toString("base64url");
@@ -189,20 +229,45 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     );
     if (!profile.rowCount) {
       await client.query("ROLLBACK");
-      return res.status(400).json({ error: "invalid_academic_profile" });
+      return res.status(400).json({ error: "invalid_academic_profile", message: "Le parcours universitaire sélectionné n’est pas valide." });
     }
-    const passwordHash = await bcrypt.hash(password, 12);
+    const existing = await client.query("SELECT id FROM users WHERE email=$1", [normalizedEmail]);
+    if (existing.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "email_already_registered", message: "Cette adresse e-mail est déjà associée à un compte." });
+    }
+
+    const verificationUrl = new URL("/verify-email", process.env.APP_BASE_URL || "http://localhost:3435");
+    const signup = await supabaseAuth(`/signup?redirect_to=${encodeURIComponent(verificationUrl.toString())}`, {
+      method: "POST",
+      body: { email: normalizedEmail, password, data: { first_name: firstName.trim(), last_name: lastName.trim() } }
+    });
+    if (!signup.response.ok) {
+      await client.query("ROLLBACK");
+      const details = String(signup.data?.code || signup.data?.error_code || signup.data?.msg || signup.data?.message || signup.data?.error_description || "");
+      if (signup.response.status === 429) return res.status(429).json({ error: "email_rate_limited", message: "Supabase limite temporairement les e-mails de confirmation. Réessayez plus tard." });
+      if (/email_address_not_authorized/i.test(details)) {
+        return res.status(403).json({ error: "email_address_not_authorized", message: "L’e-mail intégré de Supabase est limité aux membres de l’équipe du projet. Pour recevoir les confirmations de tous les étudiants, un service d’e-mail devra être configuré." });
+      }
+      if (/already registered|already been registered|user already exists|email_exists/i.test(details)) {
+        return res.status(409).json({ error: "email_already_registered", message: "Cette adresse e-mail possède déjà un compte d’authentification." });
+      }
+      console.error("Échec Supabase Auth à l’inscription:", { status: signup.response.status, details });
+      return res.status(503).json({ error: "registration_unavailable", message: "Supabase n’a pas pu créer le compte ou envoyer le message de confirmation. Vérifiez les paramètres Auth." });
+    }
+
+    // Supabase Auth stores and verifies the real password. This legacy column receives
+    // an unusable random hash so no duplicate usable password is stored by iFac.
+    const passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"), 12);
     const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
     const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "student";
-    const created = await client.query(
+    await client.query(
       `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
-    // Mode provisoire : le compte est activé sans confirmation e-mail.
-    await client.query("UPDATE users SET email_verified_at=NOW(), updated_at=NOW() WHERE id=$1", [created.rows[0].id]);
     await client.query("COMMIT");
-    return res.status(201).json({ message: "Compte créé avec succès. Vous pouvez maintenant vous connecter." });
+    return res.status(201).json({ message: "Compte créé. Consultez votre boîte e-mail pour confirmer votre adresse avant de vous connecter." });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     console.error("Échec inscription iFac:", {
@@ -220,20 +285,34 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
 
 app.post("/api/v1/auth/verify-email", requireDatabase, async (req, res) => {
   const token = req.body?.token;
-  if (typeof token !== "string" || token.length < 20 || token.length > 200) return res.status(400).json({ error: "invalid_token" });
+  if (typeof token !== "string" || token.length < 20 || token.length > 4096) return res.status(400).json({ error: "invalid_token" });
   try {
-    const result = await pool.query(
+    const verified = await supabaseAuth("/user", { token });
+    const email = typeof verified.data?.email === "string" ? verified.data.email.trim().toLowerCase() : "";
+    if (verified.response.ok && email && (verified.data.email_confirmed_at || verified.data.confirmed_at)) {
+      const updated = await pool.query(
+        "UPDATE users SET email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE email=$1 RETURNING id",
+        [email]
+      );
+      if (!updated.rowCount) return res.status(404).json({ error: "profile_not_found", message: "L’adresse est confirmée, mais le profil étudiant est introuvable. Contactez l’administrateur." });
+      return res.json({ message: "Adresse e-mail confirmée. Vous pouvez vous connecter." });
+    }
+
+    // Accept one-time links generated by the previous version during transition.
+    const legacy = await pool.query(
       `UPDATE users SET email_verified_at=NOW(), updated_at=NOW()
        WHERE id=(SELECT user_id FROM email_tokens WHERE token_hash=$1 AND purpose='verify_email' AND used_at IS NULL AND expires_at>NOW())
        RETURNING id`,
       [hashToken(token)]
     );
-    if (!result.rowCount) return res.status(400).json({ error: "invalid_or_expired_token" });
+    if (!legacy.rowCount) return res.status(400).json({ error: "invalid_or_expired_token", message: "Le lien de confirmation est invalide ou expiré." });
     await pool.query("UPDATE email_tokens SET used_at=NOW() WHERE token_hash=$1", [hashToken(token)]);
     return res.json({ message: "Adresse e-mail confirmée. Vous pouvez vous connecter." });
-  } catch { return res.status(503).json({ error: "verification_unavailable" }); }
+  } catch (error) {
+    console.error("Échec confirmation e-mail:", error?.message || "unknown");
+    return res.status(503).json({ error: "verification_unavailable", message: "Impossible de vérifier le lien pour le moment." });
+  }
 });
-
 
 app.post("/api/v1/auth/password-reset/request", requireDatabase, async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
@@ -292,14 +371,45 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
   const password = req.body?.password;
   if (!email || typeof password !== "string" || password.length > 128) return res.status(400).json({ error: "invalid_credentials" });
   try {
-    const result = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
-    const user = result.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "invalid_credentials" });
+    let user = null;
+    let authError = "";
+    try {
+      const auth = await supabaseAuth("/token?grant_type=password", { method: "POST", body: { email, password } });
+      if (auth.response.ok && auth.data?.access_token) {
+        const result = await pool.query(
+          "UPDATE users SET email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE email=$1 AND is_active=TRUE RETURNING *",
+          [email]
+        );
+        user = result.rows[0] || null;
+      } else {
+        authError = String(auth.data?.code || auth.data?.error_code || auth.data?.msg || auth.data?.message || "");
+      }
+    } catch (error) {
+      console.error("Supabase Auth login indisponible:", error?.message || "unknown");
+    }
+
+    // Preserve login for verified accounts created before this authentication transition.
+    if (!user) {
+      const legacy = await pool.query("SELECT * FROM users WHERE email=$1 AND is_active=TRUE", [email]);
+      const candidate = legacy.rows[0];
+      if (candidate && candidate.email_verified_at && await bcrypt.compare(password, candidate.password_hash)) user = candidate;
+    }
+
+    if (!user) {
+      if (/email_not_confirmed|email not confirmed/i.test(authError)) {
+        return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail à partir du lien reçu avant de vous connecter." });
+      }
+      return res.status(401).json({ error: "invalid_credentials", message: "Adresse e-mail ou mot de passe incorrect." });
+    }
+    if (!user.email_verified_at) return res.status(403).json({ error: "email_not_verified", message: "Confirmez votre adresse e-mail avant de vous connecter." });
     const token = makeToken();
     await pool.query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+INTERVAL '7 days')", [user.id, hashToken(token)]);
     res.set("Cache-Control", "no-store");
     return res.json({ token, expiresIn: 604800, user: publicUser(user) });
-  } catch { return res.status(503).json({ error: "login_unavailable" }); }
+  } catch (error) {
+    console.error("Échec connexion iFac:", error?.message || "unknown");
+    return res.status(503).json({ error: "login_unavailable", message: "Le service de connexion est temporairement indisponible." });
+  }
 });
 
 app.post("/api/v1/auth/logout", requireAuth, async (req, res) => {
@@ -359,12 +469,20 @@ app.get("/api/v1/announcements", requireAuth, async (req, res) => {
 
 const allowedDocumentTypes = new Set(["application/pdf"]);
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, callback) => callback(null, privateFilesDir),
-    filename: (_req, _file, callback) => callback(null, randomUUID())
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
+});
+
+app.get("/api/v1/admin/catalog", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [faculties, options, levels] = await Promise.all([
+      pool.query("SELECT id,code,name FROM faculties WHERE university_id=$1 AND is_active=TRUE ORDER BY name", [req.user.university_id]),
+      pool.query("SELECT o.id,o.code,o.name,o.faculty_id FROM options o JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=$1 AND f.is_active=TRUE AND o.is_active=TRUE ORDER BY o.name", [req.user.university_id]),
+      pool.query("SELECT l.id,l.code,l.label,l.option_id,l.sort_order FROM study_levels l JOIN options o ON o.id=l.option_id JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=$1 AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE ORDER BY l.sort_order", [req.user.university_id])
+    ]);
+    return res.json({ data: { faculties: faculties.rows, options: options.rows, levels: levels.rows } });
+  } catch { return res.status(503).json({ error: "admin_catalog_unavailable" }); }
 });
 
 app.get("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) => {
@@ -385,60 +503,39 @@ app.post("/api/v1/admin/documents", requireAuth, requireAdmin, upload.single("fi
   const subjectId = Number(req.body?.subjectId);
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   if (!req.file) return res.status(400).json({ error: "file_required", message: "Joignez un fichier PDF valide de 15 Mo maximum." });
-  if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) {
-    await unlink(req.file.path).catch(() => {});
-    return res.status(400).json({ error: "invalid_document_metadata" });
-  }
-  const fileHead = await readFile(req.file.path).then(buffer => buffer.subarray(0, 5).toString()).catch(() => "");
-  if (!allowedDocumentTypes.has(req.file.mimetype) || fileHead !== "%PDF-") {
-    await unlink(req.file.path).catch(() => {});
-    return res.status(400).json({ error: "unsupported_file_type" });
-  }
+  if (!Number.isSafeInteger(subjectId) || subjectId < 1 || !title || title.length > 220) return res.status(400).json({ error: "invalid_document_metadata" });
+  if (!persistentStorageReady) return res.status(503).json({ error: "persistent_storage_not_configured", message: "Le stockage privé des documents doit être configuré avant les téléversements." });
+  if (!allowedDocumentTypes.has(req.file.mimetype) || req.file.buffer.subarray(0, 5).toString() !== "%PDF-") return res.status(400).json({ error: "unsupported_file_type", message: "Le fichier doit être un vrai PDF." });
+  const fileKey = `${randomUUID()}.pdf`;
   try {
-    const subject = await pool.query(
-      `SELECT s.id FROM subjects s JOIN options o ON o.id=s.option_id
-       JOIN faculties f ON f.id=o.faculty_id
-       WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.university_id=$2`,
-      [subjectId, req.user.university_id]
-    );
-    if (!subject.rowCount) {
-      await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
-      return res.status(400).json({ error: "invalid_subject" });
-    }
-    const result = await pool.query(
-      `INSERT INTO documents(subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active)
-       VALUES($1,$2,$3,$4,$5,$6,TRUE) RETURNING id,title,mime_type,file_size_bytes,created_at`,
-      [subjectId,title,req.file.filename,req.file.mimetype,req.file.size,req.user.id]
-    );
-    return res.status(201).json({ document: result.rows[0] });
-  } catch {
-    await import("node:fs/promises").then(fs => fs.unlink(req.file.path)).catch(() => {});
-    return res.status(503).json({ error: "document_upload_failed" });
+    const subject = await pool.query(`SELECT s.id FROM subjects s JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.university_id=$2`, [subjectId, req.user.university_id]);
+    if (!subject.rowCount) return res.status(400).json({ error: "invalid_subject" });
+    await storePrivateObject(fileKey, req.file.buffer, "application/pdf");
+    try {
+      const result = await pool.query(`INSERT INTO documents(subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active) VALUES($1,$2,$3,$4,$5,$6,TRUE) RETURNING id,title,mime_type,file_size_bytes,created_at`, [subjectId,title,fileKey,"application/pdf",req.file.size,req.user.id]);
+      return res.status(201).json({ document: result.rows[0] });
+    } catch (error) { await deletePrivateObject(fileKey).catch(() => {}); throw error; }
+  } catch (error) {
+    console.error("Téléversement document échoué:", error.message);
+    return res.status(503).json({ error: "document_upload_failed", message: "Le document n'a pas pu être enregistré." });
   }
 });
 app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
   try {
-    const result = await pool.query(
-      `SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d
-       JOIN subjects s ON s.id=d.subject_id
-       WHERE d.id=$1 AND d.is_active=TRUE AND s.is_active=TRUE
-       AND s.option_id=$2 AND s.study_level_id=$3`,
-      [id,req.user.option_id,req.user.study_level_id]
-    );
+    const result = await pool.query(`SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d JOIN subjects s ON s.id=d.subject_id WHERE d.id=$1 AND d.is_active=TRUE AND s.is_active=TRUE AND s.option_id=$2 AND s.study_level_id=$3`, [id,req.user.option_id,req.user.study_level_id]);
     if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
-    const file = path.resolve(privateFilesDir, result.rows[0].file_key);
-    if (path.dirname(file) !== privateFilesDir) return res.status(400).json({ error: "invalid_file_key" });
-    await stat(file);
+    const file = await readPrivateObject(result.rows[0].file_key);
     res.set("Content-Type", result.rows[0].mime_type);
-    res.set("Content-Length", String(result.rows[0].file_size_bytes));
-    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}"`);
+    res.set("Content-Length", String(file.length));
+    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}.pdf"`);
     res.set("X-Content-Type-Options", "nosniff");
     res.set("Cache-Control", "private, no-store");
-    return res.sendFile(file);
+    return res.send(file);
   } catch (error) {
-    if (error?.code === "ENOENT") return res.status(404).json({ error: "document_file_missing" });
+    if (error.message === "storage_object_missing") return res.status(404).json({ error: "document_file_missing" });
+    if (error.message === "persistent_storage_not_configured") return res.status(503).json({ error: "persistent_storage_not_configured" });
     return res.status(503).json({ error: "document_download_failed" });
   }
 });
@@ -452,7 +549,7 @@ app.get("/api/v1/documents", requireAuth, async (req, res) => {
        ORDER BY s.name,d.title LIMIT 300`,
       [req.user.option_id,req.user.study_level_id]
     );
-    return res.json({ data: result.rows, message: "Seules les métadonnées sont exposées; le stockage privé des fichiers doit être raccordé." });
+    return res.json({ data: result.rows });
   } catch { return res.status(503).json({ error: "documents_unavailable" }); }
 });
 
@@ -503,6 +600,65 @@ app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, async (req, r
     );
     return res.status(201).json({ announcement: result.rows[0] });
   } catch { return res.status(400).json({ error: "announcement_create_failed", message: "Vérifiez les dates et les identifiants de ciblage." }); }
+});
+
+app.post("/api/v1/feedback", requireAuth, async (req, res) => {
+  const { category, message, rating = null } = req.body || {};
+  if (!["suggestion","question","rating"].includes(category) || typeof message !== "string" || !message.trim() || message.trim().length > 5000 ||
+      (rating !== null && (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5))) return res.status(400).json({ error: "invalid_feedback" });
+  try {
+    const result = await pool.query("INSERT INTO feedback(user_id,category,message,rating) VALUES($1,$2,$3,$4) RETURNING id,created_at", [req.user.id,category,message.trim(),rating === null ? null : Number(rating)]);
+    return res.status(201).json({ feedback: result.rows[0], message: "Votre avis a été envoyé." });
+  } catch { return res.status(503).json({ error: "feedback_unavailable" }); }
+});
+
+app.post("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) => {
+  const optionId = Number(req.body?.optionId), studyLevelId = Number(req.body?.studyLevelId);
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!Number.isSafeInteger(optionId) || optionId < 1 || !Number.isSafeInteger(studyLevelId) || studyLevelId < 1 || !name || name.length > 180) return res.status(400).json({ error: "invalid_subject" });
+  try {
+    const valid = await pool.query(`SELECT 1 FROM options o JOIN faculties f ON f.id=o.faculty_id JOIN study_levels l ON l.option_id=o.id WHERE o.id=$1 AND l.id=$2 AND o.is_active=TRUE AND f.university_id=$3 AND l.is_active=TRUE`, [optionId,studyLevelId,req.user.university_id]);
+    if (!valid.rowCount) return res.status(400).json({ error: "invalid_academic_profile" });
+    const result = await pool.query("INSERT INTO subjects(option_id,study_level_id,name,is_active) VALUES($1,$2,$3,TRUE) RETURNING id,name,option_id,study_level_id", [optionId,studyLevelId,name]);
+    return res.status(201).json({ subject: result.rows[0] });
+  } catch (error) {
+    if (error?.code === "23505") return res.status(409).json({ error: "subject_already_exists" });
+    return res.status(503).json({ error: "subject_create_failed" });
+  }
+});
+
+app.delete("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
+  try {
+    const found = await pool.query(`SELECT d.id,d.file_key FROM documents d JOIN subjects s ON s.id=d.subject_id JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE d.id=$1 AND f.university_id=$2 AND d.is_active=TRUE`, [id,req.user.university_id]);
+    if (!found.rowCount) return res.status(404).json({ error: "document_not_found" });
+    await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1", [id]);
+    await deletePrivateObject(found.rows[0].file_key).catch(error => console.error("Nettoyage fichier document:",error.message));
+    return res.status(204).end();
+  } catch { return res.status(503).json({ error: "document_delete_failed" }); }
+});
+
+app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => {
+  const { groupType, facultyId = null, optionId = null, studyLevelId = null } = req.body || {};
+  if (!["faculty","option","class"].includes(groupType)) return res.status(400).json({ error: "invalid_group_type" });
+  const ids = [facultyId,optionId,studyLevelId].map(v => v === null || v === "" ? null : Number(v));
+  if (ids.some(v => v !== null && (!Number.isSafeInteger(v) || v < 1)) ||
+      (groupType === "faculty" && (!ids[0] || ids[1] || ids[2])) ||
+      (groupType === "option" && (!ids[0] || !ids[1] || ids[2])) ||
+      (groupType === "class" && (!ids[0] || !ids[1] || !ids[2]))) return res.status(400).json({ error: "invalid_group_scope" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const scope = await client.query(`SELECT 1 FROM faculties f LEFT JOIN options o ON o.id=$2 AND o.faculty_id=f.id LEFT JOIN study_levels l ON l.id=$3 AND l.option_id=o.id WHERE f.id=$1 AND f.university_id=$4 AND f.is_active=TRUE AND ($2::bigint IS NULL OR o.id IS NOT NULL) AND ($3::bigint IS NULL OR l.id IS NOT NULL)`, [ids[0],ids[1],ids[2],req.user.university_id]);
+    if (!scope.rowCount) { await client.query("ROLLBACK"); return res.status(400).json({ error: "invalid_group_scope" }); }
+    const created = await client.query("INSERT INTO message_groups(university_id,faculty_id,option_id,study_level_id,group_type,is_active) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id,group_type,faculty_id,option_id,study_level_id", [req.user.university_id,ids[0],ids[1],ids[2],groupType]);
+    const g = created.rows[0];
+    await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
+    await client.query("COMMIT");
+    return res.status(201).json({ group:g, message:"Groupe créé et membres inscrits automatiquement." });
+  } catch { await client.query("ROLLBACK").catch(() => {}); return res.status(503).json({ error:"group_create_failed" }); }
+  finally { client.release(); }
 });
 
 app.get("/api/v1/admin/overview", requireAuth, requireAdmin, async (_req, res) => {
