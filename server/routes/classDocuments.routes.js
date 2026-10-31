@@ -19,7 +19,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
   router.get("/admin/classes", requireAuth, requireAdmin, async (req, res) => {
     try {
       const result = await pool.query(
-        "SELECT u.id AS university_id,u.name AS university_name,f.id AS faculty_id,f.name AS faculty_name,o.id AS option_id,o.name AS option_name,l.id AS study_level_id,l.label AS study_level_label,COUNT(st.id) FILTER (WHERE st.is_active=TRUE)::int AS student_count,COUNT(st.id) FILTER (WHERE st.is_active=TRUE AND st.role='delegate')::int AS delegate_count\n" +
+        "SELECT u.id AS university_id,u.name AS university_name,f.id AS faculty_id,f.name AS faculty_name,o.id AS option_id,o.name AS option_name,l.id AS study_level_id,l.label AS study_level_label,COUNT(st.id) FILTER (WHERE st.is_active=TRUE AND st.role IN ('student','delegate'))::int AS student_count,COUNT(st.id) FILTER (WHERE st.is_active=TRUE AND st.role='delegate')::int AS delegate_count\n" +
         "FROM universities u JOIN faculties f ON f.university_id=u.id AND f.is_active=TRUE JOIN options o ON o.faculty_id=f.id AND o.is_active=TRUE JOIN study_levels l ON l.option_id=o.id AND l.is_active=TRUE\n" +
         "LEFT JOIN users st ON st.university_id=u.id AND st.faculty_id=f.id AND st.option_id=o.id AND st.study_level_id=l.id\n" +
         "WHERE u.id=$1 AND u.is_active=TRUE GROUP BY u.id,u.name,f.id,f.name,o.id,o.name,l.id,l.label,l.sort_order ORDER BY f.name,o.name,l.sort_order",
@@ -37,7 +37,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     if (ids.some(id => !id) || ids[0] !== Number(req.user.university_id)) return res.status(400).json({ error: "invalid_class_scope" });
     try {
       const result = await pool.query(
-        "SELECT id,first_name,last_name,email,role,created_at FROM users WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND is_active=TRUE ORDER BY role DESC,last_name,first_name",
+        "SELECT id,first_name,last_name,email,role,created_at FROM users WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND is_active=TRUE AND role IN ('student','delegate') ORDER BY role DESC,last_name,first_name",
         ids
       );
       return res.json({ data: result.rows });
