@@ -10,6 +10,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
 import multer from "multer";
+import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -22,23 +23,23 @@ const storageUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const storageKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const storageBucket = process.env.SUPABASE_STORAGE_BUCKET || "ifac-documents";
 const persistentStorageReady = Boolean(storageUrl && storageKey && storageBucket);
-function storageObjectUrl(key) {
-  return `${storageUrl}/storage/v1/object/${encodeURIComponent(storageBucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+function storageObjectUrl(key, bucket = storageBucket) {
+  return `${storageUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
 }
-async function storePrivateObject(key, buffer, contentType) {
+async function storePrivateObject(key, buffer, contentType, bucket = storageBucket) {
   if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
-  const response = await fetch(storageObjectUrl(key), { method: "POST", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}`, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
+  const response = await fetch(storageObjectUrl(key, bucket), { method: "POST", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}`, "Content-Type": contentType, "x-upsert": "false" }, body: buffer });
   if (!response.ok) throw new Error(`storage_upload_failed_${response.status}`);
 }
-async function readPrivateObject(key) {
+async function readPrivateObject(key, bucket = storageBucket) {
   if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
-  const response = await fetch(storageObjectUrl(key), { headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  const response = await fetch(storageObjectUrl(key, bucket), { headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
   if (!response.ok) throw new Error(response.status === 404 ? "storage_object_missing" : `storage_download_failed_${response.status}`);
   return Buffer.from(await response.arrayBuffer());
 }
-async function deletePrivateObject(key) {
+async function deletePrivateObject(key, bucket = storageBucket) {
   if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
-  const response = await fetch(storageObjectUrl(key), { method: "DELETE", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  const response = await fetch(storageObjectUrl(key, bucket), { method: "DELETE", headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
   if (!response.ok && response.status !== 404) throw new Error(`storage_delete_failed_${response.status}`);
 }
 const databaseUrl = process.env.DATABASE_URL;
@@ -116,6 +117,10 @@ async function requireAuth(req, res, next) {
 const requireAdmin = (req, res, next) => req.user?.role === "admin"
   ? next()
   : res.status(403).json({ error: "administrator_required" });
+
+app.use("/api/v1", createClassDocumentsRouter({
+  pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
+}));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
@@ -524,7 +529,7 @@ app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
   try {
-    const result = await pool.query(`SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d JOIN subjects s ON s.id=d.subject_id WHERE d.id=$1 AND d.is_active=TRUE AND s.is_active=TRUE AND s.option_id=$2 AND s.study_level_id=$3`, [id,req.user.option_id,req.user.study_level_id]);
+    const result = await pool.query(`SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d JOIN subjects s ON s.id=d.subject_id WHERE d.id=$1 AND d.is_active=TRUE AND d.status='approved' AND s.is_active=TRUE AND s.option_id=$2 AND s.study_level_id=$3`, [id,req.user.option_id,req.user.study_level_id]);
     if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
     const file = await readPrivateObject(result.rows[0].file_key);
     res.set("Content-Type", result.rows[0].mime_type);
@@ -545,7 +550,7 @@ app.get("/api/v1/documents", requireAuth, async (req, res) => {
     const result = await pool.query(
       `SELECT d.id,d.title,d.mime_type,d.file_size_bytes,d.created_at,s.name AS subject
        FROM documents d JOIN subjects s ON s.id=d.subject_id
-       WHERE d.is_active=TRUE AND s.is_active=TRUE AND s.option_id=$1 AND s.study_level_id=$2
+       WHERE d.is_active=TRUE AND d.status='approved' AND s.is_active=TRUE AND s.option_id=$1 AND s.study_level_id=$2
        ORDER BY s.name,d.title LIMIT 300`,
       [req.user.option_id,req.user.study_level_id]
     );

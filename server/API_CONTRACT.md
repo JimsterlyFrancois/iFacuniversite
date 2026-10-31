@@ -1,7 +1,7 @@
 # Contrat API — iFac universite (phase 3)
 
 ## Statut
-Ce document définit les routes et leurs contrôles attendus. Les routes de santé et de lecture du catalogue sont maintenant présentes dans le code. Elles nécessitent PostgreSQL configuré et le schéma appliqué. Les routes d'authentification, de notes, de documents, de messagerie et d'administration restent à développer.
+Ce document décrit les routes de l'API et leurs contrôles. Les routes d'authentification, de notes, de documents, de messagerie, d'administration et de gestion documentaire par classe sont présentes côté serveur. Elles nécessitent PostgreSQL et les secrets Supabase configurés.
 
 ## Principes obligatoires
 - Préfixe API : `/api/v1`.
@@ -42,6 +42,27 @@ Les routes marquées « prévues » ne sont pas encore opérationnelles.
 | GET/POST | `/api/v1/groups/:id/messages` | Membre du groupe | Vérifier l'appartenance à chaque requête |
 | POST | `/api/v1/feedback` | Session | Valider catégorie, taille et note |
 | /admin | routes dédiées à définir | Admin serveur uniquement | Vérifier le rôle dans la session côté serveur |
+
+## Gestion documentaire par classe — routes opérationnelles
+
+Toutes les routes ci-dessous utilisent la session Bearer vérifiée par le serveur. Les documents déposés par les étudiants, délégués ou professeurs sont enregistrés avec le statut `pending`. Seuls les documents approuvés sont visibles et téléchargeables par les membres de la classe.
+
+| Méthode | Route | Accès | Règle principale |
+|---|---|---|---|
+| GET | `/api/v1/admin/classes` | Admin | Classes actives de l'université de l'administrateur, avec effectifs et nombre de délégués |
+| GET | `/api/v1/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/students` | Admin | Liste des étudiants d'une classe |
+| POST | `/api/v1/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/delegates` | Admin | Désigner un étudiant comme délégué ; le déclencheur PostgreSQL bloque le quatrième |
+| DELETE | `/api/v1/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/delegates/:userId` | Admin | Retirer le rôle de délégué |
+| POST | `/api/v1/class-documents` | Session | Déposer un PDF de 25 Mo maximum en attente de validation |
+| GET | `/api/v1/class-documents` | Session | Lister les documents approuvés de sa classe |
+| GET | `/api/v1/admin/class-documents?status=pending` | Admin | Consulter la file de validation ; statuts possibles : pending, approved, rejected, all |
+| POST | `/api/v1/admin/class-documents/:id/review` | Admin | Approuver ou refuser un document ; motif obligatoire en cas de refus |
+| GET | `/api/v1/class-documents/:id/download` | Session / Admin | Télécharger après vérification de la classe ou des droits administrateur |
+| GET | `/api/v1/notifications` | Session | Lire les notifications personnelles |
+| PATCH | `/api/v1/notifications/:id/read` | Propriétaire | Marquer une notification comme lue |
+| POST | `/api/v1/notifications/read-all` | Session | Marquer toutes ses notifications comme lues |
+
+À l'approbation d'un document, une notification est créée pour chaque compte actif de la classe. Les fichiers sont stockés dans le bucket privé Supabase `class-documents`, distinct du bucket historique `ifac-documents`.
 
 ## Validation du profil
 Lors de l'inscription, charger depuis la base les enregistrements actifs et confirmer que :
