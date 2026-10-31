@@ -96,12 +96,12 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (err) { setFeedback(err.message); } finally { setBusy(false); }
   }
   async function uploadClassDocument(e) {
-    e.preventDefault(); const form = new FormData(e.currentTarget);
+    e.preventDefault(); const formElement = e.currentTarget; const form = new FormData(formElement);
     setBusy(true); setFeedback("");
     try {
       const result = await request("/class-documents", { token, method: "POST", body: form });
       setClassDocTitle(""); setClassDocCourse(""); setClassDocProfessor(""); setClassDocDescription("");
-      e.currentTarget.reset(); setFeedback(result.message || "Document envoyé pour validation.");
+      formElement.reset(); setFeedback(result.message || "Document envoyé pour validation.");
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function assignDelegate(userId) {
