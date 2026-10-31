@@ -22,6 +22,8 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Check server syntax
-        run: node --check server/index.js
+        run: |
+          node --check server/index.js
+          node --check server/routes/classDocuments.routes.js
       - name: Build frontend
         run: npm run build
