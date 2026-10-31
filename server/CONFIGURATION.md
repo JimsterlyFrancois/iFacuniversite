@@ -10,8 +10,8 @@
 ## Configuration locale et hébergement
 1. Copier `.env.example` vers `.env` localement. Ne jamais publier ce fichier ni partager ses secrets.
 2. Définir `DATABASE_URL` avec la chaîne de connexion PostgreSQL fournie par Supabase (section Connect) ou par la base PostgreSQL déjà choisie pour iFac.
-3. Définir `APP_BASE_URL` sur l'URL publique de l'application et `ADMIN_EMAIL` sur l'adresse exacte du compte administrateur.
-4. Configurer `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` et `MAIL_FROM`. Le SMTP est requis pour l'inscription, la confirmation de l'adresse et la récupération du mot de passe. L'inscription est refusée si le service e-mail est absent ou si l'envoi échoue. La connexion est refusée tant que l'adresse n'est pas confirmée.
+3. Définir `APP_BASE_URL=https://i-facuniversite.vercel.app` et `ADMIN_EMAIL` sur l'adresse exacte du compte administrateur. Dans Supabase → Authentication → URL Configuration, utiliser cette adresse comme Site URL et autoriser `/verify-email` et `/reset-password` dans Redirect URLs.
+4. Configurer le SMTP d'authentification dans **Supabase → Authentication → SMTP Settings** pour les confirmations d'inscription. Pour Brevo : hôte `smtp-relay.brevo.com`, port `587`, identifiant SMTP Brevo, clé SMTP Brevo (pas la clé API) et adresse expéditeur vérifiée. Définir également `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` et `MAIL_FROM` dans Vercel : le serveur Express utilise Nodemailer pour ses e-mails personnalisés de récupération du mot de passe. Ne pas publier les clés.
 5. Créer dans Supabase Storage un bucket nommé `ifac-documents`, en le laissant **privé**, avec une limite de fichier de 15 Mo et le type autorisé PDF. Configurer `SUPABASE_URL`, `SUPABASE_SECRET_KEY` et `SUPABASE_STORAGE_BUCKET=ifac-documents` (ou l’ancienne variable `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY`) dans l'environnement du serveur.
 6. Ne jamais exposer `SUPABASE_SERVICE_ROLE_KEY` au navigateur, ne jamais lui donner un préfixe `VITE_` et ne jamais l'ajouter au dépôt GitHub.
 7. Appliquer le schéma à la base ciblée : `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/db/schema.sql`. Exécuter ensuite `server/db/seed_upnch.sql` si le catalogue UPNCH n'y est pas déjà présent.
@@ -28,7 +28,7 @@
 
 ## État des connexions et contrôles requis
 - **Stockage PDF :** le code téléverse et télécharge les fichiers via Supabase Storage privé. Les fichiers précédemment enregistrés sur un disque local ne sont pas migrés automatiquement ; ils doivent être transférés avant de réutiliser leurs enregistrements.
-- **E-mail :** l'inscription génère un jeton de confirmation valable 24 heures et la connexion exige une adresse vérifiée. Il faut configurer et tester le SMTP avant d'ouvrir les inscriptions.
+- **E-mail :** les confirmations d'inscription sont envoyées par Supabase Auth via son SMTP personnalisé. Les e-mails de récupération du mot de passe sont envoyés par Nodemailer depuis Express. Les deux configurations SMTP doivent être actives et testées avant d'ouvrir les inscriptions.
 - **Administration :** l'interface et les routes API prennent en charge la création de matières, la publication d'annonces générales, la création de groupes par faculté/option/niveau et le retrait des documents. Le rôle administrateur est protégé côté serveur.
 - **Avis :** le formulaire étudiant est raccordé à la route API de réception des avis.
 - **Déploiement :** les variables doivent être ajoutées dans l'environnement qui exécute réellement l'API, et pas seulement dans le projet Vercel de l'interface. Vérifier que l'API Express est déployée correctement et que `GET /api/health` renvoie `status: ok`.
