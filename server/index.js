@@ -648,7 +648,7 @@ app.get("/api/v1/admin/announcements", requireAuth, requireAdmin, async (req,res
   try {
     await ensureAnnouncementImageColumns();
     const result=await pool.query("SELECT id,title,body,created_at,(image_key IS NOT NULL) AS has_image FROM announcements WHERE university_id=$1 ORDER BY created_at DESC LIMIT 200",[req.user.university_id]);
-    return res.json({data:result.rows});
+    return res.json({data:result.rows,canUploadFlyers:isAnnouncementOwner(req)});
   } catch { return res.status(503).json({error:"admin_announcements_unavailable"}); }
 });
 app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, announcementImageUpload.single("image"), async (req, res) => {
