@@ -279,7 +279,7 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
          AND (g.faculty_id IS NULL OR g.faculty_id=$3)
          AND (g.option_id IS NULL OR g.option_id=$4)
          AND (g.study_level_id IS NULL OR g.study_level_id=$5)
-         AND $6 IN ('student','delegate')
+         AND email_verified_at IS NOT NULL AND $6 IN ('student','delegate')
        ON CONFLICT DO NOTHING`,
       [createdUser.rows[0].id,createdUser.rows[0].university_id,createdUser.rows[0].faculty_id,createdUser.rows[0].option_id,createdUser.rows[0].study_level_id,createdUser.rows[0].role]
     );
@@ -608,9 +608,9 @@ app.get("/api/v1/messages/groups", requireAuth, async (req, res) => {
          WHERE g.is_active=TRUE AND g.university_id=$2
            AND (g.faculty_id IS NULL OR g.faculty_id=$3)
            AND (g.option_id IS NULL OR g.option_id=$4)
-           AND (g.study_level_id IS NULL OR g.study_level_id=$5)
+           AND (g.study_level_id IS NULL OR g.study_level_id=$5) AND $6 IN ('student','delegate') AND EXISTS (SELECT 1 FROM users u WHERE u.id=$1 AND u.email_verified_at IS NOT NULL)
          ON CONFLICT DO NOTHING`,
-        [req.user.id,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
+        [req.user.id,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,req.user.role]
       );
     }
     const result = await pool.query(
@@ -813,7 +813,7 @@ app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => 
     if (duplicate.rowCount) { await client.query("ROLLBACK"); return res.status(409).json({error:"group_already_exists",message:"Un groupe existe déjà pour ce parcours."}); }
     const created = await client.query("INSERT INTO message_groups(university_id,faculty_id,option_id,study_level_id,group_type,is_active) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id,group_type,faculty_id,option_id,study_level_id", [req.user.university_id,ids[0],ids[1],ids[2],groupType]);
     const g = created.rows[0];
-    await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND role IN ('student','delegate') AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
+    await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND role IN ('student','delegate') AND email_verified_at IS NOT NULL AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
     await client.query("INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[g.id,req.user.id]);
     await client.query("COMMIT");
     return res.status(201).json({ group:g, message:"Groupe créé et membres inscrits automatiquement." });
