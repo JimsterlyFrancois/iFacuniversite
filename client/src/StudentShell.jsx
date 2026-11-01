@@ -32,6 +32,10 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [classStudents, setClassStudents] = useState([]);
   const [classDocuments, setClassDocuments] = useState([]);
   const [pendingClassDocuments, setPendingClassDocuments] = useState([]);
+  const [adminDocuments, setAdminDocuments] = useState([]);
+  const [adminAnnouncements, setAdminAnnouncements] = useState([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [unreadDelegateCount, setUnreadDelegateCount] = useState(0);
   const [delegateMessages, setDelegateMessages] = useState([]);
   const [delegateMessageSubject, setDelegateMessageSubject] = useState("");
   const [delegateMessageBody, setDelegateMessageBody] = useState("");
@@ -55,14 +59,21 @@ export default function StudentShell({ token, user, onLogout, request }) {
     setBusy(true); setFeedback("");
     try {
       if (active === "home") { const r = await request("/documents", { token }); setItems(r.data || []); }
-      if (active === "class") { const r = await request("/announcements", { token }); setItems(r.data || []); }
+      if (active === "class") {
+        const r = await request("/announcements", { token });
+        const decorated = await Promise.all((r.data || []).map(async item => {
+          if (!item.has_image) return item;
+          try { const response = await fetch(`/api/v1/announcements/${item.id}/image`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return item; return { ...item, imageUrl: URL.createObjectURL(await response.blob()) }; } catch { return item; }
+        }));
+        setItems(decorated);
+      }
       if (active === "notes") { const r = await request("/notes", { token }); setItems(r.data || []); }
       if (active === "classDocs") { const r = await request("/class-documents", { token }); setClassDocuments(r.data || []); }
       if (active === "notifications") { const r = await request("/notifications", { token }); setNotifications(r.data || []); }
       if (active === "adminMessages" && user.role === "admin") { const r = await request("/admin/delegate-messages", { token }); setDelegateMessages(r.data || []); }
       if (active === "classAdmin" && user.role === "admin") {
         const [classesResult, pendingResult] = await Promise.all([
-          request("/admin/classes", { token }), request("/admin/class-documents?status=pending", { token })
+          request("/admin/classes", { token }), request("/admin/class-documents?status=all", { token })
         ]);
         setClassList(classesResult.data || []);
         setPendingClassDocuments(pendingResult.data || []);
@@ -82,14 +93,24 @@ export default function StudentShell({ token, user, onLogout, request }) {
       }
       if (active === "profile") {
         if (user.role === "admin") {
-          const [overview, subjectResult, catalog] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token })]);
+          const [overview, subjectResult, catalog, docs, announcements] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token })]);
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
+          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []);
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, [active, selectedGroup, selectedClassKey]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try { const r = await request("/notifications", { token }); if (alive) setUnreadNotificationCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); } catch {}
+      if (user.role === "admin") { try { const r = await request("/admin/delegate-messages", { token }); if (alive) setUnreadDelegateCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); } catch {} }
+    })();
+    return () => { alive = false; };
+  }, [token, user.role]);
+  useEffect(() => () => { items.forEach(item => { if (item.imageUrl) URL.revokeObjectURL(item.imageUrl); }); }, [items]);
   async function saveNote(e) {
     e.preventDefault(); setBusy(true); setFeedback("");
     try { await request("/notes", { token, method: "POST", body: JSON.stringify({ title: noteTitle, body: noteBody }) }); setNoteTitle(""); setNoteBody(""); await load(); setFeedback("Note enregistrée."); }
@@ -199,9 +220,11 @@ export default function StudentShell({ token, user, onLogout, request }) {
 
   const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Partagez les supports de cours et consultez les documents validés."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
+  const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
+  const badgeText = count => count > 10 ? "10+" : String(count);
   return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
-    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span></button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
+    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
         {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
@@ -293,6 +316,6 @@ export default function StudentShell({ token, user, onLogout, request }) {
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
-    <nav className="student-mobile-nav" aria-label="Navigation mobile">{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}><span className={"mobile-nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.short}</span></button>)}</nav>
+    <nav className="student-mobile-nav" aria-label="Navigation mobile">{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}><span className={"mobile-nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.short}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}</nav>
   </main>;
 }
