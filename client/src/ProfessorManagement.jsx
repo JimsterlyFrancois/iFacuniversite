@@ -66,7 +66,7 @@ export default function ProfessorManagement({ token, request }) {
     <section className="student-card">
       <h2>Professeurs déclarés</h2>
       {professors.length===0&&!busy?<p>Aucun professeur déclaré pour le moment.</p>:professors.map(p=><article className="student-data-item" key={p.id}>
-        <div><strong>{p.first_name} {p.last_name}</strong><p>{p.email}</p><small>{p.activated_at?"Compte activé":"En attente d’activation"} · {p.is_active?"Accès actif":"Accès suspendu"}</small></div>
+        <div><strong>{p.first_name} {p.last_name}</strong><p>{p.email}</p><small>{p.activated_at?"Activation commencée":"En attente d’activation"} · {p.is_active?"Accès actif":"Accès suspendu"}</small></div>
         <ul>{(p.assignments||[]).map(a=><li key={a.id}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}</li>)}</ul>
         <button type="button" className="theme-button" onClick={()=>{setTargetId(String(p.id));setFeedback("Ajoutez une autre affectation pour "+p.first_name+" "+p.last_name+".");}}>Ajouter une affectation</button>
         <button type="button" className="theme-button" disabled={busy} onClick={()=>toggleStatus(p)}>{p.is_active?"Suspendre l’accès":"Réactiver l’accès"}</button>
