@@ -289,9 +289,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
     e.preventDefault();
     const formElement = e.currentTarget;
     const form = new FormData(formElement);
-    const image = formElement.elements.namedItem("image")?.files?.[0] || null;
-    if (image) {
-      const fileSignature = `${image.name}:${image.size}:${image.lastModified}`;
+    const hasImage = Boolean(flyerUpload.fileSignature);
+    if (hasImage) {
       if (flyerUpload.status !== "ready" || flyerUpload.fileSignature !== fileSignature || !flyerUpload.imageKey) {
         setFeedback("Veuillez attendre la fin du transfert de l’image avant de publier l’annonce.");
         return;
@@ -300,7 +299,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     setBusy(true); setFeedback("");
     try {
       const payload = { title: String(form.get("title") || "").trim(), body: String(form.get("body") || "").trim() };
-      if (image) {
+      if (hasImage) {
         payload.imageKey = flyerUpload.imageKey;
         payload.imageMimeType = flyerUpload.mimeType;
       }
@@ -457,7 +456,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
                 <div className="profile-tool-heading"><span className="profile-tool-icon">INFO</span><div><h3>Communication</h3><p>Publier une annonce générale.</p></div></div>
                 <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} name="title" maxLength="220" required placeholder="Titre clair et concis" /></label>
                 <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} name="body" maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
-                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" disabled={flyerUpload.status === "uploading" || busy} onChange={e => { const file = e.target.files?.[0]; if (file) uploadAnnouncementFlyer(file); else { flyerUploadAttempt.current += 1; setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null }); } }} /></label>}{canUploadAnnouncementFlyer && flyerUpload.status === "uploading" && <p className="profile-helper" role="status">Transfert de l’image : {flyerUpload.progress} %. Le bouton de publication restera bloqué jusqu’à la fin.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "ready" && <p className="profile-helper" role="status">Image prête. Vous pouvez publier l’annonce.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "error" && <p className="profile-helper" role="alert">Le transfert a échoué. Sélectionnez à nouveau l’image pour réessayer.</p>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
+                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" disabled={flyerUpload.status === "uploading" || busy} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) uploadAnnouncementFlyer(file); else { flyerUploadAttempt.current += 1; setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null }); } }} /></label>}{canUploadAnnouncementFlyer && flyerUpload.status === "uploading" && <p className="profile-helper" role="status">Transfert de l’image : {flyerUpload.progress} %. Le bouton de publication restera bloqué jusqu’à la fin.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "ready" && <p className="profile-helper" role="status">Image prête. Vous pouvez publier l’annonce.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "error" && <p className="profile-helper" role="alert">Le transfert a échoué. Sélectionnez à nouveau l’image pour réessayer.</p>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
                 <button className="theme-button" disabled={busy || flyerUpload.status === "uploading" || (Boolean(flyerUpload.fileSignature) && flyerUpload.status !== "ready")}> {flyerUpload.status === "uploading" ? `Transfert ${flyerUpload.progress} %…` : "Publier l’annonce"}</button>
               </form>
 
