@@ -46,7 +46,7 @@ export default function ProfessorManagement({ token, request }) {
     try{const r=await request(`/admin/professors/${p.id}/status`,{token,method:"PATCH",body:JSON.stringify({active:!p.is_active})});setFeedback(r.message);await load();}
     catch(e){setFeedback(e.message);}finally{setBusy(false);}
   }
-  const assignmentFields=<>
+  const renderAssignmentFields=()=><>
     <label className="field"><span>Université</span><select required value={universityId} onChange={e=>{setUniversityId(e.target.value);setFacultyId("");setOptionId("");setLevelId("");}}><option value="">Choisir</option>{catalog.universities.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <label className="field"><span>Faculté</span><select required disabled={!universityId} value={facultyId} onChange={e=>{setFacultyId(e.target.value);setOptionId("");setLevelId("");}}><option value="">Choisir</option>{faculties.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <label className="field"><span>Option</span><select required disabled={!facultyId} value={optionId} onChange={e=>{setOptionId(e.target.value);setLevelId("");}}><option value="">Choisir</option>{options.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
@@ -59,7 +59,7 @@ export default function ProfessorManagement({ token, request }) {
       <form className="auth-form" onSubmit={createProfessor}>
         <div className="field-row"><label className="field"><span>Prénom</span><input required maxLength="100" value={firstName} onChange={e=>setFirstName(e.target.value)}/></label><label className="field"><span>Nom</span><input required maxLength="100" value={lastName} onChange={e=>setLastName(e.target.value)}/></label></div>
         <label className="field"><span>Adresse e-mail du professeur</span><input type="email" required maxLength="254" value={email} onChange={e=>setEmail(e.target.value)}/></label>
-        <h3>Première affectation</h3><div className="field-row">{assignmentFields}</div>
+        <h3>Première affectation</h3><div className="field-row">{renderAssignmentFields()}</div>
         <button className="submit-button" disabled={busy||!universityId||!facultyId||!optionId||!levelId}>Déclarer le professeur</button>
       </form>
     </section>
