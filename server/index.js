@@ -489,11 +489,6 @@ function isValidAnnouncementImage(buffer, mimeType) {
   return buffer.subarray(0,4).toString() === "RIFF" && buffer.subarray(8,12).toString() === "WEBP";
 }
 function isAnnouncementOwner(req) { const ownerEmail=(process.env.IFAC_OWNER_EMAIL || "").trim().toLowerCase(); return Boolean(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail); }
-const announcementImageUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, callback) => callback(null, allowedAnnouncementImages.has(file.mimetype))
-});
 let announcementImageColumnsReady;
 async function ensureAnnouncementImageColumns() {
   if (!announcementImageColumnsReady) announcementImageColumnsReady = pool.query("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_key TEXT, ADD COLUMN IF NOT EXISTS image_mime_type VARCHAR(80)").catch(error => { announcementImageColumnsReady = null; throw error; });
@@ -705,19 +700,18 @@ app.post("/api/v1/admin/announcements/upload-token", requireAuth, requireAdmin, 
   }
 });
 
-app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, announcementImageUpload.single("image"), async (req, res) => {
+app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, async (req, res) => {
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
   if (!title || title.length > 220 || !body || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
   const uploadedImageKey = typeof req.body?.imageKey === "string" ? req.body.imageKey : null;
-  const imageMimeType = req.file?.mimetype || req.body?.imageMimeType || null;
-  if ((req.file || uploadedImageKey) && !isAnnouncementOwner(req)) return res.status(403).json({ error: "flyer_owner_only", message: "Seul le compte principal iFac peut ajouter un flyer." });
+  const imageMimeType = req.body?.imageMimeType || null;
+  if (uploadedImageKey && !isAnnouncementOwner(req)) return res.status(403).json({ error: "flyer_owner_only", message: "Seul le compte principal iFac peut ajouter un flyer." });
   if (uploadedImageKey && (!uploadedImageKey.startsWith("announcements/") || uploadedImageKey.includes(".."))) return res.status(400).json({ error: "invalid_announcement_image", message: "Le fichier image transmis n’est pas valide." });
-  if ((req.file || uploadedImageKey) && !allowedAnnouncementImages.has(imageMimeType)) return res.status(400).json({ error: "invalid_announcement_image", message: "Format refusé. Utilisez PNG, JPG ou WebP." });
-  const imageKey = req.file ? `announcements/${randomUUID()}` : uploadedImageKey;
+  if (uploadedImageKey && !allowedAnnouncementImages.has(imageMimeType)) return res.status(400).json({ error: "invalid_announcement_image", message: "Format refusé. Utilisez PNG, JPG ou WebP." });
+  const imageKey = uploadedImageKey;
   try {
     await ensureAnnouncementImageColumns();
-    if (req.file) await storePrivateObject(imageKey, req.file.buffer, req.file.mimetype, announcementStorageBucket);
     if (uploadedImageKey) {
       const uploadedImage = await readPrivateObject(uploadedImageKey, announcementStorageBucket);
       if (!isValidAnnouncementImage(uploadedImage, imageMimeType)) {
@@ -737,19 +731,14 @@ app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, announcementI
     return res.status(503).json({ error: "announcement_create_failed", message: "La publication a échoué pendant l’enregistrement. Vérifiez votre connexion puis réessayez." });
   }
 });
-app.patch("/api/v1/admin/announcements/:id", requireAuth, requireAdmin, announcementImageUpload.single("image"), async (req, res) => {
+app.patch("/api/v1/admin/announcements/:id", requireAuth, requireAdmin, async (req, res) => {
   const id = Number(req.params.id), title = typeof req.body?.title === "string" ? req.body.title.trim() : "", body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
   if (!Number.isSafeInteger(id) || id < 1 || !title || title.length > 220 || !body || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
-  if (req.file && !isAnnouncementOwner(req)) return res.status(403).json({ error: "flyer_owner_only", message: "Seul le compte principal iFac peut modifier le flyer." });
-  if (req.file && (!allowedAnnouncementImages.has(req.file.mimetype) || !({ "image/jpeg": req.file.buffer[0] === 0xff && req.file.buffer[1] === 0xd8, "image/png": req.file.buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), "image/webp": req.file.buffer.subarray(0,4).toString() === "RIFF" && req.file.buffer.subarray(8,12).toString() === "WEBP" })[req.file.mimetype])) return res.status(400).json({ error: "invalid_announcement_image" });
   try {
     await ensureAnnouncementImageColumns();
-    const old = await pool.query("SELECT image_key FROM announcements WHERE id=$1 AND university_id=$2", [id,req.user.university_id]);
+    const old = await pool.query("SELECT id FROM announcements WHERE id=$1 AND university_id=$2", [id,req.user.university_id]);
     if (!old.rowCount) return res.status(404).json({ error: "announcement_not_found" });
-    const imageKey = req.file ? `announcements/${randomUUID()}` : old.rows[0].image_key;
-    if (req.file) await storePrivateObject(imageKey,req.file.buffer,req.file.mimetype,announcementStorageBucket);
-    await pool.query("UPDATE announcements SET title=$1,body=$2,image_key=$3,image_mime_type=COALESCE($4,image_mime_type) WHERE id=$5 AND university_id=$6", [title,body,imageKey,req.file?.mimetype || null,id,req.user.university_id]);
-    if (req.file && old.rows[0].image_key) await deletePrivateObject(old.rows[0].image_key,announcementStorageBucket).catch(() => {});
+    await pool.query("UPDATE announcements SET title=$1,body=$2 WHERE id=$3 AND university_id=$4", [title,body,id,req.user.university_id]);
     return res.json({ message: "Annonce modifiée." });
   } catch (error) { console.error("Modification annonce:",error?.message); return res.status(503).json({ error: "announcement_update_failed" }); }
 });
