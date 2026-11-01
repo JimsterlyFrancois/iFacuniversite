@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import ProfessorManagement from "./ProfessorManagement.jsx";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
   { id: "classDocs", label: "Documents de classe", short: "Cours" },
   { id: "notifications", label: "Notifications", short: "Alertes" },
   { id: "classAdmin", label: "Gestion des classes", short: "Gestion", adminOnly: true },
+  { id: "professors", label: "Gestion des professeurs", short: "Profs", adminOnly: true },
   { id: "adminMessages", label: "Messages des délégués", short: "Délégués", adminOnly: true },
   { id: "groupAdmin", label: "Groupes de messagerie", short: "Groupes", adminOnly: true },
   { id: "messages", label: "Messagerie", short: "Messages" },
@@ -27,6 +29,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
+  const [professorAssignments, setProfessorAssignments] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [adminCatalog, setAdminCatalog] = useState({ faculties: [], options: [], levels: [] });
   const [classList, setClassList] = useState([]);
@@ -106,6 +109,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
           setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers)); setAdminGroups(groupResult.data || []);
+        } else if (user.role === "professor") {
+          const r = await request("/professor/assignments", { token }); setProfessorAssignments(r.data || []);
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
@@ -334,7 +339,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (e) { setFeedback(e.message); }
   }
 
-  const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Partagez les supports de cours et consultez les documents validés."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
+  const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Partagez les supports de cours et consultez les documents validés."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], professors: ["Gestion des professeurs", "Déclarez les adresses e-mail et gérez les affectations universitaires."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
   const badgeText = count => count >= 10 ? "10+" : String(count);
@@ -342,18 +347,19 @@ export default function StudentShell({ token, user, onLogout, request }) {
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
-        {active === "profile" && <div className="profile-page">
+        {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
             <div className="profile-avatar" aria-hidden="true">{(user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
             <div className="profile-identity">
               <p className="profile-kicker">MON ESPACE PERSONNEL</p>
               <h2>{user.firstName} {user.lastName}</h2>
               <p>{user.email}</p>
-              <span className="profile-role">{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : "Étudiant"}</span>
+              <span className="profile-role">{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : user.role === "professor" ? "Professeur" : "Étudiant"}</span>
             </div>
             <button className="subtle-button profile-logout" onClick={onLogout}>Déconnexion</button>
           </section>
 
+          {user.role === "professor" && <section className="student-card"><h2>Mes affectations pédagogiques</h2>{professorAssignments.length ? <ul>{professorAssignments.map((a,i)=><li key={i}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}</li>)}</ul> : <p>Aucune affectation active n’est disponible.</p>}</section>}
           <div className="profile-summary-grid">
             <section className="student-card profile-info-card">
               <h2>Informations du compte</h2>
