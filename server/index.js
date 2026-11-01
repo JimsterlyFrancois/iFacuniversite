@@ -656,7 +656,6 @@ app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, announcementI
   const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
   if (!title || title.length > 220 || !body || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
   if (req.file && !isAnnouncementOwner(req)) return res.status(403).json({ error: "flyer_owner_only", message: "Seul le compte principal iFac peut ajouter un flyer. Configurez IFAC_OWNER_EMAIL avec l’adresse du compte principal." });
-  if (req.file && !isAnnouncementOwner(req)) return res.status(403).json({ error: "flyer_owner_only", message: "Seul le compte principal iFac peut modifier le flyer." });
   if (req.file && (!allowedAnnouncementImages.has(req.file.mimetype) || !({ "image/jpeg": req.file.buffer[0] === 0xff && req.file.buffer[1] === 0xd8, "image/png": req.file.buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), "image/webp": req.file.buffer.subarray(0,4).toString() === "RIFF" && req.file.buffer.subarray(8,12).toString() === "WEBP" })[req.file.mimetype])) return res.status(400).json({ error: "invalid_announcement_image" });
   const imageKey = req.file ? `announcements/${randomUUID()}` : null;
   try {
