@@ -94,7 +94,7 @@ Le premier schéma PostgreSQL se trouve dans `server/db/schema.sql`. Il couvre l
 - L'administrateur peut modifier ou supprimer les documents officiels de sa propre université.
 - L'administrateur peut modifier ou supprimer les documents partagés dans les classes de son université.
 - L'administrateur peut modifier ou supprimer les messages de groupe de son université et les messages privés envoyés par les délégués.
-- Les annonces peuvent être créées, modifiées et supprimées par l'administrateur. Un flyer JPG, PNG ou WebP (8 Mo maximum) peut être joint à une annonce. Le fichier reste dans le stockage privé et son téléchargement vérifie la session et le ciblage de l'annonce.
+- Les annonces peuvent être créées, modifiées et supprimées par l’administrateur. Un flyer JPG, PNG ou WebP (8 Mo maximum) peut être joint par le compte principal iFac. Le navigateur le téléverse directement dans le bucket privé `ifac-announcements` via une URL TUS signée afin d’éviter la limite de taille des fonctions Vercel; le bucket des documents PDF reste séparé. Le serveur vérifie le format réel et l’accès avant d’enregistrer l’annonce. Le téléchargement du flyer vérifie la session et le ciblage de l’annonce.
 - Les compteurs de navigation affichent les notifications non lues et les messages de délégués non lus; à partir de 10, l'étiquette devient « 10+ ».
 
 

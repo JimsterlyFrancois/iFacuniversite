@@ -193,15 +193,71 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   async function createAnnouncement(e) {
-    e.preventDefault(); const formElement = e.currentTarget; const form = new FormData(formElement); setBusy(true); setFeedback("");
-    try { await request("/admin/announcements", { token, method: "POST", body: form }); setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load(); }
-    catch (error) { setFeedback(error.message); } finally { setBusy(false); }
+    e.preventDefault();
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
+    const image = formElement.elements.namedItem("image")?.files?.[0] || null;
+    setBusy(true); setFeedback("");
+    try {
+      const payload = { title: String(form.get("title") || "").trim(), body: String(form.get("body") || "").trim() };
+      if (image) {
+        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+        if (!allowedTypes.includes(image.type)) throw new Error("Format refusé. Choisissez une image PNG, JPG ou WebP.");
+        if (image.size < 1 || image.size > 8 * 1024 * 1024) throw new Error("L’image doit peser 8 Mo maximum.");
+        setFeedback("Préparation de l’image…");
+        const signed = await request("/admin/announcements/upload-token", {
+          token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
+        });
+        const encodeMetadata = value => btoa(value);
+        const metadata = [
+          ["bucketName", signed.bucket],
+          ["objectName", signed.imageKey],
+          ["contentType", image.type],
+          ["cacheControl", "3600"]
+        ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
+        const created = await fetch(signed.uploadEndpoint, {
+          method: "POST",
+          headers: {
+            "Tus-Resumable": "1.0.0",
+            apikey: signed.publishableKey,
+            "Upload-Length": String(image.size),
+            "Upload-Metadata": metadata,
+            "x-signature": signed.token
+          }
+        });
+        if (!created.ok) throw new Error("Le service de stockage a refusé l’image. Réessayez avec une image PNG, JPG ou WebP.");
+        const location = created.headers.get("Location");
+        if (!location) throw new Error("Le service de stockage n’a pas confirmé le transfert de l’image.");
+        const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
+        const chunkSize = 6 * 1024 * 1024;
+        for (let offset = 0; offset < image.size;) {
+          const end = Math.min(offset + chunkSize, image.size);
+          const chunk = image.slice(offset, end);
+          const uploaded = await fetch(uploadUrl, {
+            method: "PATCH",
+            headers: {
+              "Tus-Resumable": "1.0.0",
+              apikey: signed.publishableKey,
+              "Upload-Offset": String(offset),
+              "Content-Type": "application/offset+octet-stream"
+            },
+            body: chunk
+          });
+          if (!uploaded.ok) throw new Error("Le transfert de l’image a été interrompu. Vérifiez votre connexion et réessayez.");
+          offset = end;
+          setFeedback(`Envoi de l’image : ${Math.round(offset / image.size * 100)} %`);
+        }
+        payload.imageKey = signed.imageKey;
+        payload.imageMimeType = image.type;
+      }
+      await request("/admin/announcements", { token, method: "POST", body: JSON.stringify(payload) });
+      setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load();
+    } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function editAnnouncement(item) {
     const title=window.prompt("Modifier le titre :",item.title); if(title===null) return;
     const body=window.prompt("Modifier le texte :",item.body); if(body===null) return;
-    const form=new FormData(); form.set("title",title); form.set("body",body);
-    try { await request(`/admin/announcements/${item.id}`,{token,method:"PATCH",body:form}); setFeedback("Annonce modifiée."); await load(); }
+    try { await request(`/admin/announcements/${item.id}`,{token,method:"PATCH",body:JSON.stringify({title,body})}); setFeedback("Annonce modifiée."); await load(); }
     catch(error){setFeedback(error.message);}
   }
   async function deleteAnnouncement(id) {
