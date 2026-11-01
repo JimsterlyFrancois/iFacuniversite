@@ -162,7 +162,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     }
   });
 
-  router.post("/admin/class-documents/:id/review", requireAuth, requireAdmin, async (req, res) => {  router.patch("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
+  router.patch("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
     const id=positiveId(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", course=typeof req.body?.course==="string"?req.body.course.trim():"", professor=typeof req.body?.professor==="string"?req.body.professor.trim():"", description=typeof req.body?.description==="string"?req.body.description.trim():"";
     if(!id||!title||title.length>220||!course||course.length>180||professor.length>180||description.length>3000) return res.status(400).json({error:"invalid_class_document_update"});
     try {
@@ -179,7 +179,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       return res.status(204).end();
     } catch { return res.status(503).json({error:"class_document_delete_failed"}); }
   });
-
+  router.post("/admin/class-documents/:id/review", requireAuth, requireAdmin, async (req, res) => {
     const documentId = positiveId(req.params.id);
     const status = req.body?.status;
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
