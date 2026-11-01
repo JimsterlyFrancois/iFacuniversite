@@ -84,7 +84,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
           INSERT INTO users(university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,'professor') RETURNING id
         `,[a.university_id,a.faculty_id,a.option_id,a.study_level_id,invite.rows[0].first_name,invite.rows[0].last_name,email,hash]);
-        await client.query("UPDATE professor_invites SET user_id=$1 WHERE id=$2",[created.rows[0].id,invite.rows[0].id]);
+        await client.query("UPDATE professor_invites SET user_id=$1,activated_at=NOW() WHERE id=$2",[created.rows[0].id,invite.rows[0].id]);
         await client.query("COMMIT");
       } catch(error) {
         await client.query("ROLLBACK").catch(()=>{});
@@ -165,8 +165,13 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
   router.patch("/admin/professors/:id/status", requireAuth, requireAdmin, async(req,res)=>{
     const id=Number(req.params.id),active=req.body?.active;
     if(!Number.isSafeInteger(id)||id<1||typeof active!=="boolean")return res.status(400).json({error:"invalid_status"});
-    try{await ensureSchema();const r=await pool.query("UPDATE professor_invites SET is_active=$1 WHERE id=$2 RETURNING id",[active,id]);return r.rowCount?res.json({message:active?"Professeur réactivé.":"Accès professeur suspendu."}):res.status(404).json({error:"professor_not_found"});}
-    catch{return res.status(503).json({error:"professor_status_failed"});}
+    try{
+      await ensureSchema();
+      const r=await pool.query("UPDATE professor_invites SET is_active=$1 WHERE id=$2 RETURNING user_id",[active,id]);
+      if(!r.rowCount)return res.status(404).json({error:"professor_not_found"});
+      if(r.rows[0].user_id)await pool.query("UPDATE users SET is_active=$1,disabled_at=$2,updated_at=NOW() WHERE id=$3",[active,active?null:new Date(),r.rows[0].user_id]);
+      return res.json({message:active?"Professeur réactivé.":"Accès professeur suspendu."});
+    }catch{return res.status(503).json({error:"professor_status_failed"});}
   });
   router.get("/professor/assignments", requireAuth, async(req,res)=>{
     if(req.user.role!=="professor")return res.status(403).json({error:"professor_required"});
