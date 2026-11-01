@@ -272,17 +272,6 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,university_id,faculty_id,option_id,study_level_id,role`,
       [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
-    await client.query(
-      `INSERT INTO group_members(group_id,user_id)
-       SELECT g.id,$1 FROM message_groups g
-       WHERE g.is_active=TRUE AND g.university_id=$2
-         AND (g.faculty_id IS NULL OR g.faculty_id=$3)
-         AND (g.option_id IS NULL OR g.option_id=$4)
-         AND (g.study_level_id IS NULL OR g.study_level_id=$5)
-         AND email_verified_at IS NOT NULL AND $6 IN ('student','delegate')
-       ON CONFLICT DO NOTHING`,
-      [createdUser.rows[0].id,createdUser.rows[0].university_id,createdUser.rows[0].faculty_id,createdUser.rows[0].option_id,createdUser.rows[0].study_level_id,createdUser.rows[0].role]
-    );
     await client.query("COMMIT");
     return res.status(201).json({ message: "Compte créé. Consultez votre boîte e-mail pour confirmer votre adresse avant de vous connecter." });
   } catch (error) {
