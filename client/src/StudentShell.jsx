@@ -233,12 +233,12 @@ export default function StudentShell({ token, user, onLogout, request }) {
   }
   async function editGroupMessage(item) {
     const body=window.prompt("Modifier le message :",item.body); if(body===null||!body.trim()) return;
-    try { await request(`/admin/messages/${item.id}`,{token,method:"PATCH",body:JSON.stringify({body})}); setMessages(rows=>rows.map(x=>x.id===item.id?{...x,body}:x)); }
+    try { await request(`/admin/messages/${item.id}`,{token,method:"PATCH",body:JSON.stringify({body})}); setMessages(rows=>rows.map(x=>x.id===item.id?{...x,body}:x)); setAdminGroupMessages(rows=>rows.map(x=>x.id===item.id?{...x,body}:x)); }
     catch(error){setFeedback(error.message);}
   }
   async function deleteGroupMessage(id) {
     if(!window.confirm("Supprimer ce message ?")) return;
-    try { await request(`/admin/messages/${id}`,{token,method:"DELETE"}); setMessages(rows=>rows.filter(x=>x.id!==id)); }
+    try { await request(`/admin/messages/${id}`,{token,method:"DELETE"}); setMessages(rows=>rows.filter(x=>x.id!==id)); setAdminGroupMessages(rows=>rows.filter(x=>x.id!==id)); }
     catch(error){setFeedback(error.message);}
   }
   async function createGroup(e) {
