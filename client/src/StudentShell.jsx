@@ -61,6 +61,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
       if (active === "home") { const r = await request("/documents", { token }); setItems(r.data || []); }
       if (active === "class") {
         const r = await request("/announcements", { token });
+        if (user.role === "admin") { const adminResult = await request("/admin/announcements", { token }); setAdminAnnouncements(adminResult.data || []); }
         const decorated = await Promise.all((r.data || []).map(async item => {
           if (!item.has_image) return item;
           try { const response = await fetch(`/api/v1/announcements/${item.id}/image`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return item; return { ...item, imageUrl: URL.createObjectURL(await response.blob()) }; } catch { return item; }
@@ -69,8 +70,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
       }
       if (active === "notes") { const r = await request("/notes", { token }); setItems(r.data || []); }
       if (active === "classDocs") { const r = await request("/class-documents", { token }); setClassDocuments(r.data || []); }
-      if (active === "notifications") { const r = await request("/notifications", { token }); setNotifications(r.data || []); }
-      if (active === "adminMessages" && user.role === "admin") { const r = await request("/admin/delegate-messages", { token }); setDelegateMessages(r.data || []); }
+      if (active === "notifications") { const r = await request("/notifications", { token }); setNotifications(r.data || []); setUnreadNotificationCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); }
+      if (active === "adminMessages" && user.role === "admin") { const r = await request("/admin/delegate-messages", { token }); setDelegateMessages(r.data || []); setUnreadDelegateCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); }
       if (active === "classAdmin" && user.role === "admin") {
         const [classesResult, pendingResult] = await Promise.all([
           request("/admin/classes", { token }), request("/admin/class-documents?status=all", { token })
@@ -184,8 +185,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   async function createAnnouncement(e) {
-    e.preventDefault(); const form = new FormData(e.currentTarget); setBusy(true); setFeedback("");
-    try { await request("/admin/announcements", { token, method: "POST", body: form }); setAnnouncementTitle(""); setAnnouncementBody(""); e.currentTarget.reset(); setFeedback("Annonce publiée."); await load(); }
+    e.preventDefault(); const formElement = e.currentTarget; const form = new FormData(formElement); setBusy(true); setFeedback("");
+    try { await request("/admin/announcements", { token, method: "POST", body: form }); setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load(); }
     catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function editAnnouncement(item) {
@@ -272,7 +273,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Partagez les supports de cours et consultez les documents validés."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
-  const badgeText = count => count > 10 ? "10+" : String(count);
+  const badgeText = count => count >= 10 ? "10+" : String(count);
   return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
