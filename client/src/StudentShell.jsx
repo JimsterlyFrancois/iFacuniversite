@@ -187,30 +187,85 @@ export default function StudentShell({ token, user, onLogout, request }) {
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span></button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
-        {active === "profile" && <section className="student-card profile-preferences"><div><h2>Préférences d’affichage</h2><p>Choisissez l’apparence de l’interface.</p></div><button className="theme-button" onClick={() => setDark(v => !v)}>{dark ? "Thème clair" : "Thème sombre"}</button><p><strong>Compte :</strong> {user.email}</p><p><strong>Rôle :</strong> {user.role}</p>{adminStats && <p>Administration — utilisateurs : {adminStats.users} · documents : {adminStats.documents} · annonces : {adminStats.announcements}</p>}{user.role === "admin" && <form className="student-card note-form" onSubmit={uploadDocument}><h2>Ajouter un document PDF</h2><label className="field">Matière<select name="subjectId" required defaultValue=""><option value="">Choisir la matière</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name} — {s.option_name} / {s.level_label}</option>)}</select></label><label className="field">Titre<input name="title" maxLength="220" required /></label><label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label><p>PDF uniquement, 15 Mo maximum. Les fichiers restent dans le stockage privé du serveur.</p><button className="theme-button" disabled={busy}>Téléverser le document</button></form>}
-          {user.role === "admin" && <form className="student-card note-form" onSubmit={createSubject}>
-            <h2>Créer une matière</h2>
-            <label className="field">Faculté<select required value={adminFacultyId} onChange={e => { setAdminFacultyId(e.target.value); setAdminOptionId(""); setAdminLevelId(""); }}><option value="">Choisir la faculté</option>{adminCatalog.faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
-            <label className="field">Option<select required value={adminOptionId} onChange={e => { setAdminOptionId(e.target.value); setAdminLevelId(""); }} disabled={!adminFacultyId}><option value="">Choisir l’option</option>{adminCatalog.options.filter(o => String(o.faculty_id) === String(adminFacultyId)).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
-            <label className="field">Niveau<select required value={adminLevelId} onChange={e => setAdminLevelId(e.target.value)} disabled={!adminOptionId}><option value="">Choisir le niveau</option>{adminCatalog.levels.filter(l => String(l.option_id) === String(adminOptionId)).map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
-            <label className="field">Nom de la matière<input value={subjectName} onChange={e => setSubjectName(e.target.value)} maxLength="180" required /></label>
-            <button className="theme-button" disabled={busy}>Créer la matière</button>
-          </form>}
-          {user.role === "admin" && <form className="student-card note-form" onSubmit={createAnnouncement}>
-            <h2>Publier une annonce générale</h2><label className="field">Titre<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} maxLength="220" required /></label>
-            <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} maxLength="20000" rows="4" required /></label>
-            <button className="theme-button" disabled={busy}>Publier l’annonce</button>
-          </form>}
-          {user.role === "admin" && <form className="student-card note-form" onSubmit={createGroup}>
-            <h2>Créer un groupe de messagerie</h2><label className="field">Portée du groupe<select value={groupType} onChange={e => setGroupType(e.target.value)}><option value="faculty">Toute ma faculté</option><option value="option">Mon option</option><option value="class">Mon niveau</option></select></label>
-            <p>Les étudiants correspondant à votre profil seront ajoutés automatiquement.</p><button className="theme-button" disabled={busy}>Créer le groupe</button>
-          </form>}
-          <form className="student-card note-form" onSubmit={submitFeedback}>
-            <h2>Envoyer un avis à l’équipe iFac</h2><label className="field">Type d’avis<select value={feedbackCategory} onChange={e => setFeedbackCategory(e.target.value)}><option value="suggestion">Suggestion</option><option value="question">Question</option><option value="rating">Évaluation</option></select></label>
-            <label className="field">Votre message<textarea value={feedbackMessage} onChange={e => setFeedbackMessage(e.target.value)} maxLength="5000" rows="3" required /></label>
-            <button className="theme-button" disabled={busy}>Envoyer l’avis</button>
+        {active === "profile" && <div className="profile-page">
+          <section className="profile-overview student-card">
+            <div className="profile-avatar" aria-hidden="true">{(user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
+            <div className="profile-identity">
+              <p className="profile-kicker">MON ESPACE PERSONNEL</p>
+              <h2>{user.firstName} {user.lastName}</h2>
+              <p>{user.email}</p>
+              <span className="profile-role">{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : "Étudiant"}</span>
+            </div>
+            <button className="subtle-button profile-logout" onClick={onLogout}>Déconnexion</button>
+          </section>
+
+          <div className="profile-summary-grid">
+            <section className="student-card profile-info-card">
+              <h2>Informations du compte</h2>
+              <div className="profile-info-row"><span>Adresse e-mail</span><strong>{user.email}</strong></div>
+              <div className="profile-info-row"><span>Rôle</span><strong>{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : "Étudiant"}</strong></div>
+              <div className="profile-info-row"><span>Université</span><strong>{user.universityName || "UPNCH"}</strong></div>
+              <div className="profile-info-row"><span>Faculté / option</span><strong>{[user.facultyName, user.optionName].filter(Boolean).join(" · ") || "Non renseignée"}</strong></div>
+              <div className="profile-info-row"><span>Niveau</span><strong>{user.studyLevelLabel || "Non renseigné"}</strong></div>
+            </section>
+            <section className="student-card profile-settings-card">
+              <h2>Préférences d’affichage</h2>
+              <p>Adaptez l’apparence de votre espace de travail.</p>
+              <div className="profile-setting-control"><span><strong>Thème de l’interface</strong><small>{dark ? "Mode sombre activé" : "Mode clair activé"}</small></span><button className="theme-button" onClick={() => setDark(v => !v)}>{dark ? "Passer au thème clair" : "Passer au thème sombre"}</button></div>
+            </section>
+          </div>
+
+          {user.role === "admin" && <section className="profile-admin-section">
+            <div className="profile-section-heading"><div><p className="profile-kicker">CENTRE DE CONTRÔLE</p><h2>Administration iFac</h2><p>Retrouvez les outils de gestion dans des espaces distincts.</p></div></div>
+            {adminStats && <div className="profile-stats-grid">
+              <article className="profile-stat-card"><span>Utilisateurs</span><strong>{adminStats.users ?? 0}</strong></article>
+              <article className="profile-stat-card"><span>Documents</span><strong>{adminStats.documents ?? 0}</strong></article>
+              <article className="profile-stat-card"><span>Annonces</span><strong>{adminStats.announcements ?? 0}</strong></article>
+            </div>}
+            <div className="profile-admin-grid">
+              <form className="student-card note-form profile-tool-card" onSubmit={uploadDocument}>
+                <div className="profile-tool-heading"><span className="profile-tool-icon">PDF</span><div><h3>Bibliothèque documentaire</h3><p>Ajouter une ressource officielle.</p></div></div>
+                <label className="field">Matière<select name="subjectId" required defaultValue=""><option value="">Choisir la matière</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name} — {s.option_name} / {s.level_label}</option>)}</select></label>
+                <label className="field">Titre du document<input name="title" maxLength="220" required placeholder="Ex. : Introduction à la psychopédagogie" /></label>
+                <label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label>
+                <p className="profile-helper">PDF uniquement · 15 Mo maximum · stockage privé.</p>
+                <button className="theme-button" disabled={busy}>Ajouter le document</button>
+              </form>
+
+              <form className="student-card note-form profile-tool-card" onSubmit={createSubject}>
+                <div className="profile-tool-heading"><span className="profile-tool-icon">MAT</span><div><h3>Catalogue des matières</h3><p>Créer une matière pour un parcours.</p></div></div>
+                <label className="field">Faculté<select required value={adminFacultyId} onChange={e => { setAdminFacultyId(e.target.value); setAdminOptionId(""); setAdminLevelId(""); }}><option value="">Choisir la faculté</option>{adminCatalog.faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+                <label className="field">Option<select required value={adminOptionId} onChange={e => { setAdminOptionId(e.target.value); setAdminLevelId(""); }} disabled={!adminFacultyId}><option value="">Choisir l’option</option>{adminCatalog.options.filter(o => String(o.faculty_id) === String(adminFacultyId)).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+                <label className="field">Niveau<select required value={adminLevelId} onChange={e => setAdminLevelId(e.target.value)} disabled={!adminOptionId}><option value="">Choisir le niveau</option>{adminCatalog.levels.filter(l => String(l.option_id) === String(adminOptionId)).map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>
+                <label className="field">Nom de la matière<input value={subjectName} onChange={e => setSubjectName(e.target.value)} maxLength="180" required placeholder="Nom de la matière" /></label>
+                <button className="theme-button" disabled={busy}>Créer la matière</button>
+              </form>
+
+              <form className="student-card note-form profile-tool-card" onSubmit={createAnnouncement}>
+                <div className="profile-tool-heading"><span className="profile-tool-icon">INFO</span><div><h3>Communication</h3><p>Publier une annonce générale.</p></div></div>
+                <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} maxLength="220" required placeholder="Titre clair et concis" /></label>
+                <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
+                <button className="theme-button" disabled={busy}>Publier l’annonce</button>
+              </form>
+
+              <form className="student-card note-form profile-tool-card" onSubmit={createGroup}>
+                <div className="profile-tool-heading"><span className="profile-tool-icon">GROUPE</span><div><h3>Groupes de messagerie</h3><p>Créer un groupe selon le parcours.</p></div></div>
+                <label className="field">Portée du groupe<select value={groupType} onChange={e => setGroupType(e.target.value)}><option value="faculty">Toute ma faculté</option><option value="option">Mon option</option><option value="class">Mon niveau</option></select></label>
+                <p className="profile-helper">Les étudiants correspondant au profil sélectionné seront ajoutés automatiquement.</p>
+                <button className="theme-button" disabled={busy}>Créer le groupe</button>
+              </form>
+            </div>
+          </section>}
+
+          <form className="student-card note-form profile-feedback-card" onSubmit={submitFeedback}>
+            <div><p className="profile-kicker">VOTRE CONTRIBUTION</p><h2>Contacter l’équipe iFac</h2><p>Envoyez une suggestion, une question ou une évaluation.</p></div>
+            <div className="profile-feedback-fields">
+              <label className="field">Type de retour<select value={feedbackCategory} onChange={e => setFeedbackCategory(e.target.value)}><option value="suggestion">Suggestion</option><option value="question">Question</option><option value="rating">Évaluation</option></select></label>
+              <label className="field">Votre message<textarea value={feedbackMessage} onChange={e => setFeedbackMessage(e.target.value)} maxLength="5000" rows="3" required placeholder="Décrivez votre retour…" /></label>
+            </div>
+            <button className="theme-button" disabled={busy}>Envoyer mon avis</button>
           </form>
-        </section>}
+        </div>}
         {active === "classDocs" && <><form className="student-card note-form" onSubmit={uploadClassDocument}><h2>Partager un document avec votre classe</h2><label className="field">Titre du document<input value={classDocTitle} onChange={e => setClassDocTitle(e.target.value)} name="title" maxLength="220" required /></label><label className="field">Cours / matière<input value={classDocCourse} onChange={e => setClassDocCourse(e.target.value)} name="course" maxLength="180" required /></label><label className="field">Professeur<input value={classDocProfessor} onChange={e => setClassDocProfessor(e.target.value)} name="professor" maxLength="180" /></label><label className="field">Description<textarea value={classDocDescription} onChange={e => setClassDocDescription(e.target.value)} name="description" maxLength="3000" rows="3" /></label><label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label><p>PDF uniquement, 25 Mo maximum. Le document sera visible après validation de l’administrateur.</p><button className="theme-button" disabled={busy}>Envoyer pour validation</button></form><section className="student-card student-data-list"><h2>Documents approuvés pour ma classe</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section></>}
         {active === "notifications" && <section className="student-card student-data-list"><h2>Mes notifications</h2>{notifications.length === 0 ? <p>Aucune notification pour le moment.</p> : notifications.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>Un document a été approuvé pour le cours : {item.course}</p><small>{new Date(item.created_at).toLocaleString()} · {item.read_at ? "Lue" : "Non lue"}</small>{!item.read_at && <button className="theme-button" onClick={() => markNotificationRead(item.id)}>Marquer comme lue</button>}</article>)}</section>}
         {active === "classAdmin" && user.role === "admin" && <><section className="student-card note-form"><h2>Classes de l’université</h2><label className="field">Sélectionner une classe<select value={selectedClassKey} onChange={e => setSelectedClassKey(e.target.value)}><option value="">Choisir une classe</option>{classList.map(c => { const key = [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":"); return <option key={key} value={key}>{c.faculty_name} · {c.option_name} · {c.study_level_label}</option>; })}</select></label>{classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey) && <p>Étudiants : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).student_count} · Délégués : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).delegate_count} / 3</p>}</section><section className="student-card student-data-list"><h2>Étudiants et délégués</h2>{classStudents.length === 0 ? <p>Aucun étudiant trouvé pour cette classe.</p> : classStudents.map(student => <article className="student-data-item" key={student.id}><strong>{student.first_name} {student.last_name}</strong><p>{student.email} · {student.role}</p>{student.role === "delegate" ? <button className="theme-button" onClick={() => removeDelegate(student.id)} disabled={busy}>Retirer le rôle</button> : <button className="theme-button" onClick={() => assignDelegate(student.id)} disabled={busy || (classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey)?.delegate_count || 0) >= 3}>Désigner délégué</button>}</article>)}</section><section className="student-card student-data-list"><h2>Documents en attente de validation</h2>{pendingClassDocuments.length === 0 ? <p>Aucun document en attente.</p> : pendingClassDocuments.map(doc => <article className="student-data-item" key={doc.id}><strong>{doc.title}</strong><p>{doc.course} · {doc.uploader_first_name} {doc.uploader_last_name}</p><small>{doc.faculty_name} · {doc.option_name} · {doc.study_level_label}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => downloadClassDocument(doc.id,doc.file_name)}>Consulter le PDF</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"approved")} disabled={busy}>Approuver</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"rejected")} disabled={busy}>Refuser</button></div></article>)}</section></>}
