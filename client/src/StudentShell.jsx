@@ -255,8 +255,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   async function editAnnouncement(item) {
     const title=window.prompt("Modifier le titre :",item.title); if(title===null) return;
     const body=window.prompt("Modifier le texte :",item.body); if(body===null) return;
-    const form=new FormData(); form.set("title",title); form.set("body",body);
-    try { await request(`/admin/announcements/${item.id}`,{token,method:"PATCH",body:form}); setFeedback("Annonce modifiée."); await load(); }
+    try { await request(`/admin/announcements/${item.id}`,{token,method:"PATCH",body:JSON.stringify({title,body})}); setFeedback("Annonce modifiée."); await load(); }
     catch(error){setFeedback(error.message);}
   }
   async function deleteAnnouncement(id) {
