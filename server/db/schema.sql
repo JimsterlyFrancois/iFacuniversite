@@ -194,3 +194,7 @@ CREATE TABLE IF NOT EXISTS delegate_messages (
   read_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS delegate_messages_university_created_idx ON delegate_messages (university_id, created_at DESC);
+
+
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_key TEXT;
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_mime_type VARCHAR(80);
