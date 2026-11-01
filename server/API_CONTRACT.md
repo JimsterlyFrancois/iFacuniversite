@@ -106,3 +106,13 @@ Le premier schéma PostgreSQL se trouve dans `server/db/schema.sql`. Il couvre l
 - Un même groupe actif ne peut pas être créé deux fois pour le même périmètre.
 - L'administrateur créateur est membre du groupe et peut participer aux échanges.
 - GET /api/v1/admin/groups retourne les groupes actifs et leurs effectifs; POST /api/v1/admin/groups crée un groupe.
+
+
+## Groupes de messagerie par parcours
+- Un administrateur peut créer un groupe ciblant une faculté, une option ou un niveau précis.
+- Le catalogue de sélection comprend toutes les facultés, options et tous les niveaux actifs de l'université, pas uniquement le parcours personnel de l'administrateur.
+- À la création, les comptes étudiants et délégués vérifiés correspondant au périmètre sont ajoutés automatiquement.
+- Après confirmation de leur adresse e-mail, les nouveaux comptes étudiants/délégués sont ajoutés aux groupes correspondant à leur profil lors de leur première ouverture de la messagerie.
+- Un même groupe actif ne peut pas être créé deux fois pour le même périmètre.
+- L'administrateur créateur est membre du groupe et peut participer aux échanges.
+- GET /api/v1/admin/groups retourne les groupes actifs et leurs effectifs; POST /api/v1/admin/groups crée un groupe.
