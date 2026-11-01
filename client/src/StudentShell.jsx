@@ -102,10 +102,10 @@ export default function StudentShell({ token, user, onLogout, request }) {
       }
       if (active === "profile") {
         if (user.role === "admin") {
-          const [overview, subjectResult, catalog, docs, announcements, groupResult] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token }), request("/admin/groups", { token })]);
+          const [overview, subjectResult, catalog, docs, announcements] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token })]);
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
-          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers)); setAdminGroups(groupResult.data || []);
+          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers));
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
