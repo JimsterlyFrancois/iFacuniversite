@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
@@ -26,6 +26,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [messageBody, setMessageBody] = useState("");
   const [feedback, setFeedback] = useState("");
   const [pdfViewer, setPdfViewer] = useState(null);
+  const [flyerUpload, setFlyerUpload] = useState({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null });
+  const flyerUploadAttempt = useRef(0);
   const [busy, setBusy] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [subjects, setSubjects] = useState([]);
@@ -205,65 +207,106 @@ export default function StudentShell({ token, user, onLogout, request }) {
     try { await request("/admin/subjects", { token, method: "POST", body: JSON.stringify({ optionId: adminOptionId, studyLevelId: adminLevelId, name: subjectName }) }); setSubjectName(""); setFeedback("Matière créée."); await load(); }
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
+  async function uploadAnnouncementFlyer(image) {
+    const attempt = ++flyerUploadAttempt.current;
+    const fileSignature = `${image.name}:${image.size}:${image.lastModified}`;
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(image.type)) {
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: null });
+      setFeedback("Format refusé. Choisissez une image PNG, JPG ou WebP.");
+      return;
+    }
+    if (image.size < 1 || image.size > 8 * 1024 * 1024) {
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: null });
+      setFeedback("L’image doit peser 8 Mo maximum.");
+      return;
+    }
+    setFlyerUpload({ status: "uploading", progress: 0, fileSignature, imageKey: null, mimeType: image.type });
+    setFeedback("Préparation du transfert de l’image…");
+    try {
+      const signed = await request("/admin/announcements/upload-token", {
+        token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
+      });
+      const encodeMetadata = value => btoa(value);
+      const metadata = [
+        ["bucketName", signed.bucket],
+        ["objectName", signed.imageKey],
+        ["contentType", image.type],
+        ["cacheControl", "3600"]
+      ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
+      const created = await fetch(signed.uploadEndpoint, {
+        method: "POST",
+        headers: {
+          "Tus-Resumable": "1.0.0",
+          apikey: signed.publishableKey,
+          "Upload-Length": String(image.size),
+          "Upload-Metadata": metadata,
+          "x-signature": signed.token
+        }
+      });
+      if (!created.ok) {
+        const detail = await created.text().catch(() => "");
+        throw new Error(`Le stockage a refusé de préparer l’image (HTTP ${created.status}). ${detail.slice(0, 180)}`);
+      }
+      const location = created.headers.get("Location");
+      if (!location) throw new Error("Le stockage n’a pas confirmé le début du transfert.");
+      const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
+      const chunkSize = 2 * 1024 * 1024;
+      for (let offset = 0; offset < image.size;) {
+        const end = Math.min(offset + chunkSize, image.size);
+        const uploaded = await fetch(uploadUrl, {
+          method: "PATCH",
+          headers: {
+            "Tus-Resumable": "1.0.0",
+            apikey: signed.publishableKey,
+            "x-signature": signed.token,
+            "Upload-Offset": String(offset),
+            "Content-Type": "application/offset+octet-stream"
+          },
+          body: image.slice(offset, end)
+        });
+        if (!uploaded.ok) {
+          const detail = await uploaded.text().catch(() => "");
+          throw new Error(`Le transfert a échoué (HTTP ${uploaded.status}). ${detail.slice(0, 180)}`);
+        }
+        offset = end;
+        const progress = Math.round(offset / image.size * 100);
+        if (attempt === flyerUploadAttempt.current) {
+          setFlyerUpload({ status: "uploading", progress, fileSignature, imageKey: null, mimeType: image.type });
+          setFeedback(`Transfert de l’image en cours : ${progress} %`);
+        }
+      }
+      if (attempt !== flyerUploadAttempt.current) return;
+      setFlyerUpload({ status: "ready", progress: 100, fileSignature, imageKey: signed.imageKey, mimeType: image.type });
+      setFeedback("Image transférée avec succès. Vous pouvez maintenant publier l’annonce.");
+    } catch (error) {
+      if (attempt !== flyerUploadAttempt.current) return;
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: image.type });
+      setFeedback(error.message || "Le transfert de l’image a échoué. Réessayez.");
+    }
+  }
   async function createAnnouncement(e) {
     e.preventDefault();
     const formElement = e.currentTarget;
     const form = new FormData(formElement);
     const image = formElement.elements.namedItem("image")?.files?.[0] || null;
+    if (image) {
+      const fileSignature = `${image.name}:${image.size}:${image.lastModified}`;
+      if (flyerUpload.status !== "ready" || flyerUpload.fileSignature !== fileSignature || !flyerUpload.imageKey) {
+        setFeedback("Veuillez attendre la fin du transfert de l’image avant de publier l’annonce.");
+        return;
+      }
+    }
     setBusy(true); setFeedback("");
     try {
       const payload = { title: String(form.get("title") || "").trim(), body: String(form.get("body") || "").trim() };
       if (image) {
-        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-        if (!allowedTypes.includes(image.type)) throw new Error("Format refusé. Choisissez une image PNG, JPG ou WebP.");
-        if (image.size < 1 || image.size > 8 * 1024 * 1024) throw new Error("L’image doit peser 8 Mo maximum.");
-        setFeedback("Préparation de l’image…");
-        const signed = await request("/admin/announcements/upload-token", {
-          token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
-        });
-        const encodeMetadata = value => btoa(value);
-        const metadata = [
-          ["bucketName", signed.bucket],
-          ["objectName", signed.imageKey],
-          ["contentType", image.type],
-          ["cacheControl", "3600"]
-        ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
-        const created = await fetch(signed.uploadEndpoint, {
-          method: "POST",
-          headers: {
-            "Tus-Resumable": "1.0.0",
-            apikey: signed.publishableKey,
-            "Upload-Length": String(image.size),
-            "Upload-Metadata": metadata,
-            "x-signature": signed.token
-          }
-        });
-        if (!created.ok) throw new Error(`Le service de stockage a refusé l’image (HTTP ${created.status}). Vérifiez le format PNG, JPG ou WebP et réessayez.`);
-        const location = created.headers.get("Location");
-        if (!location) throw new Error("Le service de stockage n’a pas confirmé le transfert de l’image.");
-        const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
-        const chunkSize = 6 * 1024 * 1024;
-        for (let offset = 0; offset < image.size;) {
-          const end = Math.min(offset + chunkSize, image.size);
-          const chunk = image.slice(offset, end);
-          const uploaded = await fetch(uploadUrl, {
-            method: "PATCH",
-            headers: {
-              "Tus-Resumable": "1.0.0",
-              apikey: signed.publishableKey,
-              "Upload-Offset": String(offset),
-              "Content-Type": "application/offset+octet-stream"
-            },
-            body: chunk
-          });
-          if (!uploaded.ok) throw new Error("Le transfert de l’image a été interrompu. Vérifiez votre connexion et réessayez.");
-          offset = end;
-          setFeedback(`Envoi de l’image : ${Math.round(offset / image.size * 100)} %`);
-        }
-        payload.imageKey = signed.imageKey;
-        payload.imageMimeType = image.type;
+        payload.imageKey = flyerUpload.imageKey;
+        payload.imageMimeType = flyerUpload.mimeType;
       }
       await request("/admin/announcements", { token, method: "POST", body: JSON.stringify(payload) });
+      flyerUploadAttempt.current += 1;
+      setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null });
       setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load();
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
@@ -414,8 +457,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
                 <div className="profile-tool-heading"><span className="profile-tool-icon">INFO</span><div><h3>Communication</h3><p>Publier une annonce générale.</p></div></div>
                 <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} name="title" maxLength="220" required placeholder="Titre clair et concis" /></label>
                 <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} name="body" maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
-                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
-                <button className="theme-button" disabled={busy}>Publier l’annonce</button>
+                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" disabled={flyerUpload.status === "uploading" || busy} onChange={e => { const file = e.target.files?.[0]; if (file) uploadAnnouncementFlyer(file); else { flyerUploadAttempt.current += 1; setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null }); } }} /></label>}{canUploadAnnouncementFlyer && flyerUpload.status === "uploading" && <p className="profile-helper" role="status">Transfert de l’image : {flyerUpload.progress} %. Le bouton de publication restera bloqué jusqu’à la fin.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "ready" && <p className="profile-helper" role="status">Image prête. Vous pouvez publier l’annonce.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "error" && <p className="profile-helper" role="alert">Le transfert a échoué. Sélectionnez à nouveau l’image pour réessayer.</p>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
+                <button className="theme-button" disabled={busy || flyerUpload.status === "uploading" || (Boolean(flyerUpload.fileSignature) && flyerUpload.status !== "ready")}> {flyerUpload.status === "uploading" ? `Transfert ${flyerUpload.progress} %…` : "Publier l’annonce"}</button>
               </form>
 
 
