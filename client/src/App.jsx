@@ -87,7 +87,11 @@ export default function App() {
     event.preventDefault(); setBusy(true); setFeedback("");
     const form = new FormData(event.currentTarget);
     try {
-      if (mode === "professor") {\n        if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux codes secrets ne correspondent pas.");\n        const result = await request("/auth/professor/activate", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });\n        setMode("login"); setFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte professeur.");\n      } else if (mode === "signup") {
+      if (mode === "professor") {
+        if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux codes secrets ne correspondent pas.");
+        const result = await request("/auth/professor/activate", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
+        setMode("login"); setFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte professeur.");
+      } else if (mode === "signup") {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
         const result = await request("/auth/register", { method: "POST", body: JSON.stringify({
           firstName: form.get("firstName"), lastName: form.get("lastName"), email: form.get("email"),
