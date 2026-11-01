@@ -162,7 +162,24 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     }
   });
 
-  router.post("/admin/class-documents/:id/review", requireAuth, requireAdmin, async (req, res) => {
+  router.post("/admin/class-documents/:id/review", requireAuth, requireAdmin, async (req, res) => {  router.patch("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
+    const id=positiveId(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", course=typeof req.body?.course==="string"?req.body.course.trim():"", professor=typeof req.body?.professor==="string"?req.body.professor.trim():"", description=typeof req.body?.description==="string"?req.body.description.trim():"";
+    if(!id||!title||title.length>220||!course||course.length>180||professor.length>180||description.length>3000) return res.status(400).json({error:"invalid_class_document_update"});
+    try {
+      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND university_id=$6 AND is_active=TRUE RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.user.university_id]);
+      return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"class_document_not_found"});
+    } catch { return res.status(503).json({error:"class_document_update_failed"}); }
+  });
+  router.delete("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
+    const id=positiveId(req.params.id); if(!id) return res.status(400).json({error:"invalid_document_id"});
+    try {
+      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND university_id=$2 AND is_active=TRUE RETURNING file_key", [id,req.user.university_id]);
+      if(!found.rowCount) return res.status(404).json({error:"class_document_not_found"});
+      await deletePrivateObject(found.rows[0].file_key,CLASS_BUCKET).catch(error=>console.error("Suppression PDF classe:",error?.message));
+      return res.status(204).end();
+    } catch { return res.status(503).json({error:"class_document_delete_failed"}); }
+  });
+
     const documentId = positiveId(req.params.id);
     const status = req.body?.status;
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
@@ -262,7 +279,24 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     }
   });
 
-  router.patch("/admin/delegate-messages/:id/read", requireAuth, requireAdmin, async (req, res) => {
+  router.patch("/admin/delegate-messages/:id/read", requireAuth, requireAdmin, async (req, res) => {  router.patch("/admin/delegate-messages/:id", requireAuth, requireAdmin, async (req,res) => {
+    const id=positiveId(req.params.id), subject=typeof req.body?.subject==="string"?req.body.subject.trim():"", body=typeof req.body?.body==="string"?req.body.body.trim():"";
+    if(!id||!subject||subject.length>220||!body||body.length>5000) return res.status(400).json({error:"invalid_delegate_message"});
+    try {
+      await ensureDelegateMessagesTable(pool);
+      const result=await pool.query("UPDATE delegate_messages SET subject=$1,body=$2 WHERE id=$3 AND university_id=$4 RETURNING id,subject,body", [subject,body,id,req.user.university_id]);
+      return result.rowCount?res.json({message:result.rows[0]}):res.status(404).json({error:"delegate_message_not_found"});
+    } catch { return res.status(503).json({error:"delegate_message_update_failed"}); }
+  });
+  router.delete("/admin/delegate-messages/:id", requireAuth, requireAdmin, async (req,res) => {
+    const id=positiveId(req.params.id); if(!id) return res.status(400).json({error:"invalid_message_id"});
+    try {
+      await ensureDelegateMessagesTable(pool);
+      const result=await pool.query("DELETE FROM delegate_messages WHERE id=$1 AND university_id=$2 RETURNING id", [id,req.user.university_id]);
+      return result.rowCount?res.status(204).end():res.status(404).json({error:"delegate_message_not_found"});
+    } catch { return res.status(503).json({error:"delegate_message_delete_failed"}); }
+  });
+
     const id = positiveId(req.params.id);
     if (!id) return res.status(400).json({ error: "invalid_message_id" });
     try {
