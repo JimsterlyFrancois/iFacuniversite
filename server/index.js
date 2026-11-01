@@ -267,9 +267,9 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     const passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"), 12);
     const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
     const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "student";
-    await client.query(
+    const createdUser = await client.query(
       `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,university_id,faculty_id,option_id,study_level_id,role`,
       [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
     );
     await client.query("COMMIT");
@@ -590,8 +590,25 @@ app.get("/api/v1/documents", requireAuth, async (req, res) => {
 
 app.get("/api/v1/messages/groups", requireAuth, async (req, res) => {
   try {
+    if (["student","delegate"].includes(req.user.role)) {
+      await pool.query(
+        `INSERT INTO group_members(group_id,user_id)
+         SELECT g.id,$1 FROM message_groups g
+         WHERE g.is_active=TRUE AND g.university_id=$2
+           AND (g.faculty_id IS NULL OR g.faculty_id=$3)
+           AND (g.option_id IS NULL OR g.option_id=$4)
+           AND (g.study_level_id IS NULL OR g.study_level_id=$5) AND $6 IN ('student','delegate') AND EXISTS (SELECT 1 FROM users u WHERE u.id=$1 AND u.email_verified_at IS NOT NULL)
+         ON CONFLICT DO NOTHING`,
+        [req.user.id,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,req.user.role]
+      );
+    }
     const result = await pool.query(
-      `SELECT g.id,g.group_type FROM message_groups g JOIN group_members gm ON gm.group_id=g.id
+      `SELECT g.id,g.group_type,g.faculty_id,g.option_id,g.study_level_id,
+        f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label
+       FROM message_groups g JOIN group_members gm ON gm.group_id=g.id
+       LEFT JOIN faculties f ON f.id=g.faculty_id
+       LEFT JOIN options o ON o.id=g.option_id
+       LEFT JOIN study_levels l ON l.id=g.study_level_id
        WHERE gm.user_id=$1 AND g.is_active=TRUE ORDER BY g.id`,
       [req.user.id]
     );
@@ -748,6 +765,20 @@ app.delete("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req,
   } catch { return res.status(503).json({ error: "document_delete_failed" }); }
 });
 
+app.get("/api/v1/admin/groups", requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const result=await pool.query(
+      `SELECT g.id,g.group_type,g.created_at,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label,
+       (SELECT COUNT(*)::int FROM group_members gm WHERE gm.group_id=g.id) AS member_count
+       FROM message_groups g LEFT JOIN faculties f ON f.id=g.faculty_id
+       LEFT JOIN options o ON o.id=g.option_id LEFT JOIN study_levels l ON l.id=g.study_level_id
+       WHERE g.university_id=$1 AND g.is_active=TRUE ORDER BY g.created_at DESC`,
+      [req.user.university_id]
+    );
+    return res.json({data:result.rows});
+  } catch { return res.status(503).json({error:"admin_groups_unavailable"}); }
+});
+
 app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => {
   const { groupType, facultyId = null, optionId = null, studyLevelId = null } = req.body || {};
   if (!["faculty","option","class"].includes(groupType)) return res.status(400).json({ error: "invalid_group_type" });
@@ -761,9 +792,18 @@ app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => 
     await client.query("BEGIN");
     const scope = await client.query(`SELECT 1 FROM faculties f LEFT JOIN options o ON o.id=$2 AND o.faculty_id=f.id LEFT JOIN study_levels l ON l.id=$3 AND l.option_id=o.id WHERE f.id=$1 AND f.university_id=$4 AND f.is_active=TRUE AND ($2::bigint IS NULL OR o.id IS NOT NULL) AND ($3::bigint IS NULL OR l.id IS NOT NULL)`, [ids[0],ids[1],ids[2],req.user.university_id]);
     if (!scope.rowCount) { await client.query("ROLLBACK"); return res.status(400).json({ error: "invalid_group_scope" }); }
+    const duplicate = await client.query(
+      `SELECT id FROM message_groups WHERE university_id=$1 AND group_type=$2
+       AND faculty_id IS NOT DISTINCT FROM $3::bigint
+       AND option_id IS NOT DISTINCT FROM $4::bigint
+       AND study_level_id IS NOT DISTINCT FROM $5::bigint AND is_active=TRUE LIMIT 1`,
+      [req.user.university_id,groupType,ids[0],ids[1],ids[2]]
+    );
+    if (duplicate.rowCount) { await client.query("ROLLBACK"); return res.status(409).json({error:"group_already_exists",message:"Un groupe existe déjà pour ce parcours."}); }
     const created = await client.query("INSERT INTO message_groups(university_id,faculty_id,option_id,study_level_id,group_type,is_active) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id,group_type,faculty_id,option_id,study_level_id", [req.user.university_id,ids[0],ids[1],ids[2],groupType]);
     const g = created.rows[0];
-    await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
+    await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND role IN ('student','delegate') AND email_verified_at IS NOT NULL AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
+    await client.query("INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[g.id,req.user.id]);
     await client.query("COMMIT");
     return res.status(201).json({ group:g, message:"Groupe créé et membres inscrits automatiquement." });
   } catch { await client.query("ROLLBACK").catch(() => {}); return res.status(503).json({ error:"group_create_failed" }); }
