@@ -693,7 +693,7 @@ app.post("/api/v1/admin/announcements/upload-token", requireAuth, requireAdmin, 
     }
     const storageHost = new URL(storageUrl).hostname.replace(".supabase.co", ".storage.supabase.co");
     const uploadEndpoint = `${new URL(storageUrl).protocol}//${storageHost}/storage/v1/upload/resumable`;
-    return res.json({ imageKey, token: signedData.token, uploadEndpoint, bucket: announcementStorageBucket });
+    return res.json({ imageKey, token: signedData.token, uploadEndpoint, bucket: announcementStorageBucket, publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || "" });
   } catch (error) {
     console.error("Préparation du téléversement échouée:", error?.message);
     return res.status(503).json({ error: "announcement_upload_sign_failed", message: "Impossible de préparer le téléversement de l’image." });
