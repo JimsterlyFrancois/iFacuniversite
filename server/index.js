@@ -696,7 +696,7 @@ app.post("/api/v1/admin/announcements/upload-token", requireAuth, requireAdmin, 
       console.error("Signature d’envoi d’image refusée:", signed.status, signedData.message || signedData.error || "");
       return res.status(503).json({ error: "announcement_upload_sign_failed", message: "Impossible de préparer le téléversement de l’image. Réessayez." });
     }
-    const storageHost = new URL(storageUrl).hostname.replace(/\\.supabase\\.co$/, ".storage.supabase.co");
+    const storageHost = new URL(storageUrl).hostname.replace(".supabase.co", ".storage.supabase.co");
     const uploadEndpoint = `${new URL(storageUrl).protocol}//${storageHost}/storage/v1/upload/resumable`;
     return res.json({ imageKey, token: signedData.token, uploadEndpoint, bucket: announcementStorageBucket });
   } catch (error) {
