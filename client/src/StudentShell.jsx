@@ -138,7 +138,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function markDelegateMessageRead(id) {
-    try { await request(`/admin/delegate-messages/${id}/read`, { token, method: "PATCH" }); setDelegateMessages(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); }
+    try { await request(`/admin/delegate-messages/${id}/read`, { token, method: "PATCH" }); setDelegateMessages(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); setUnreadDelegateCount(n=>Math.max(0,n-1)); }
     catch (error) { setFeedback(error.message); }
   }
   async function assignDelegate(userId) {
@@ -162,7 +162,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function markNotificationRead(id) {
-    try { await request(`/notifications/${id}/read`, { token, method: "PATCH" }); setNotifications(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); }
+    try { await request(`/notifications/${id}/read`, { token, method: "PATCH" }); setNotifications(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); setUnreadNotificationCount(n=>Math.max(0,n-1)); }
     catch (error) { setFeedback(error.message); }
   }
   async function downloadClassDocument(id, name) {
@@ -184,9 +184,60 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   async function createAnnouncement(e) {
-    e.preventDefault(); setBusy(true); setFeedback("");
-    try { await request("/admin/announcements", { token, method: "POST", body: JSON.stringify({ title: announcementTitle, body: announcementBody }) }); setAnnouncementTitle(""); setAnnouncementBody(""); setFeedback("Annonce publiée."); await load(); }
-    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+    e.preventDefault(); const form = new FormData(e.currentTarget); setBusy(true); setFeedback("");
+    try { await request("/admin/announcements", { token, method: "POST", body: form }); setAnnouncementTitle(""); setAnnouncementBody(""); e.currentTarget.reset(); setFeedback("Annonce publiée."); await load(); }
+    catch (error) { setFeedback(error.message); } finally { setBusy(false); }
+  }
+  async function editAnnouncement(item) {
+    const title=window.prompt("Modifier le titre :",item.title); if(title===null) return;
+    const body=window.prompt("Modifier le texte :",item.body); if(body===null) return;
+    const form=new FormData(); form.set("title",title); form.set("body",body);
+    try { await request(`/admin/announcements/${item.id}`,{token,method:"PATCH",body:form}); setFeedback("Annonce modifiée."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteAnnouncement(id) {
+    if(!window.confirm("Supprimer cette annonce et son visuel ?")) return;
+    try { await request(`/admin/announcements/${id}`,{token,method:"DELETE"}); setAdminAnnouncements(rows=>rows.filter(x=>x.id!==id)); setFeedback("Annonce supprimée."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editAdminDocument(item) {
+    const title=window.prompt("Nouveau titre :",item.title); if(title===null||!title.trim()) return;
+    try { await request(`/admin/documents/${item.id}`,{token,method:"PATCH",body:JSON.stringify({title,subjectId:item.subject_id})}); setFeedback("Document modifié."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editClassDocument(item) {
+    const title=window.prompt("Titre :",item.title); if(title===null) return;
+    const course=window.prompt("Cours / matière :",item.course||""); if(course===null) return;
+    const professor=window.prompt("Professeur :",item.professor||""); if(professor===null) return;
+    const description=window.prompt("Description :",item.description||""); if(description===null) return;
+    try { await request(`/admin/class-documents/${item.id}`,{token,method:"PATCH",body:JSON.stringify({title,course,professor,description})}); setFeedback("Document de classe modifié."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteClassDocument(id) {
+    if(!window.confirm("Supprimer ce document de classe ?")) return;
+    try { await request(`/admin/class-documents/${id}`,{token,method:"DELETE"}); setPendingClassDocuments(rows=>rows.filter(x=>x.id!==id)); setFeedback("Document supprimé."); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editDelegateMessage(item) {
+    const subject=window.prompt("Objet :",item.subject); if(subject===null) return;
+    const body=window.prompt("Modifier le message :",item.body); if(body===null) return;
+    try { await request(`/admin/delegate-messages/${item.id}`,{token,method:"PATCH",body:JSON.stringify({subject,body})}); setDelegateMessages(rows=>rows.map(x=>x.id===item.id?{...x,subject,body}:x)); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteDelegateMessage(id) {
+    if(!window.confirm("Supprimer ce message ?")) return;
+    try { await request(`/admin/delegate-messages/${id}`,{token,method:"DELETE"}); setDelegateMessages(rows=>rows.filter(x=>x.id!==id)); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editGroupMessage(item) {
+    const body=window.prompt("Modifier le message :",item.body); if(body===null||!body.trim()) return;
+    try { await request(`/admin/messages/${item.id}`,{token,method:"PATCH",body:JSON.stringify({body})}); setMessages(rows=>rows.map(x=>x.id===item.id?{...x,body}:x)); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteGroupMessage(id) {
+    if(!window.confirm("Supprimer ce message ?")) return;
+    try { await request(`/admin/messages/${id}`,{token,method:"DELETE"}); setMessages(rows=>rows.filter(x=>x.id!==id)); }
+    catch(error){setFeedback(error.message);}
   }
   async function createGroup(e) {
     e.preventDefault(); setBusy(true); setFeedback("");
