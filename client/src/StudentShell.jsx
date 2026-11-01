@@ -29,6 +29,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
+  const [professorAssignments, setProfessorAssignments] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [adminCatalog, setAdminCatalog] = useState({ faculties: [], options: [], levels: [] });
   const [classList, setClassList] = useState([]);
@@ -108,6 +109,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
           setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers)); setAdminGroups(groupResult.data || []);
+        } else if (user.role === "professor") {
+          const r = await request("/professor/assignments", { token }); setProfessorAssignments(r.data || []);
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
@@ -351,11 +354,12 @@ export default function StudentShell({ token, user, onLogout, request }) {
               <p className="profile-kicker">MON ESPACE PERSONNEL</p>
               <h2>{user.firstName} {user.lastName}</h2>
               <p>{user.email}</p>
-              <span className="profile-role">{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : "Étudiant"}</span>
+              <span className="profile-role">{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : user.role === "professor" ? "Professeur" : "Étudiant"}</span>
             </div>
             <button className="subtle-button profile-logout" onClick={onLogout}>Déconnexion</button>
           </section>
 
+          {user.role === "professor" && <section className="student-card"><h2>Mes affectations pédagogiques</h2>{professorAssignments.length ? <ul>{professorAssignments.map((a,i)=><li key={i}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}</li>)}</ul> : <p>Aucune affectation active n’est disponible.</p>}</section>}
           <div className="profile-summary-grid">
             <section className="student-card profile-info-card">
               <h2>Informations du compte</h2>
