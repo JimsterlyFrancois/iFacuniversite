@@ -272,14 +272,14 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
         "SELECT dm.id,dm.subject,dm.body,dm.created_at,dm.read_at,u.id AS sender_id,u.first_name,u.last_name,u.email,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label FROM delegate_messages dm JOIN users u ON u.id=dm.sender_id LEFT JOIN faculties f ON f.id=dm.faculty_id LEFT JOIN options o ON o.id=dm.option_id LEFT JOIN study_levels l ON l.id=dm.study_level_id WHERE dm.university_id=$1 ORDER BY dm.created_at DESC LIMIT 300",
         [req.user.university_id]
       );
-      return res.json({ data: result.rows });
+      return res.json({ data: result.rows, unreadCount: result.rows.filter(row => !row.read_at).length });
     } catch (error) {
       console.error("Boîte des délégués indisponible:", error?.message);
       return res.status(503).json({ error: "delegate_messages_unavailable" });
     }
   });
 
-  router.patch("/admin/delegate-messages/:id/read", requireAuth, requireAdmin, async (req, res) => {  router.patch("/admin/delegate-messages/:id", requireAuth, requireAdmin, async (req,res) => {
+  router.patch("/admin/delegate-messages/:id", requireAuth, requireAdmin, async (req,res) => {
     const id=positiveId(req.params.id), subject=typeof req.body?.subject==="string"?req.body.subject.trim():"", body=typeof req.body?.body==="string"?req.body.body.trim():"";
     if(!id||!subject||subject.length>220||!body||body.length>5000) return res.status(400).json({error:"invalid_delegate_message"});
     try {
@@ -296,7 +296,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       return result.rowCount?res.status(204).end():res.status(404).json({error:"delegate_message_not_found"});
     } catch { return res.status(503).json({error:"delegate_message_delete_failed"}); }
   });
-
+  router.patch("/admin/delegate-messages/:id/read", requireAuth, requireAdmin, async (req, res) => {
     const id = positiveId(req.params.id);
     if (!id) return res.status(400).json({ error: "invalid_message_id" });
     try {
