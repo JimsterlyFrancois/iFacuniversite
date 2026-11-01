@@ -559,7 +559,7 @@ app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/v1/documents", requireAuth, async (req, res) => {app.get("/api/v1/admin/documents", requireAuth, requireAdmin, async (req,res) => {
+app.get("/api/v1/admin/documents", requireAuth, requireAdmin, async (req,res) => {
   try {
     const result = await pool.query(`SELECT d.id,d.title,d.subject_id,d.mime_type,d.file_size_bytes,d.created_at,s.name AS subject,s.option_id,s.study_level_id FROM documents d JOIN subjects s ON s.id=d.subject_id JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=$1 AND d.is_active=TRUE ORDER BY d.created_at DESC LIMIT 500`,[req.user.university_id]);
     return res.json({data:result.rows});
@@ -573,7 +573,7 @@ app.patch("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req,r
     return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"document_not_found_or_invalid_subject"});
   } catch { return res.status(503).json({error:"document_update_failed"}); }
 });
-
+app.get("/api/v1/documents", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT d.id,d.title,d.mime_type,d.file_size_bytes,d.created_at,s.name AS subject
@@ -611,7 +611,7 @@ app.get("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
     return res.json({ data: result.rows.reverse() });
   } catch { return res.status(503).json({ error: "messages_unavailable" }); }
 });
-app.post("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {app.patch("/api/v1/admin/messages/:id", requireAuth, requireAdmin, async (req,res) => {
+app.patch("/api/v1/admin/messages/:id", requireAuth, requireAdmin, async (req,res) => {
   const id=Number(req.params.id), body=typeof req.body?.body==="string"?req.body.body.trim():"";
   if(!Number.isSafeInteger(id)||id<1||!body||body.length>5000) return res.status(400).json({error:"invalid_message"});
   try {
@@ -626,7 +626,7 @@ app.delete("/api/v1/admin/messages/:id", requireAuth, requireAdmin, async (req,r
     return result.rowCount?res.status(204).end():res.status(404).json({error:"message_not_found"});
   } catch { return res.status(503).json({error:"message_delete_failed"}); }
 });
-
+app.post("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
   const groupId = Number(req.params.id), body = req.body?.body;
   if (!Number.isSafeInteger(groupId) || groupId < 1 || typeof body !== "string" || !body.trim() || body.trim().length > 5000) return res.status(400).json({ error: "invalid_message" });
   try {
