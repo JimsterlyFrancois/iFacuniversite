@@ -569,7 +569,7 @@ app.patch("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req,r
   const id=Number(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", subjectId=Number(req.body?.subjectId);
   if(!Number.isSafeInteger(id)||id<1||!title||title.length>220||!Number.isSafeInteger(subjectId)||subjectId<1) return res.status(400).json({error:"invalid_document_update"});
   try {
-    const result=await pool.query(`UPDATE documents d SET title=$1,subject_id=$2,updated_at=NOW() FROM subjects s JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE d.id=$3 AND d.is_active=TRUE AND s.id=$2 AND s.is_active=TRUE AND f.university_id=$4 RETURNING d.id,d.title,d.subject_id`,[title,subjectId,id,req.user.university_id]);
+    const result=await pool.query(`UPDATE documents d SET title=$1,subject_id=$2,updated_at=NOW() FROM subjects s JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id JOIN subjects old_s ON old_s.id=d.subject_id JOIN options old_o ON old_o.id=old_s.option_id JOIN faculties old_f ON old_f.id=old_o.faculty_id WHERE d.id=$3 AND d.is_active=TRUE AND s.id=$2 AND s.is_active=TRUE AND f.university_id=$4 AND old_f.university_id=$4 RETURNING d.id,d.title,d.subject_id`,[title,subjectId,id,req.user.university_id]);
     return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"document_not_found_or_invalid_subject"});
   } catch { return res.status(503).json({error:"document_update_failed"}); }
 });
@@ -610,6 +610,12 @@ app.get("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
     );
     return res.json({ data: result.rows.reverse() });
   } catch { return res.status(503).json({ error: "messages_unavailable" }); }
+});
+app.get("/api/v1/admin/messages", requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const result=await pool.query(`SELECT m.id,m.body,m.created_at,u.first_name,u.last_name,g.id AS group_id,g.group_type FROM messages m JOIN message_groups g ON g.id=m.group_id JOIN users u ON u.id=m.sender_id WHERE g.university_id=$1 AND m.deleted_at IS NULL ORDER BY m.created_at DESC LIMIT 500`,[req.user.university_id]);
+    return res.json({data:result.rows});
+  } catch { return res.status(503).json({error:"admin_messages_unavailable"}); }
 });
 app.patch("/api/v1/admin/messages/:id", requireAuth, requireAdmin, async (req,res) => {
   const id=Number(req.params.id), body=typeof req.body?.body==="string"?req.body.body.trim():"";
