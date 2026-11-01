@@ -11,6 +11,7 @@ import helmet from "helmet";
 import nodemailer from "nodemailer";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
+import { createProfessorsRouter } from "./routes/professors.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -123,6 +124,7 @@ const requireAdmin = (req, res, next) => req.user?.role === "admin"
 app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
+app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
