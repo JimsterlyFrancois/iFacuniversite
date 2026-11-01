@@ -460,8 +460,9 @@ app.delete("/api/v1/notes/:id", requireAuth, async (req, res) => {
 
 app.get("/api/v1/announcements", requireAuth, async (req, res) => {
   try {
+    await ensureAnnouncementImageColumns();
     const result = await pool.query(
-      `SELECT id,title,body,starts_at,ends_at,created_at FROM announcements
+      `SELECT id,title,body,starts_at,ends_at,created_at,(image_key IS NOT NULL) AS has_image FROM announcements
        WHERE university_id=$1 AND is_active=TRUE AND (starts_at IS NULL OR starts_at<=NOW())
        AND (ends_at IS NULL OR ends_at>NOW())
        AND (faculty_id IS NULL OR faculty_id=$2) AND (option_id IS NULL OR option_id=$3)
@@ -479,6 +480,18 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
 });
+const allowedAnnouncementImages = new Set(["image/jpeg","image/png","image/webp"]);
+const announcementImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => callback(null, allowedAnnouncementImages.has(file.mimetype))
+});
+let announcementImageColumnsReady;
+async function ensureAnnouncementImageColumns() {
+  if (!announcementImageColumnsReady) announcementImageColumnsReady = pool.query("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_key TEXT, ADD COLUMN IF NOT EXISTS image_mime_type VARCHAR(80)").catch(error => { announcementImageColumnsReady = null; throw error; });
+  await announcementImageColumnsReady;
+}
+
 
 app.get("/api/v1/admin/catalog", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -546,7 +559,21 @@ app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/v1/documents", requireAuth, async (req, res) => {
+app.get("/api/v1/documents", requireAuth, async (req, res) => {app.get("/api/v1/admin/documents", requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const result = await pool.query(`SELECT d.id,d.title,d.subject_id,d.mime_type,d.file_size_bytes,d.created_at,s.name AS subject,s.option_id,s.study_level_id FROM documents d JOIN subjects s ON s.id=d.subject_id JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=$1 AND d.is_active=TRUE ORDER BY d.created_at DESC LIMIT 500`,[req.user.university_id]);
+    return res.json({data:result.rows});
+  } catch { return res.status(503).json({error:"admin_documents_unavailable"}); }
+});
+app.patch("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req,res) => {
+  const id=Number(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", subjectId=Number(req.body?.subjectId);
+  if(!Number.isSafeInteger(id)||id<1||!title||title.length>220||!Number.isSafeInteger(subjectId)||subjectId<1) return res.status(400).json({error:"invalid_document_update"});
+  try {
+    const result=await pool.query(`UPDATE documents d SET title=$1,subject_id=$2,updated_at=NOW() FROM subjects s JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id WHERE d.id=$3 AND d.is_active=TRUE AND s.id=$2 AND s.is_active=TRUE AND f.university_id=$4 RETURNING d.id,d.title,d.subject_id`,[title,subjectId,id,req.user.university_id]);
+    return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"document_not_found_or_invalid_subject"});
+  } catch { return res.status(503).json({error:"document_update_failed"}); }
+});
+
   try {
     const result = await pool.query(
       `SELECT d.id,d.title,d.mime_type,d.file_size_bytes,d.created_at,s.name AS subject
@@ -584,7 +611,22 @@ app.get("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
     return res.json({ data: result.rows.reverse() });
   } catch { return res.status(503).json({ error: "messages_unavailable" }); }
 });
-app.post("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
+app.post("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {app.patch("/api/v1/admin/messages/:id", requireAuth, requireAdmin, async (req,res) => {
+  const id=Number(req.params.id), body=typeof req.body?.body==="string"?req.body.body.trim():"";
+  if(!Number.isSafeInteger(id)||id<1||!body||body.length>5000) return res.status(400).json({error:"invalid_message"});
+  try {
+    const result=await pool.query("UPDATE messages m SET body=$1 FROM message_groups g WHERE m.group_id=g.id AND m.id=$2 AND g.university_id=$3 AND m.deleted_at IS NULL RETURNING m.id,m.body", [body,id,req.user.university_id]);
+    return result.rowCount?res.json({message:result.rows[0]}):res.status(404).json({error:"message_not_found"});
+  } catch { return res.status(503).json({error:"message_update_failed"}); }
+});
+app.delete("/api/v1/admin/messages/:id", requireAuth, requireAdmin, async (req,res) => {
+  const id=Number(req.params.id); if(!Number.isSafeInteger(id)||id<1) return res.status(400).json({error:"invalid_message_id"});
+  try {
+    const result=await pool.query("UPDATE messages m SET deleted_at=NOW() FROM message_groups g WHERE m.group_id=g.id AND m.id=$1 AND g.university_id=$2 AND m.deleted_at IS NULL RETURNING m.id",[id,req.user.university_id]);
+    return result.rowCount?res.status(204).end():res.status(404).json({error:"message_not_found"});
+  } catch { return res.status(503).json({error:"message_delete_failed"}); }
+});
+
   const groupId = Number(req.params.id), body = req.body?.body;
   if (!Number.isSafeInteger(groupId) || groupId < 1 || typeof body !== "string" || !body.trim() || body.trim().length > 5000) return res.status(400).json({ error: "invalid_message" });
   try {
@@ -595,17 +637,62 @@ app.post("/api/v1/messages/groups/:id", requireAuth, async (req, res) => {
   } catch { return res.status(503).json({ error: "message_send_failed" }); }
 });
 
-app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, async (req, res) => {
-  const { title, body, facultyId = null, optionId = null, studyLevelId = null, startsAt = null, endsAt = null } = req.body || {};
-  if (typeof title !== "string" || !title.trim() || title.length > 220 || typeof body !== "string" || !body.trim() || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
+app.post("/api/v1/admin/announcements", requireAuth, requireAdmin, announcementImageUpload.single("image"), async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+  if (!title || title.length > 220 || !body || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
+  if (req.file && (!allowedAnnouncementImages.has(req.file.mimetype) || !({ "image/jpeg": req.file.buffer[0] === 0xff && req.file.buffer[1] === 0xd8, "image/png": req.file.buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), "image/webp": req.file.buffer.subarray(0,4).toString() === "RIFF" && req.file.buffer.subarray(8,12).toString() === "WEBP" })[req.file.mimetype])) return res.status(400).json({ error: "invalid_announcement_image" });
+  const imageKey = req.file ? `announcements/${randomUUID()}` : null;
   try {
+    await ensureAnnouncementImageColumns();
+    if (req.file) await storePrivateObject(imageKey, req.file.buffer, req.file.mimetype);
     const result = await pool.query(
-      `INSERT INTO announcements(university_id,faculty_id,option_id,study_level_id,title,body,is_active,starts_at,ends_at,created_by)
-       VALUES($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9) RETURNING id,title,body,is_active,starts_at,ends_at,created_at`,
-      [req.user.university_id,facultyId,optionId,studyLevelId,title.trim(),body.trim(),startsAt,endsAt,req.user.id]
+      `INSERT INTO announcements(university_id,faculty_id,option_id,study_level_id,title,body,is_active,starts_at,ends_at,created_by,image_key,image_mime_type)
+       VALUES($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11) RETURNING id,title,body,is_active,starts_at,ends_at,created_at,image_mime_type`,
+      [req.user.university_id,req.body.facultyId || null,req.body.optionId || null,req.body.studyLevelId || null,title,body,req.body.startsAt || null,req.body.endsAt || null,req.user.id,imageKey,req.file?.mimetype || null]
     );
     return res.status(201).json({ announcement: result.rows[0] });
-  } catch { return res.status(400).json({ error: "announcement_create_failed", message: "Vérifiez les dates et les identifiants de ciblage." }); }
+  } catch (error) {
+    if (imageKey) await deletePrivateObject(imageKey).catch(() => {});
+    console.error("Création annonce échouée:", error?.message);
+    return res.status(400).json({ error: "announcement_create_failed", message: "Vérifiez le texte et le fichier image." });
+  }
+});
+app.patch("/api/v1/admin/announcements/:id", requireAuth, requireAdmin, announcementImageUpload.single("image"), async (req, res) => {
+  const id = Number(req.params.id), title = typeof req.body?.title === "string" ? req.body.title.trim() : "", body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+  if (!Number.isSafeInteger(id) || id < 1 || !title || title.length > 220 || !body || body.length > 20000) return res.status(400).json({ error: "invalid_announcement" });
+  if (req.file && (!allowedAnnouncementImages.has(req.file.mimetype) || !({ "image/jpeg": req.file.buffer[0] === 0xff && req.file.buffer[1] === 0xd8, "image/png": req.file.buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), "image/webp": req.file.buffer.subarray(0,4).toString() === "RIFF" && req.file.buffer.subarray(8,12).toString() === "WEBP" })[req.file.mimetype])) return res.status(400).json({ error: "invalid_announcement_image" });
+  try {
+    await ensureAnnouncementImageColumns();
+    const old = await pool.query("SELECT image_key FROM announcements WHERE id=$1 AND university_id=$2", [id,req.user.university_id]);
+    if (!old.rowCount) return res.status(404).json({ error: "announcement_not_found" });
+    const imageKey = req.file ? `announcements/${randomUUID()}` : old.rows[0].image_key;
+    if (req.file) await storePrivateObject(imageKey,req.file.buffer,req.file.mimetype);
+    await pool.query("UPDATE announcements SET title=$1,body=$2,image_key=$3,image_mime_type=COALESCE($4,image_mime_type) WHERE id=$5 AND university_id=$6", [title,body,imageKey,req.file?.mimetype || null,id,req.user.university_id]);
+    if (req.file && old.rows[0].image_key) await deletePrivateObject(old.rows[0].image_key).catch(() => {});
+    return res.json({ message: "Annonce modifiée." });
+  } catch (error) { console.error("Modification annonce:",error?.message); return res.status(503).json({ error: "announcement_update_failed" }); }
+});
+app.delete("/api/v1/admin/announcements/:id", requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id); if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_announcement_id" });
+  try {
+    await ensureAnnouncementImageColumns();
+    const found = await pool.query("DELETE FROM announcements WHERE id=$1 AND university_id=$2 RETURNING image_key", [id,req.user.university_id]);
+    if (!found.rowCount) return res.status(404).json({ error: "announcement_not_found" });
+    if (found.rows[0].image_key) await deletePrivateObject(found.rows[0].image_key).catch(() => {});
+    return res.status(204).end();
+  } catch { return res.status(503).json({ error: "announcement_delete_failed" }); }
+});
+app.get("/api/v1/announcements/:id/image", requireAuth, async (req, res) => {
+  const id = Number(req.params.id); if (!Number.isSafeInteger(id) || id < 1) return res.status(400).end();
+  try {
+    await ensureAnnouncementImageColumns();
+    const found = await pool.query("SELECT image_key,image_mime_type FROM announcements WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND (starts_at IS NULL OR starts_at<=NOW()) AND (ends_at IS NULL OR ends_at>NOW()) AND (faculty_id IS NULL OR faculty_id=$3) AND (option_id IS NULL OR option_id=$4) AND (study_level_id IS NULL OR study_level_id=$5)", [id,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]);
+    if (!found.rowCount || !found.rows[0].image_key) return res.status(404).end();
+    const file = await readPrivateObject(found.rows[0].image_key);
+    res.set("Content-Type",found.rows[0].image_mime_type || "application/octet-stream"); res.set("Cache-Control","private, no-store"); res.set("X-Content-Type-Options","nosniff");
+    return res.send(file);
+  } catch { return res.status(503).end(); }
 });
 
 app.post("/api/v1/feedback", requireAuth, async (req, res) => {
