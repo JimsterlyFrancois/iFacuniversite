@@ -480,7 +480,8 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, allowedDocumentTypes.has(file.mimetype))
 });
-const allowedAnnouncementImages = new Set(["image/jpeg","image/png","image/webp"]);\nfunction isAnnouncementOwner(req) { const ownerEmail=(process.env.IFAC_OWNER_EMAIL || "").trim().toLowerCase(); return Boolean(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail); }
+const allowedAnnouncementImages = new Set(["image/jpeg","image/png","image/webp"]);
+function isAnnouncementOwner(req) { const ownerEmail=(process.env.IFAC_OWNER_EMAIL || "").trim().toLowerCase(); return Boolean(ownerEmail && req.user?.email?.toLowerCase() === ownerEmail); }
 const announcementImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
