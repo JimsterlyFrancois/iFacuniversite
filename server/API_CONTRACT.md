@@ -45,7 +45,7 @@ Les routes marquées « prévues » ne sont pas encore opérationnelles.
 
 ## Gestion documentaire par classe — routes opérationnelles
 
-Toutes les routes ci-dessous utilisent la session Bearer vérifiée par le serveur. Les documents déposés par les étudiants, délégués ou professeurs sont enregistrés avec le statut `pending`. Seuls les documents approuvés sont visibles et téléchargeables par les membres de la classe.
+Toutes les routes ci-dessous utilisent la session Bearer vérifiée par le serveur. Les documents déposés par les étudiants et professeurs sont enregistrés avec le statut `pending`. Les délégués publient directement les PDF de leur classe avec le statut `approved`; les notifications de classe sont alors créées immédiatement. Les documents approuvés sont visibles et téléchargeables par les membres de la classe.
 
 | Méthode | Route | Accès | Règle principale |
 |---|---|---|---|
@@ -53,10 +53,13 @@ Toutes les routes ci-dessous utilisent la session Bearer vérifiée par le serve
 | GET | `/api/v1/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/students` | Admin | Liste des étudiants d'une classe |
 | POST | `/api/v1/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/delegates` | Admin | Désigner un étudiant comme délégué ; le déclencheur PostgreSQL bloque le quatrième |
 | DELETE | `/api/v1/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/delegates/:userId` | Admin | Retirer le rôle de délégué |
-| POST | `/api/v1/class-documents` | Session | Déposer un PDF de 25 Mo maximum en attente de validation |
+| POST | `/api/v1/class-documents` | Session / Délégué | Déposer un PDF de 25 Mo maximum; publication directe pour un délégué, validation requise pour les autres rôles |
 | GET | `/api/v1/class-documents` | Session | Lister les documents approuvés de sa classe |
 | GET | `/api/v1/admin/class-documents?status=pending` | Admin | Consulter la file de validation ; statuts possibles : pending, approved, rejected, all |
-| POST | `/api/v1/admin/class-documents/:id/review` | Admin | Approuver ou refuser un document ; motif obligatoire en cas de refus |
+| POST | `/api/v1/admin/class-documents/:id/review` | Admin | Approuver ou refuser un document étudiant/professeur; motif obligatoire en cas de refus |
+| POST | `/api/v1/delegate/messages` | Délégué | Envoyer un message privé à l'administration de son université |
+| GET | `/api/v1/admin/delegate-messages` | Admin | Consulter les messages des délégués de son université |
+| PATCH | `/api/v1/admin/delegate-messages/:id/read` | Admin | Marquer un message comme lu |
 | GET | `/api/v1/class-documents/:id/download` | Session / Admin | Télécharger après vérification de la classe ou des droits administrateur |
 | GET | `/api/v1/notifications` | Session | Lire les notifications personnelles |
 | PATCH | `/api/v1/notifications/:id/read` | Propriétaire | Marquer une notification comme lue |
