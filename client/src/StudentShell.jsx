@@ -219,6 +219,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
           method: "POST",
           headers: {
             "Tus-Resumable": "1.0.0",
+            apikey: signed.publishableKey,
             "Upload-Length": String(image.size),
             "Upload-Metadata": metadata,
             "x-signature": signed.token
@@ -236,6 +237,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
             method: "PATCH",
             headers: {
               "Tus-Resumable": "1.0.0",
+              apikey: signed.publishableKey,
               "Upload-Offset": String(offset),
               "Content-Type": "application/offset+octet-stream"
             },
