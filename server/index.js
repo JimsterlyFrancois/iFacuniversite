@@ -803,9 +803,18 @@ app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => 
     await client.query("BEGIN");
     const scope = await client.query(`SELECT 1 FROM faculties f LEFT JOIN options o ON o.id=$2 AND o.faculty_id=f.id LEFT JOIN study_levels l ON l.id=$3 AND l.option_id=o.id WHERE f.id=$1 AND f.university_id=$4 AND f.is_active=TRUE AND ($2::bigint IS NULL OR o.id IS NOT NULL) AND ($3::bigint IS NULL OR l.id IS NOT NULL)`, [ids[0],ids[1],ids[2],req.user.university_id]);
     if (!scope.rowCount) { await client.query("ROLLBACK"); return res.status(400).json({ error: "invalid_group_scope" }); }
+    const duplicate = await client.query(
+      `SELECT id FROM message_groups WHERE university_id=$1 AND group_type=$2
+       AND faculty_id IS NOT DISTINCT FROM $3::bigint
+       AND option_id IS NOT DISTINCT FROM $4::bigint
+       AND study_level_id IS NOT DISTINCT FROM $5::bigint AND is_active=TRUE LIMIT 1`,
+      [req.user.university_id,groupType,ids[0],ids[1],ids[2]]
+    );
+    if (duplicate.rowCount) { await client.query("ROLLBACK"); return res.status(409).json({error:"group_already_exists",message:"Un groupe existe déjà pour ce parcours."}); }
     const created = await client.query("INSERT INTO message_groups(university_id,faculty_id,option_id,study_level_id,group_type,is_active) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id,group_type,faculty_id,option_id,study_level_id", [req.user.university_id,ids[0],ids[1],ids[2],groupType]);
     const g = created.rows[0];
     await client.query(`INSERT INTO group_members(group_id,user_id) SELECT $1,id FROM users WHERE is_active=TRUE AND university_id=$2 AND role IN ('student','delegate') AND ($3::bigint IS NULL OR faculty_id=$3) AND ($4::bigint IS NULL OR option_id=$4) AND ($5::bigint IS NULL OR study_level_id=$5) ON CONFLICT DO NOTHING`, [g.id,req.user.university_id,g.faculty_id,g.option_id,g.study_level_id]);
+    await client.query("INSERT INTO group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING",[g.id,req.user.id]);
     await client.query("COMMIT");
     return res.status(201).json({ group:g, message:"Groupe créé et membres inscrits automatiquement." });
   } catch { await client.query("ROLLBACK").catch(() => {}); return res.status(503).json({ error:"group_create_failed" }); }
