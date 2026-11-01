@@ -112,6 +112,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, [active, selectedGroup, selectedClassKey]);
+  useEffect(() => () => { if (pdfViewer?.url) URL.revokeObjectURL(pdfViewer.url); }, [pdfViewer?.url]);
   useEffect(() => {
     let alive = true;
     (async () => {
