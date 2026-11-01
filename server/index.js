@@ -551,7 +551,7 @@ app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
     const file = await readPrivateObject(result.rows[0].file_key);
     res.set("Content-Type", result.rows[0].mime_type);
     res.set("Content-Length", String(file.length));
-    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}.pdf"`);
+    res.set("Content-Disposition", `inline; filename="ifac-document-${id}.pdf"`);
     res.set("X-Content-Type-Options", "nosniff");
     res.set("Cache-Control", "private, no-store");
     return res.send(file);
@@ -692,7 +692,7 @@ app.post("/api/v1/admin/announcements/upload-token", requireAuth, requireAdmin, 
       return res.status(503).json({ error: "announcement_upload_sign_failed", message: "Impossible de préparer le téléversement de l’image. Réessayez." });
     }
     const storageHost = new URL(storageUrl).hostname.replace(".supabase.co", ".storage.supabase.co");
-    const uploadEndpoint = `${new URL(storageUrl).protocol}//${storageHost}/storage/v1/upload/resumable`;
+    const uploadEndpoint = `${new URL(storageUrl).protocol}//${storageHost}/storage/v1/upload/resumable/sign`;
     return res.json({ imageKey, token: signedData.token, uploadEndpoint, bucket: announcementStorageBucket, publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || "" });
   } catch (error) {
     console.error("Préparation du téléversement échouée:", error?.message);
