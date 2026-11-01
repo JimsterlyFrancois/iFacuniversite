@@ -17,6 +17,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [dark, setDark] = useState(true);
   const [items, setItems] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [adminGroups, setAdminGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState("");
   const [messages, setMessages] = useState([]);
   const [noteTitle, setNoteTitle] = useState("");
@@ -53,6 +54,9 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [announcementTitle, setAnnouncementTitle] = useState("");
   const [announcementBody, setAnnouncementBody] = useState("");
   const [groupType, setGroupType] = useState("faculty");
+  const [groupFacultyId, setGroupFacultyId] = useState("");
+  const [groupOptionId, setGroupOptionId] = useState("");
+  const [groupLevelId, setGroupLevelId] = useState("");
   const [feedbackCategory, setFeedbackCategory] = useState("suggestion");
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const page = destinations.find(x => x.id === active);
@@ -96,10 +100,10 @@ export default function StudentShell({ token, user, onLogout, request }) {
       }
       if (active === "profile") {
         if (user.role === "admin") {
-          const [overview, subjectResult, catalog, docs, announcements] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token })]);
+          const [overview, subjectResult, catalog, docs, announcements, groupResult] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token }), request("/admin/groups", { token })]);
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
-          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers));
+          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers)); setAdminGroups(groupResult.data || []);
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
@@ -244,8 +248,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
   }
   async function createGroup(e) {
     e.preventDefault(); setBusy(true); setFeedback("");
-    const body = { groupType, facultyId: user.facultyId, optionId: groupType === "faculty" ? null : user.optionId, studyLevelId: groupType === "class" ? user.studyLevelId : null };
-    try { await request("/admin/groups", { token, method: "POST", body: JSON.stringify(body) }); setFeedback("Groupe créé et membres correspondants ajoutés."); await load(); }
+    const body = { groupType, facultyId: groupFacultyId, optionId: groupType === "faculty" ? null : groupOptionId, studyLevelId: groupType === "class" ? groupLevelId : null };
+    try { const result = await request("/admin/groups", { token, method: "POST", body: JSON.stringify(body) }); setFeedback(result.message || "Groupe créé et membres correspondants ajoutés."); await load(); }
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   async function submitFeedback(e) {
@@ -345,10 +349,14 @@ export default function StudentShell({ token, user, onLogout, request }) {
 
               <form className="student-card note-form profile-tool-card" onSubmit={createGroup}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">GROUPE</span><div><h3>Groupes de messagerie</h3><p>Créer un groupe selon le parcours.</p></div></div>
-                <label className="field">Portée du groupe<select value={groupType} onChange={e => setGroupType(e.target.value)}><option value="faculty">Toute ma faculté</option><option value="option">Mon option</option><option value="class">Mon niveau</option></select></label>
-                <p className="profile-helper">Les étudiants correspondant au profil sélectionné seront ajoutés automatiquement.</p>
-                <button className="theme-button" disabled={busy}>Créer le groupe</button>
+                <label className="field">Portée du groupe<select value={groupType} onChange={e => setGroupType(e.target.value)}><option value="faculty">Toute une faculté</option><option value="option">Une option</option><option value="class">Un niveau / une classe</option></select></label>
+                <label className="field">Faculté<select required value={groupFacultyId} onChange={e => { setGroupFacultyId(e.target.value); setGroupOptionId(""); setGroupLevelId(""); }}><option value="">Choisir une faculté</option>{adminCatalog.faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+                {groupType !== "faculty" && <label className="field">Option<select required value={groupOptionId} onChange={e => { setGroupOptionId(e.target.value); setGroupLevelId(""); }} disabled={!groupFacultyId}><option value="">Choisir une option</option>{adminCatalog.options.filter(o => String(o.faculty_id) === String(groupFacultyId)).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>}
+                {groupType === "class" && <label className="field">Niveau<select required value={groupLevelId} onChange={e => setGroupLevelId(e.target.value)} disabled={!groupOptionId}><option value="">Choisir un niveau</option>{adminCatalog.levels.filter(l => String(l.option_id) === String(groupOptionId)).map(l => <option key={l.id} value={l.id}>{l.label}</option>)}</select></label>}
+                <p className="profile-helper">Les étudiants et délégués correspondant au parcours seront ajoutés automatiquement. Les nouveaux inscrits rejoindront aussi les groupes correspondant à leur profil.</p>
+                <button className="theme-button" disabled={busy || !groupFacultyId || (groupType !== "faculty" && !groupOptionId) || (groupType === "class" && !groupLevelId)}>Créer le groupe</button>
               </form>
+              <section className="student-card student-data-list profile-tool-card"><div className="profile-tool-heading"><span className="profile-tool-icon">CHAT</span><div><h3>Groupes créés</h3><p>Groupes de toutes les facultés, options et classes de l’université.</p></div></div>{adminGroups.length===0?<p>Aucun groupe créé pour le moment.</p>:adminGroups.map(g=><article className="student-data-item" key={g.id}><strong>{g.faculty_name || "Faculté"}{g.option_name ? " · "+g.option_name : ""}{g.study_level_label ? " · "+g.study_level_label : ""}</strong><p>{g.group_type==="faculty"?"Groupe de faculté":g.group_type==="option"?"Groupe d’option":"Groupe de niveau / classe"} · {g.member_count} membre(s)</p></article>)}</section>
             </div>
           </section>}
 
