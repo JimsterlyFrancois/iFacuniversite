@@ -3,6 +3,11 @@ import multer from "multer";
 import { randomUUID } from "node:crypto";
 
 const CLASS_BUCKET = "class-documents";
+let delegateMessagesTableReady;
+async function ensureDelegateMessagesTable(pool) {
+  if (!delegateMessagesTableReady) delegateMessagesTableReady = pool.query(`CREATE TABLE IF NOT EXISTS delegate_messages (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, sender_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, university_id BIGINT NOT NULL REFERENCES universities(id), faculty_id BIGINT NOT NULL REFERENCES faculties(id), option_id BIGINT NOT NULL REFERENCES options(id), study_level_id BIGINT NOT NULL REFERENCES study_levels(id), subject VARCHAR(220) NOT NULL, body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 5000), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), read_at TIMESTAMPTZ)`).catch(error => { delegateMessagesTableReady = null; throw error; });
+  await delegateMessagesTableReady;
+}
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
@@ -105,11 +110,18 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       try {
         const result = await pool.query(
           "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status) " +
-          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,'pending') " +
+          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,$14) " +
           "RETURNING id,title,course,professor,description,file_name,status,created_at",
-          [subject.rows[0]?.id || null,title.trim(),fileKey,req.file.size,req.user.id,university_id,faculty_id,option_id,study_level_id,course.trim(),professor.trim() || null,description.trim() || null,req.file.originalname.slice(0,255)]
+          [subject.rows[0]?.id || null,title.trim(),fileKey,req.file.size,req.user.id,university_id,faculty_id,option_id,study_level_id,course.trim(),professor.trim() || null,description.trim() || null,req.file.originalname.slice(0,255),req.user.role === "delegate" ? "approved" : "pending"]
         );
-        return res.status(201).json({ document: result.rows[0], message: "Document reçu. Il sera visible dans la classe après validation." });
+        if (req.user.role === "delegate") {
+          await pool.query(
+            "INSERT INTO notifications (user_id,document_id) SELECT u.id,$1 FROM users u WHERE u.is_active=TRUE AND u.university_id=$2 AND u.faculty_id=$3 AND u.option_id=$4 AND u.study_level_id=$5 AND u.id<>$6 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=u.id AND n.document_id=$1)",
+            [result.rows[0].id,university_id,faculty_id,option_id,study_level_id,req.user.id]
+          );
+        }
+        const direct = req.user.role === "delegate";
+        return res.status(201).json({ document: result.rows[0], message: direct ? "Document publié directement dans la bibliothèque de votre classe." : "Document reçu. Il sera visible dans la classe après validation." });
       } catch (error) {
         await deletePrivateObject(fileKey, CLASS_BUCKET).catch(() => {});
         throw error;
@@ -214,6 +226,51 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     } catch (error) {
       console.error("Téléchargement document de classe échoué:", error?.message);
       return res.status(503).json({ error: "class_document_download_failed" });
+    }
+  });
+
+
+  router.post("/delegate/messages", requireAuth, async (req, res) => {
+    if (req.user.role !== "delegate") return res.status(403).json({ error: "delegate_required" });
+    const subject = typeof req.body?.subject === "string" ? req.body.subject.trim() : "";
+    const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+    if (!subject || subject.length > 220 || !body || body.length > 5000) return res.status(400).json({ error: "invalid_delegate_message" });
+    try {
+      await ensureDelegateMessagesTable(pool);
+      const result = await pool.query(
+        "INSERT INTO delegate_messages(sender_id,university_id,faculty_id,option_id,study_level_id,subject,body) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,subject,body,created_at",
+        [req.user.id,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,subject,body]
+      );
+      return res.status(201).json({ message: result.rows[0], notice: "Message transmis à l’administration iFac." });
+    } catch (error) {
+      console.error("Message délégué indisponible:", error?.message);
+      return res.status(503).json({ error: "delegate_message_send_failed" });
+    }
+  });
+
+  router.get("/admin/delegate-messages", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      await ensureDelegateMessagesTable(pool);
+      const result = await pool.query(
+        "SELECT dm.id,dm.subject,dm.body,dm.created_at,dm.read_at,u.id AS sender_id,u.first_name,u.last_name,u.email,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label FROM delegate_messages dm JOIN users u ON u.id=dm.sender_id LEFT JOIN faculties f ON f.id=dm.faculty_id LEFT JOIN options o ON o.id=dm.option_id LEFT JOIN study_levels l ON l.id=dm.study_level_id WHERE dm.university_id=$1 ORDER BY dm.created_at DESC LIMIT 300",
+        [req.user.university_id]
+      );
+      return res.json({ data: result.rows });
+    } catch (error) {
+      console.error("Boîte des délégués indisponible:", error?.message);
+      return res.status(503).json({ error: "delegate_messages_unavailable" });
+    }
+  });
+
+  router.patch("/admin/delegate-messages/:id/read", requireAuth, requireAdmin, async (req, res) => {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: "invalid_message_id" });
+    try {
+      await ensureDelegateMessagesTable(pool);
+      const result = await pool.query("UPDATE delegate_messages SET read_at=COALESCE(read_at,NOW()) WHERE id=$1 AND university_id=$2 RETURNING id,read_at", [id,req.user.university_id]);
+      return result.rowCount ? res.json({ message: result.rows[0] }) : res.status(404).json({ error: "delegate_message_not_found" });
+    } catch {
+      return res.status(503).json({ error: "delegate_message_update_failed" });
     }
   });
 
