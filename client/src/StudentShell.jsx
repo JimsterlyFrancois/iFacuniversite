@@ -34,6 +34,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [pendingClassDocuments, setPendingClassDocuments] = useState([]);
   const [adminDocuments, setAdminDocuments] = useState([]);
   const [adminAnnouncements, setAdminAnnouncements] = useState([]);
+  const [canUploadAnnouncementFlyer, setCanUploadAnnouncementFlyer] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [unreadDelegateCount, setUnreadDelegateCount] = useState(0);
   const [delegateMessages, setDelegateMessages] = useState([]);
@@ -62,7 +63,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
       if (active === "home") { const r = await request("/documents", { token }); setItems(r.data || []); }
       if (active === "class") {
         const r = await request("/announcements", { token });
-        if (user.role === "admin") { const adminResult = await request("/admin/announcements", { token }); setAdminAnnouncements(adminResult.data || []); }
+        if (user.role === "admin") { const adminResult = await request("/admin/announcements", { token }); setAdminAnnouncements(adminResult.data || []); setCanUploadAnnouncementFlyer(Boolean(adminResult.canUploadFlyers)); }
         const decorated = await Promise.all((r.data || []).map(async item => {
           if (!item.has_image) return item;
           try { const response = await fetch(`/api/v1/announcements/${item.id}/image`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return item; return { ...item, imageUrl: URL.createObjectURL(await response.blob()) }; } catch { return item; }
@@ -98,7 +99,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
           const [overview, subjectResult, catalog, docs, announcements] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token })]);
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
-          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []);
+          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers));
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
@@ -338,7 +339,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
                 <div className="profile-tool-heading"><span className="profile-tool-icon">INFO</span><div><h3>Communication</h3><p>Publier une annonce générale.</p></div></div>
                 <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} name="title" maxLength="220" required placeholder="Titre clair et concis" /></label>
                 <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} name="body" maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
-                <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label><p className="profile-helper">PNG, JPG ou WebP · 8 Mo maximum. Ce réglage est réservé à l’administrateur.</p>
+                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
                 <button className="theme-button" disabled={busy}>Publier l’annonce</button>
               </form>
 
