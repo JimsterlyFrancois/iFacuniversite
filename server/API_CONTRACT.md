@@ -56,10 +56,10 @@ Toutes les routes ci-dessous utilisent la session Bearer vérifiée par le serve
 | POST | `/api/v1/class-documents` | Session / Délégué | Déposer un PDF de 25 Mo maximum; publication directe pour un délégué, validation requise pour les autres rôles |
 | GET | `/api/v1/class-documents` | Session | Lister les documents approuvés de sa classe |
 | GET | `/api/v1/admin/class-documents?status=pending` | Admin | Consulter la file de validation ; statuts possibles : pending, approved, rejected, all |
-| POST | `/api/v1/admin/class-documents/:id/review` | Admin | Approuver ou refuser un document étudiant/professeur; motif obligatoire en cas de refus |
+| POST | `/api/v1/admin/class-documents/:id/review` | Admin | Approuver ou refuser un document étudiant/professeur; motif obligatoire en cas de refus |\n| PATCH/DELETE | `/api/v1/admin/class-documents/:id` | Admin | Modifier les métadonnées ou supprimer un document de classe |
 | POST | `/api/v1/delegate/messages` | Délégué | Envoyer un message privé à l'administration de son université |
 | GET | `/api/v1/admin/delegate-messages` | Admin | Consulter les messages des délégués de son université |
-| PATCH | `/api/v1/admin/delegate-messages/:id/read` | Admin | Marquer un message comme lu |
+| PATCH | `/api/v1/admin/delegate-messages/:id/read` | Admin | Marquer un message comme lu |\n| PATCH/DELETE | `/api/v1/admin/delegate-messages/:id` | Admin | Modifier ou supprimer un message reçu |
 | GET | `/api/v1/class-documents/:id/download` | Session / Admin | Télécharger après vérification de la classe ou des droits administrateur |
 | GET | `/api/v1/notifications` | Session | Lire les notifications personnelles |
 | PATCH | `/api/v1/notifications/:id/read` | Propriétaire | Marquer une notification comme lue |
@@ -88,3 +88,11 @@ Le premier schéma PostgreSQL se trouve dans `server/db/schema.sql`. Il couvre l
 - Un jeton e-mail expiré ou déjà utilisé est rejeté.
 - Un compte non vérifié ne peut pas ouvrir une session.
 - Les documents ne sont jamais servis sans autorisation.
+
+
+## Contrôle administrateur des contenus
+- L'administrateur peut modifier ou supprimer les documents officiels de sa propre université.
+- L'administrateur peut modifier ou supprimer les documents partagés dans les classes de son université.
+- L'administrateur peut modifier ou supprimer les messages de groupe de son université et les messages privés envoyés par les délégués.
+- Les annonces peuvent être créées, modifiées et supprimées par l'administrateur. Un flyer JPG, PNG ou WebP (8 Mo maximum) peut être joint à une annonce. Le fichier reste dans le stockage privé et son téléchargement vérifie la session et le ciblage de l'annonce.
+- Les compteurs de navigation affichent les notifications non lues et les messages de délégués non lus; à partir de 10, l'étiquette devient « 10+ ».

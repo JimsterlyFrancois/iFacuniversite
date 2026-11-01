@@ -32,7 +32,13 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [classStudents, setClassStudents] = useState([]);
   const [classDocuments, setClassDocuments] = useState([]);
   const [pendingClassDocuments, setPendingClassDocuments] = useState([]);
+  const [adminDocuments, setAdminDocuments] = useState([]);
+  const [adminAnnouncements, setAdminAnnouncements] = useState([]);
+  const [canUploadAnnouncementFlyer, setCanUploadAnnouncementFlyer] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [unreadDelegateCount, setUnreadDelegateCount] = useState(0);
   const [delegateMessages, setDelegateMessages] = useState([]);
+  const [adminGroupMessages, setAdminGroupMessages] = useState([]);
   const [delegateMessageSubject, setDelegateMessageSubject] = useState("");
   const [delegateMessageBody, setDelegateMessageBody] = useState("");
   const [notifications, setNotifications] = useState([]);
@@ -55,14 +61,22 @@ export default function StudentShell({ token, user, onLogout, request }) {
     setBusy(true); setFeedback("");
     try {
       if (active === "home") { const r = await request("/documents", { token }); setItems(r.data || []); }
-      if (active === "class") { const r = await request("/announcements", { token }); setItems(r.data || []); }
+      if (active === "class") {
+        const r = await request("/announcements", { token });
+        if (user.role === "admin") { const adminResult = await request("/admin/announcements", { token }); setAdminAnnouncements(adminResult.data || []); setCanUploadAnnouncementFlyer(Boolean(adminResult.canUploadFlyers)); }
+        const decorated = await Promise.all((r.data || []).map(async item => {
+          if (!item.has_image) return item;
+          try { const response = await fetch(`/api/v1/announcements/${item.id}/image`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return item; return { ...item, imageUrl: URL.createObjectURL(await response.blob()) }; } catch { return item; }
+        }));
+        setItems(decorated);
+      }
       if (active === "notes") { const r = await request("/notes", { token }); setItems(r.data || []); }
       if (active === "classDocs") { const r = await request("/class-documents", { token }); setClassDocuments(r.data || []); }
-      if (active === "notifications") { const r = await request("/notifications", { token }); setNotifications(r.data || []); }
-      if (active === "adminMessages" && user.role === "admin") { const r = await request("/admin/delegate-messages", { token }); setDelegateMessages(r.data || []); }
+      if (active === "notifications") { const r = await request("/notifications", { token }); setNotifications(r.data || []); setUnreadNotificationCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); }
+      if (active === "adminMessages" && user.role === "admin") { const [r,allMessages] = await Promise.all([request("/admin/delegate-messages", { token }),request("/admin/messages", { token })]); setDelegateMessages(r.data || []); setAdminGroupMessages(allMessages.data || []); setUnreadDelegateCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); }
       if (active === "classAdmin" && user.role === "admin") {
         const [classesResult, pendingResult] = await Promise.all([
-          request("/admin/classes", { token }), request("/admin/class-documents?status=pending", { token })
+          request("/admin/classes", { token }), request("/admin/class-documents?status=all", { token })
         ]);
         setClassList(classesResult.data || []);
         setPendingClassDocuments(pendingResult.data || []);
@@ -82,14 +96,24 @@ export default function StudentShell({ token, user, onLogout, request }) {
       }
       if (active === "profile") {
         if (user.role === "admin") {
-          const [overview, subjectResult, catalog] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token })]);
+          const [overview, subjectResult, catalog, docs, announcements] = await Promise.all([request("/admin/overview", { token }), request("/admin/subjects", { token }), request("/admin/catalog", { token }), request("/admin/documents", { token }), request("/admin/announcements", { token })]);
           setAdminStats(overview.data); setSubjects(subjectResult.data || []);
           setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] });
+          setAdminDocuments(docs.data || []); setAdminAnnouncements(announcements.data || []); setCanUploadAnnouncementFlyer(Boolean(announcements.canUploadFlyers));
         }
       }
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, [active, selectedGroup, selectedClassKey]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try { const r = await request("/notifications", { token }); if (alive) setUnreadNotificationCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); } catch {}
+      if (user.role === "admin") { try { const r = await request("/admin/delegate-messages", { token }); if (alive) setUnreadDelegateCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); } catch {} }
+    })();
+    return () => { alive = false; };
+  }, [token, user.role]);
+  useEffect(() => () => { items.forEach(item => { if (item.imageUrl) URL.revokeObjectURL(item.imageUrl); }); }, [items]);
   async function saveNote(e) {
     e.preventDefault(); setBusy(true); setFeedback("");
     try { await request("/notes", { token, method: "POST", body: JSON.stringify({ title: noteTitle, body: noteBody }) }); setNoteTitle(""); setNoteBody(""); await load(); setFeedback("Note enregistrée."); }
@@ -117,7 +141,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function markDelegateMessageRead(id) {
-    try { await request(`/admin/delegate-messages/${id}/read`, { token, method: "PATCH" }); setDelegateMessages(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); }
+    try { await request(`/admin/delegate-messages/${id}/read`, { token, method: "PATCH" }); setDelegateMessages(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); setUnreadDelegateCount(n=>Math.max(0,n-1)); }
     catch (error) { setFeedback(error.message); }
   }
   async function assignDelegate(userId) {
@@ -141,7 +165,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
   async function markNotificationRead(id) {
-    try { await request(`/notifications/${id}/read`, { token, method: "PATCH" }); setNotifications(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); }
+    try { await request(`/notifications/${id}/read`, { token, method: "PATCH" }); setNotifications(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); setUnreadNotificationCount(n=>Math.max(0,n-1)); }
     catch (error) { setFeedback(error.message); }
   }
   async function downloadClassDocument(id, name) {
@@ -163,9 +187,60 @@ export default function StudentShell({ token, user, onLogout, request }) {
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   async function createAnnouncement(e) {
-    e.preventDefault(); setBusy(true); setFeedback("");
-    try { await request("/admin/announcements", { token, method: "POST", body: JSON.stringify({ title: announcementTitle, body: announcementBody }) }); setAnnouncementTitle(""); setAnnouncementBody(""); setFeedback("Annonce publiée."); await load(); }
-    catch (e) { setFeedback(e.message); } finally { setBusy(false); }
+    e.preventDefault(); const formElement = e.currentTarget; const form = new FormData(formElement); setBusy(true); setFeedback("");
+    try { await request("/admin/announcements", { token, method: "POST", body: form }); setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load(); }
+    catch (error) { setFeedback(error.message); } finally { setBusy(false); }
+  }
+  async function editAnnouncement(item) {
+    const title=window.prompt("Modifier le titre :",item.title); if(title===null) return;
+    const body=window.prompt("Modifier le texte :",item.body); if(body===null) return;
+    const form=new FormData(); form.set("title",title); form.set("body",body);
+    try { await request(`/admin/announcements/${item.id}`,{token,method:"PATCH",body:form}); setFeedback("Annonce modifiée."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteAnnouncement(id) {
+    if(!window.confirm("Supprimer cette annonce et son visuel ?")) return;
+    try { await request(`/admin/announcements/${id}`,{token,method:"DELETE"}); setAdminAnnouncements(rows=>rows.filter(x=>x.id!==id)); setFeedback("Annonce supprimée."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editAdminDocument(item) {
+    const title=window.prompt("Nouveau titre :",item.title); if(title===null||!title.trim()) return;
+    try { await request(`/admin/documents/${item.id}`,{token,method:"PATCH",body:JSON.stringify({title,subjectId:item.subject_id})}); setFeedback("Document modifié."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editClassDocument(item) {
+    const title=window.prompt("Titre :",item.title); if(title===null) return;
+    const course=window.prompt("Cours / matière :",item.course||""); if(course===null) return;
+    const professor=window.prompt("Professeur :",item.professor||""); if(professor===null) return;
+    const description=window.prompt("Description :",item.description||""); if(description===null) return;
+    try { await request(`/admin/class-documents/${item.id}`,{token,method:"PATCH",body:JSON.stringify({title,course,professor,description})}); setFeedback("Document de classe modifié."); await load(); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteClassDocument(id) {
+    if(!window.confirm("Supprimer ce document de classe ?")) return;
+    try { await request(`/admin/class-documents/${id}`,{token,method:"DELETE"}); setPendingClassDocuments(rows=>rows.filter(x=>x.id!==id)); setFeedback("Document supprimé."); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editDelegateMessage(item) {
+    const subject=window.prompt("Objet :",item.subject); if(subject===null) return;
+    const body=window.prompt("Modifier le message :",item.body); if(body===null) return;
+    try { await request(`/admin/delegate-messages/${item.id}`,{token,method:"PATCH",body:JSON.stringify({subject,body})}); setDelegateMessages(rows=>rows.map(x=>x.id===item.id?{...x,subject,body}:x)); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteDelegateMessage(id) {
+    if(!window.confirm("Supprimer ce message ?")) return;
+    try { await request(`/admin/delegate-messages/${id}`,{token,method:"DELETE"}); setDelegateMessages(rows=>rows.filter(x=>x.id!==id)); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function editGroupMessage(item) {
+    const body=window.prompt("Modifier le message :",item.body); if(body===null||!body.trim()) return;
+    try { await request(`/admin/messages/${item.id}`,{token,method:"PATCH",body:JSON.stringify({body})}); setMessages(rows=>rows.map(x=>x.id===item.id?{...x,body}:x)); setAdminGroupMessages(rows=>rows.map(x=>x.id===item.id?{...x,body}:x)); }
+    catch(error){setFeedback(error.message);}
+  }
+  async function deleteGroupMessage(id) {
+    if(!window.confirm("Supprimer ce message ?")) return;
+    try { await request(`/admin/messages/${id}`,{token,method:"DELETE"}); setMessages(rows=>rows.filter(x=>x.id!==id)); setAdminGroupMessages(rows=>rows.filter(x=>x.id!==id)); }
+    catch(error){setFeedback(error.message);}
   }
   async function createGroup(e) {
     e.preventDefault(); setBusy(true); setFeedback("");
@@ -199,9 +274,11 @@ export default function StudentShell({ token, user, onLogout, request }) {
 
   const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Partagez les supports de cours et consultez les documents validés."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
+  const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
+  const badgeText = count => count >= 10 ? "10+" : String(count);
   return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
-    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span></button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
+    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
         {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
@@ -248,6 +325,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
                 <button className="theme-button" disabled={busy}>Ajouter le document</button>
               </form>
 
+              <section className="student-card note-form profile-tool-card"><div className="profile-tool-heading"><span className="profile-tool-icon">DOC</span><div><h3>Modifier les documents</h3><p>Renommer ou retirer les documents de la bibliothèque officielle.</p></div></div>{adminDocuments.length===0?<p>Aucun document enregistré.</p>:adminDocuments.map(item=><article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.subject}</p><div className="admin-review-actions"><button type="button" className="theme-button" onClick={()=>editAdminDocument(item)}>Modifier</button><button type="button" className="theme-button" onClick={()=>deleteDocument(item.id)}>Supprimer</button></div></article>)}</section>
               <form className="student-card note-form profile-tool-card" onSubmit={createSubject}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">MAT</span><div><h3>Catalogue des matières</h3><p>Créer une matière pour un parcours.</p></div></div>
                 <label className="field">Faculté<select required value={adminFacultyId} onChange={e => { setAdminFacultyId(e.target.value); setAdminOptionId(""); setAdminLevelId(""); }}><option value="">Choisir la faculté</option>{adminCatalog.faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
@@ -259,8 +337,9 @@ export default function StudentShell({ token, user, onLogout, request }) {
 
               <form className="student-card note-form profile-tool-card" onSubmit={createAnnouncement}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">INFO</span><div><h3>Communication</h3><p>Publier une annonce générale.</p></div></div>
-                <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} maxLength="220" required placeholder="Titre clair et concis" /></label>
-                <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
+                <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} name="title" maxLength="220" required placeholder="Titre clair et concis" /></label>
+                <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} name="body" maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
+                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
                 <button className="theme-button" disabled={busy}>Publier l’annonce</button>
               </form>
 
@@ -282,17 +361,19 @@ export default function StudentShell({ token, user, onLogout, request }) {
             <button className="theme-button" disabled={busy}>Envoyer mon avis</button>
           </form>
         </div>}
+        {active === "class" && user.role === "admin" && <section className="student-card student-data-list"><h2>Gérer les annonces</h2>{adminAnnouncements.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>{item.has_image ? "Visuel joint" : "Sans visuel"}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => editAnnouncement(item)}>Modifier</button><button className="theme-button" onClick={() => deleteAnnouncement(item.id)}>Supprimer</button></div></article>)}</section>}
         {active === "classDocs" && <><form className="student-card note-form" onSubmit={uploadClassDocument}><h2>Partager un document avec votre classe</h2><label className="field">Titre du document<input value={classDocTitle} onChange={e => setClassDocTitle(e.target.value)} name="title" maxLength="220" required /></label><label className="field">Cours / matière<input value={classDocCourse} onChange={e => setClassDocCourse(e.target.value)} name="course" maxLength="180" required /></label><label className="field">Professeur<input value={classDocProfessor} onChange={e => setClassDocProfessor(e.target.value)} name="professor" maxLength="180" /></label><label className="field">Description<textarea value={classDocDescription} onChange={e => setClassDocDescription(e.target.value)} name="description" maxLength="3000" rows="3" /></label><label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label><p>PDF uniquement, 25 Mo maximum. {user.role === "delegate" ? "En tant que délégué, votre document sera publié directement pour votre classe." : "Le document sera visible après validation de l’administration."}</p><button className="theme-button" disabled={busy}>{user.role === "delegate" ? "Publier pour ma classe" : "Envoyer pour validation"}</button></form><section className="student-card student-data-list"><h2>Documents approuvés pour ma classe</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section>{user.role === "delegate" && <form className="student-card note-form" onSubmit={sendDelegateMessage}><h2>Contacter l’administration iFac</h2><label className="field">Objet<input value={delegateMessageSubject} onChange={e => setDelegateMessageSubject(e.target.value)} maxLength="220" required placeholder="Objet de votre message" /></label><label className="field">Votre message<textarea value={delegateMessageBody} onChange={e => setDelegateMessageBody(e.target.value)} maxLength="5000" rows="4" required placeholder="Écrivez à l’équipe administrative…" /></label><button className="theme-button" disabled={busy}>Envoyer à l’administration</button></form>}</>}
-        {active === "adminMessages" && user.role === "admin" && <section className="student-card student-data-list"><h2>Boîte de réception des délégués</h2>{delegateMessages.length === 0 ? <p>Aucun message reçu des délégués.</p> : delegateMessages.map(m => <article className="student-data-item" key={m.id}><strong>{m.subject}</strong><p>{m.body}</p><small>{m.first_name} {m.last_name} · {m.email} · {m.faculty_name || "Faculté"} · {m.option_name || "Option"} · {m.study_level_label || "Niveau"}</small><small>{new Date(m.created_at).toLocaleString()} · {m.read_at ? "Lu" : "Non lu"}</small>{!m.read_at && <button className="theme-button" onClick={() => markDelegateMessageRead(m.id)}>Marquer comme lu</button>}</article>)}</section>}
+        {active === "adminMessages" && user.role === "admin" && <section className="student-card student-data-list"><h2>Boîte de réception des délégués</h2>{delegateMessages.length === 0 ? <p>Aucun message reçu des délégués.</p> : delegateMessages.map(m => <article className="student-data-item" key={m.id}><strong>{m.subject}</strong><p>{m.body}</p><small>{m.first_name} {m.last_name} · {m.email} · {m.faculty_name || "Faculté"} · {m.option_name || "Option"} · {m.study_level_label || "Niveau"}</small><small>{new Date(m.created_at).toLocaleString()} · {m.read_at ? "Lu" : "Non lu"}</small>{!m.read_at && <button className="theme-button" onClick={() => markDelegateMessageRead(m.id)}>Marquer comme lu</button>}<button className="theme-button" onClick={() => editDelegateMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteDelegateMessage(m.id)}>Supprimer</button></article>)}</section>}
+        {active === "adminMessages" && user.role === "admin" && <section className="student-card student-data-list"><h2>Messages des groupes</h2>{adminGroupMessages.length===0?<p>Aucun message de groupe.</p>:adminGroupMessages.map(m=><article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name} · Groupe {m.group_id}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small><div className="admin-review-actions"><button className="theme-button" onClick={()=>editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={()=>deleteGroupMessage(m.id)}>Supprimer</button></div></article>)}</section>}
         {active === "notifications" && <section className="student-card student-data-list"><h2>Mes notifications</h2>{notifications.length === 0 ? <p>Aucune notification pour le moment.</p> : notifications.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>Un document a été approuvé pour le cours : {item.course}</p><small>{new Date(item.created_at).toLocaleString()} · {item.read_at ? "Lue" : "Non lue"}</small>{!item.read_at && <button className="theme-button" onClick={() => markNotificationRead(item.id)}>Marquer comme lue</button>}</article>)}</section>}
-        {active === "classAdmin" && user.role === "admin" && <><section className="student-card note-form"><h2>Classes de l’université</h2><label className="field">Sélectionner une classe<select value={selectedClassKey} onChange={e => setSelectedClassKey(e.target.value)}><option value="">Choisir une classe</option>{classList.map(c => { const key = [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":"); return <option key={key} value={key}>{c.faculty_name} · {c.option_name} · {c.study_level_label}</option>; })}</select></label>{classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey) && <p>Étudiants : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).student_count} · Délégués : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).delegate_count} / 3</p>}</section><section className="student-card student-data-list"><h2>Étudiants et délégués</h2>{classStudents.length === 0 ? <p>Aucun étudiant trouvé pour cette classe.</p> : classStudents.map(student => <article className="student-data-item" key={student.id}><strong>{student.first_name} {student.last_name}</strong><p>{student.email} · {student.role}</p>{student.role === "delegate" ? <button className="theme-button" onClick={() => removeDelegate(student.id)} disabled={busy}>Retirer le rôle</button> : <button className="theme-button" onClick={() => assignDelegate(student.id)} disabled={busy || (classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey)?.delegate_count || 0) >= 3}>Désigner délégué</button>}</article>)}</section><section className="student-card student-data-list"><h2>Documents en attente de validation</h2>{pendingClassDocuments.length === 0 ? <p>Aucun document en attente.</p> : pendingClassDocuments.map(doc => <article className="student-data-item" key={doc.id}><strong>{doc.title}</strong><p>{doc.course} · {doc.uploader_first_name} {doc.uploader_last_name}</p><small>{doc.faculty_name} · {doc.option_name} · {doc.study_level_label}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => downloadClassDocument(doc.id,doc.file_name)}>Consulter le PDF</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"approved")} disabled={busy}>Approuver</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"rejected")} disabled={busy}>Refuser</button></div></article>)}</section></>}
+        {active === "classAdmin" && user.role === "admin" && <><section className="student-card note-form"><h2>Classes de l’université</h2><label className="field">Sélectionner une classe<select value={selectedClassKey} onChange={e => setSelectedClassKey(e.target.value)}><option value="">Choisir une classe</option>{classList.map(c => { const key = [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":"); return <option key={key} value={key}>{c.faculty_name} · {c.option_name} · {c.study_level_label}</option>; })}</select></label>{classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey) && <p>Étudiants : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).student_count} · Délégués : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).delegate_count} / 3</p>}</section><section className="student-card student-data-list"><h2>Étudiants et délégués</h2>{classStudents.length === 0 ? <p>Aucun étudiant trouvé pour cette classe.</p> : classStudents.map(student => <article className="student-data-item" key={student.id}><strong>{student.first_name} {student.last_name}</strong><p>{student.email} · {student.role}</p>{student.role === "delegate" ? <button className="theme-button" onClick={() => removeDelegate(student.id)} disabled={busy}>Retirer le rôle</button> : <button className="theme-button" onClick={() => assignDelegate(student.id)} disabled={busy || (classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey)?.delegate_count || 0) >= 3}>Désigner délégué</button>}</article>)}</section><section className="student-card student-data-list"><h2>Gestion des documents de classe</h2>{pendingClassDocuments.length === 0 ? <p>Aucun document publié pour le moment.</p> : pendingClassDocuments.map(doc => <article className="student-data-item" key={doc.id}><strong>{doc.title}</strong><p>{doc.course} · {doc.uploader_first_name} {doc.uploader_last_name}</p><small>{doc.faculty_name} · {doc.option_name} · {doc.study_level_label} · Statut : {doc.status === "pending" ? "À examiner" : doc.status === "approved" ? "Publié" : "Refusé"}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => downloadClassDocument(doc.id,doc.file_name)}>Consulter le PDF</button><button className="theme-button" onClick={() => editClassDocument(doc)} disabled={busy}>Modifier</button>{doc.status === "pending" && <><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"approved")} disabled={busy}>Publier</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"rejected")} disabled={busy}>Refuser</button></>}<button className="theme-button" onClick={() => deleteClassDocument(doc.id)} disabled={busy}>Supprimer</button></div></article>)}</section></>}
         {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
-        {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>Groupe {g.id} · {g.group_type}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small></article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
+        {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>Groupe {g.id} · {g.group_type}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small>{user.role === "admin" && <div className="admin-review-actions"><button className="theme-button" onClick={() => editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteGroupMessage(m.id)}>Supprimer</button></div>}</article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
         {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
-        {active !== "profile" && active !== "notes" && active !== "messages" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
-    <nav className="student-mobile-nav" aria-label="Navigation mobile">{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}><span className={"mobile-nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.short}</span></button>)}</nav>
+    <nav className="student-mobile-nav" aria-label="Navigation mobile">{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}><span className={"mobile-nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.short}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}</nav>
   </main>;
 }
