@@ -96,3 +96,13 @@ Le premier schéma PostgreSQL se trouve dans `server/db/schema.sql`. Il couvre l
 - L'administrateur peut modifier ou supprimer les messages de groupe de son université et les messages privés envoyés par les délégués.
 - Les annonces peuvent être créées, modifiées et supprimées par l'administrateur. Un flyer JPG, PNG ou WebP (8 Mo maximum) peut être joint à une annonce. Le fichier reste dans le stockage privé et son téléchargement vérifie la session et le ciblage de l'annonce.
 - Les compteurs de navigation affichent les notifications non lues et les messages de délégués non lus; à partir de 10, l'étiquette devient « 10+ ».
+
+
+## Groupes de messagerie par parcours
+- Un administrateur peut créer un groupe ciblant une faculté, une option ou un niveau précis.
+- Le catalogue de sélection comprend toutes les facultés, options et tous les niveaux actifs de l'université, pas uniquement le parcours personnel de l'administrateur.
+- À la création, les comptes étudiants et délégués correspondant au périmètre sont ajoutés automatiquement.
+- Les nouveaux comptes étudiants/délégués sont ajoutés aux groupes correspondant à leur profil lors de l'inscription; la liste des groupes réconcilie également les appartenances manquantes.
+- Un même groupe actif ne peut pas être créé deux fois pour le même périmètre.
+- L'administrateur créateur est membre du groupe et peut participer aux échanges.
+- GET /api/v1/admin/groups retourne les groupes actifs et leurs effectifs; POST /api/v1/admin/groups crée un groupe.
