@@ -31,7 +31,10 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [classStudents, setClassStudents] = useState([]);
   const [classDocuments, setClassDocuments] = useState([]);
-  const [pendingClassDocuments, setPendingClassDocuments] = useState([]);\n  const [delegateMessages, setDelegateMessages] = useState([]);\n  const [delegateMessageSubject, setDelegateMessageSubject] = useState("");\n  const [delegateMessageBody, setDelegateMessageBody] = useState("");
+  const [pendingClassDocuments, setPendingClassDocuments] = useState([]);
+  const [delegateMessages, setDelegateMessages] = useState([]);
+  const [delegateMessageSubject, setDelegateMessageSubject] = useState("");
+  const [delegateMessageBody, setDelegateMessageBody] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [classDocTitle, setClassDocTitle] = useState("");
   const [classDocCourse, setClassDocCourse] = useState("");
