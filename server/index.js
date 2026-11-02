@@ -49,9 +49,12 @@ const pool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
       ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
-      max: 5,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000
+      // Vercel creates multiple serverless instances. Keep one DB socket per
+      // instance to avoid exhausting Supabase's small session-pool connection cap.
+      max: Math.max(1, Number(process.env.PG_POOL_MAX) || (process.env.VERCEL ? 1 : 5)),
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      allowExitOnIdle: true
     })
   : null;
 
