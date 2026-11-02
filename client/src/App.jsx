@@ -17,6 +17,8 @@ export default function App() {
   const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
+  const [identityScreen, setIdentityScreen] = useState(false);
+  const [identityFeedback, setIdentityFeedback] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [universityId, setUniversityId] = useState("");
@@ -44,7 +46,7 @@ export default function App() {
       setter(result.data || []);
     } catch {
       setter([]);
-      setCatalogErrors(previous => ({ ...previous, [kind]: "Impossible de charger cette liste. Vérifiez la connexion au serveur." }));
+      setCatalogErrors(previous => ({ ...previous, [kind]: "Impossible de charger cette liste. Vérifiez la connexion." }));
     } finally {
       setCatalogLoading(previous => ({ ...previous, [kind]: false }));
     }
@@ -83,6 +85,16 @@ export default function App() {
 
   useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
 
+  useEffect(() => {
+    if (!identityScreen) return undefined;
+    const timer = window.setTimeout(() => {
+      setIdentityScreen(false);
+      if (identityFeedback) setFeedback(identityFeedback);
+      setIdentityFeedback("");
+    }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [identityScreen, identityFeedback]);
+
   async function submit(event) {
     event.preventDefault(); setBusy(true); setFeedback("");
     const form = new FormData(event.currentTarget);
@@ -90,7 +102,7 @@ export default function App() {
       if (mode === "professor") {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux codes secrets ne correspondent pas.");
         const result = await request("/auth/professor/activate", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
-        setMode("login"); setFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte professeur.");
+        setMode("login"); setFeedback(""); setIdentityFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte professeur."); setIdentityScreen(true);
       } else if (mode === "signup") {
         if (form.get("password") !== form.get("confirmPassword")) throw new Error("Les deux mots de passe ne correspondent pas.");
         const result = await request("/auth/register", { method: "POST", body: JSON.stringify({
@@ -98,10 +110,10 @@ export default function App() {
           password: form.get("password"), universityCode: selectedUniversity?.code, facultyCode: selectedFaculty?.code,
           optionCode: selectedOption?.code, studyLevelCode: levels.find(x => String(x.id) === String(studyLevelId))?.code
         }) });
-        setMode("login"); setFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte.");
+        setMode("login"); setFeedback(""); setIdentityFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte."); setIdentityScreen(true);
       } else {
         const result = await request("/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
-        sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user);
+        sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user); setIdentityFeedback(""); setIdentityScreen(true);
       }
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
@@ -132,6 +144,8 @@ export default function App() {
       .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
       .catch(e => setFeedback(e.message));
   }, [verifyToken, authAccessToken]);
+
+  if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
   if (token && user) return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
 
