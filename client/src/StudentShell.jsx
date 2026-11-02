@@ -347,6 +347,17 @@ export default function StudentShell({ token, user, onLogout, request }) {
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><span className="brand-mark">iF</span><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
+        <nav className="mobile-dashboard" aria-label="Tableau de bord">
+          <div className="mobile-dashboard-heading"><span>TABLEAU DE BORD</span><small>Accès rapides</small></div>
+          <div className="mobile-dashboard-grid">
+            {visibleDestinations.map(x => <button key={x.id} type="button" className={active === x.id ? "mobile-dashboard-tile selected" : "mobile-dashboard-tile"} onClick={() => setActive(x.id)}>
+              <span className={"mobile-dashboard-icon nav-symbol-" + x.id}>{x.short[0]}</span>
+              <span className="mobile-dashboard-label">{x.label}</span>
+              {badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}
+              <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
+            </button>)}
+          </div>
+        </nav>
         {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
             <div className="profile-avatar" aria-hidden="true">{(user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
