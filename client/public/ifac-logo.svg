@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Emblème iFac Université">
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4f6f8"/>
+      <stop offset=".22" stop-color="#7e858d"/>
+      <stop offset=".48" stop-color="#252a30"/>
+      <stop offset=".72" stop-color="#c5cbd1"/>
+      <stop offset="1" stop-color="#555d66"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#cbd1d8"/>
+      <stop offset="1" stop-color="#626b75"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="7"/>
+      <feOffset dy="7"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".65"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="256" cy="238" r="204" fill="#0b0d0f" stroke="#343a40" stroke-width="16"/>
+  <circle cx="256" cy="238" r="190" fill="none" stroke="url(#metal)" stroke-width="9"/>
+  <g fill="url(#metal)" stroke="#171a1e" stroke-width="3" filter="url(#shadow)">
+    <path d="M91 322 C48 246 72 151 143 104 C113 150 107 202 123 250 C136 291 160 321 188 341 L169 358 C133 351 108 340 91 322Z"/>
+    <path d="M421 322 C464 246 440 151 369 104 C399 150 405 202 389 250 C376 291 352 321 324 341 L343 358 C379 351 404 340 421 322Z"/>
+    <path d="M105 164 Q72 142 81 112 Q113 125 105 164Z"/>
+    <path d="M122 207 Q82 195 87 163 Q121 171 122 207Z"/>
+    <path d="M145 247 Q104 245 99 211 Q135 210 145 247Z"/>
+    <path d="M169 281 Q130 291 112 260 Q149 247 169 281Z"/>
+    <path d="M407 164 Q440 142 431 112 Q399 125 407 164Z"/>
+    <path d="M390 207 Q430 195 425 163 Q391 171 390 207Z"/>
+    <path d="M367 247 Q408 245 413 211 Q377 210 367 247Z"/>
+    <path d="M343 281 Q382 291 400 260 Q363 247 343 281Z"/>
+  </g>
+  <g fill="url(#metal)" stroke="#111417" stroke-width="7" stroke-linejoin="round" filter="url(#shadow)">
+    <circle cx="256" cy="110" r="31"/>
+    <path d="M229 155 C205 161 190 184 190 211 L178 244 C174 257 182 270 195 272 C207 274 215 266 219 254 L229 225 L229 287 L283 287 L283 213 C311 193 333 168 335 140 C336 127 327 119 316 122 C306 124 303 136 298 148 C286 174 266 182 247 187 L247 155Z"/>
+  </g>
+  <g fill="none" stroke="url(#page)" stroke-width="13" stroke-linejoin="round" filter="url(#shadow)">
+    <path d="M120 302 L120 404 Q187 381 248 435 L248 330 Q187 282 120 302Z"/>
+    <path d="M392 302 L392 404 Q325 381 264 435 L264 330 Q325 282 392 302Z"/>
+  </g>
+  <path d="M256 345 L269 372 L299 376 L277 396 L282 425 L256 411 L230 425 L235 396 L213 376 L243 372Z" fill="url(#metal)" stroke="#15191d" stroke-width="5"/>
+  <path d="M256 435 L256 462" stroke="#aeb5bd" stroke-width="8" stroke-linecap="round"/>
+</svg>
