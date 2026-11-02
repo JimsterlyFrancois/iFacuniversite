@@ -552,3 +552,100 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (max-width: 420px) {
   .brand-logo { width: 36px; height: 36px; flex-basis: 36px; }
 }
+
+
+/* Écran d'identité iFac : affichage bref après inscription ou connexion. */
+.identity-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 42%, #25292e 0%, #111315 43%, #070809 100%);
+  color: #e7eaed;
+}
+.identity-splash::before {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border: 1px solid #aab1b933;
+  border-radius: 24px;
+  pointer-events: none;
+}
+.identity-splash-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 420px);
+  text-align: center;
+  animation: ifac-identity-appear .7s ease-out both;
+}
+.identity-splash-logo {
+  display: block;
+  width: clamp(150px, 36vw, 220px);
+  height: auto;
+  margin: 0 0 22px;
+  filter: drop-shadow(0 12px 22px #000b);
+}
+.identity-splash-kicker {
+  margin: 0 0 10px;
+  color: #aeb5bd;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .28em;
+}
+.identity-splash h1 {
+  margin: 0;
+  color: #d9dde1;
+  font-size: clamp(29px, 7vw, 43px);
+  font-weight: 850;
+  letter-spacing: .12em;
+  line-height: 1.15;
+  text-shadow: 0 2px 0 #fff3, 0 5px 12px #000;
+}
+.identity-splash h1 span {
+  display: block;
+  margin-top: 5px;
+  color: #858d96;
+  font-size: .63em;
+  letter-spacing: .2em;
+}
+.identity-splash-caption {
+  margin: 19px 0 27px;
+  color: #aeb5bd;
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+.identity-splash-progress {
+  position: relative;
+  display: block;
+  width: 132px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #ffffff20;
+}
+.identity-splash-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #777f88, #e1e5e9, #777f88);
+  transform: translateX(-100%);
+  animation: ifac-identity-progress 10s linear forwards;
+}
+@keyframes ifac-identity-appear {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ifac-identity-progress {
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .identity-splash-content { animation: none; }
+  .identity-splash-progress::after { animation: none; transform: none; }
+}
