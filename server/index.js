@@ -35,7 +35,14 @@ async function storePrivateObject(key, buffer, contentType, bucket = storageBuck
 }
 async function readPrivateObject(key, bucket = storageBucket) {
   if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
-  const response = await fetch(storageObjectUrl(key, bucket), { headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` } });
+  // Private objects must be read through Storage's authenticated download route.
+  // The plain /object/{bucket}/{path} route is used for uploads and is not the
+  // correct endpoint for serving a private image or document back to the app.
+  const encodedPath = key.split("/").map(encodeURIComponent).join("/");
+  const downloadUrl = `${storageUrl}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${encodedPath}`;
+  const response = await fetch(downloadUrl, {
+    headers: { apikey: storageKey, Authorization: `Bearer ${storageKey}` }
+  });
   if (!response.ok) throw new Error(response.status === 404 ? "storage_object_missing" : `storage_download_failed_${response.status}`);
   return Buffer.from(await response.arrayBuffer());
 }
