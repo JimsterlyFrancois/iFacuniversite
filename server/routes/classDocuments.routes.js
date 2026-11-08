@@ -179,8 +179,8 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       try {
         const authorName = [req.user.first_name, req.user.last_name].filter(Boolean).join(" ");
         const result = await pool.query(
-          "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status,course_id,publication_scope,published_by_role) " +
-          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,'approved',$14,$15,$16) " +
+          "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status,course_id,publication_scope,published_by_role,storage_bucket) " +
+          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,'approved',$14,$15,$16,'class-documents') " +
           "RETURNING id,title,course,professor,description,file_name,status,publication_scope,created_at",
           [subjectId,title.trim(),fileKey,req.file.size,req.user.id,universityId,facultyId,optionId,studyLevelId,courseLabel,professor.trim() || (publisherRole === "professor" ? authorName : null),description.trim() || null,req.file.originalname.slice(0,255),courseId,courseId ? "course" : "class",publisherRole]
         );
@@ -212,13 +212,13 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
            FROM documents d
            JOIN professor_invites i ON i.user_id=$1 AND i.is_active=TRUE
            JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE AND pa.course_id=d.course_id
-           WHERE d.status='approved' AND d.is_active=TRUE AND d.course_id IS NOT NULL
+           WHERE d.status='approved' AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND d.course_id IS NOT NULL
            ORDER BY d.created_at DESC LIMIT 300`,
           [req.user.id]
         );
       } else {
         result = await pool.query(
-          "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE ORDER BY created_at DESC LIMIT 300",
+          "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE AND storage_bucket='class-documents' ORDER BY created_at DESC LIMIT 300",
           [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
         );
       }
@@ -236,7 +236,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       const result = await pool.query(
         "SELECT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.status,d.rejection_reason,d.created_at,d.file_size_bytes,u.first_name AS uploader_first_name,u.last_name AS uploader_last_name,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label " +
         "FROM documents d LEFT JOIN users u ON u.id=d.uploaded_by LEFT JOIN faculties f ON f.id=d.faculty_id LEFT JOIN options o ON o.id=d.option_id LEFT JOIN study_levels l ON l.id=d.study_level_id " +
-        "WHERE d.university_id=$1 AND d.is_active=TRUE AND ($2='all' OR d.status=$2) ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 500",
+        "WHERE d.university_id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND ($2='all' OR d.status=$2) ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 500",
         [req.user.university_id,status]
       );
       return res.json({ data: result.rows });
@@ -257,7 +257,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
   router.delete("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
     const id=positiveId(req.params.id); if(!id) return res.status(400).json({error:"invalid_document_id"});
     try {
-      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND university_id=$2 AND is_active=TRUE RETURNING file_key", [id,req.user.university_id]);
+      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND storage_bucket='class-documents' RETURNING file_key", [id,req.user.university_id]);
       if(!found.rowCount) return res.status(404).json({error:"class_document_not_found"});
       await deletePrivateObject(found.rows[0].file_key,CLASS_BUCKET).catch(error=>console.error("Suppression PDF classe:",error?.message));
       return res.status(204).end();
@@ -314,7 +314,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       const result = await pool.query(
         `SELECT d.id,d.file_key,d.file_name,d.mime_type
          FROM documents d
-         WHERE d.id=$1 AND d.is_active=TRUE AND (
+         WHERE d.id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND (
            (d.status='approved' AND d.university_id=$2 AND d.faculty_id=$3 AND d.option_id=$4 AND d.study_level_id=$5)
            OR ($6=TRUE AND d.university_id=$7)
            OR ($8=TRUE AND d.course_id IS NOT NULL AND EXISTS (
