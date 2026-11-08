@@ -820,6 +820,47 @@ app.post("/api/v1/admin/subjects", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+app.get("/api/v1/admin/courses", requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const result=await pool.query(
+      `SELECT c.id,c.name,c.description,s.id AS subject_id,s.name AS subject_name,
+        o.id AS option_id,o.name AS option_name,l.id AS study_level_id,l.label AS level_label
+       FROM courses c JOIN subjects s ON s.id=c.subject_id
+       JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
+       JOIN study_levels l ON l.id=s.study_level_id
+       WHERE f.university_id=$1 AND c.is_active=TRUE
+       ORDER BY o.name,l.sort_order,s.name,c.name`,
+      [req.user.university_id]
+    );
+    return res.json({data:result.rows});
+  } catch { return res.status(503).json({error:"courses_unavailable"}); }
+});
+
+app.post("/api/v1/admin/courses", requireAuth, requireAdmin, async (req,res) => {
+  const subjectId=Number(req.body?.subjectId);
+  const name=typeof req.body?.name==="string"?req.body.name.trim():"";
+  const description=typeof req.body?.description==="string"?req.body.description.trim():"";
+  if(!Number.isSafeInteger(subjectId)||subjectId<1||!name||name.length>180||description.length>3000)
+    return res.status(400).json({error:"invalid_course"});
+  try{
+    const subject=await pool.query(
+      `SELECT s.id FROM subjects s JOIN options o ON o.id=s.option_id
+       JOIN faculties f ON f.id=o.faculty_id
+       WHERE s.id=$1 AND s.is_active=TRUE AND f.university_id=$2`,
+      [subjectId,req.user.university_id]
+    );
+    if(!subject.rowCount)return res.status(400).json({error:"subject_outside_university"});
+    const result=await pool.query(
+      "INSERT INTO courses(subject_id,name,description,created_by) VALUES($1,$2,$3,$4) RETURNING id,name,subject_id,description,created_at",
+      [subjectId,name,description||null,req.user.id]
+    );
+    return res.status(201).json({course:result.rows[0]});
+  }catch(error){
+    if(error?.code==="23505")return res.status(409).json({error:"course_already_exists"});
+    return res.status(503).json({error:"course_create_failed"});
+  }
+});
+
 app.delete("/api/v1/admin/documents/:id", requireAuth, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: "invalid_document_id" });
