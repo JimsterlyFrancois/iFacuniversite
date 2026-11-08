@@ -97,31 +97,88 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
         typeof description !== "string" || description.trim().length > 3000) {
       return res.status(400).json({ error: "invalid_document_metadata" });
     }
-    const { university_id, faculty_id, option_id, study_level_id } = req.user;
-    if (![university_id,faculty_id,option_id,study_level_id].every(value => positiveId(value))) return res.status(400).json({ error: "incomplete_academic_profile" });
 
-    const fileKey = university_id + "/" + faculty_id + "/" + option_id + "/" + study_level_id + "/" + randomUUID() + ".pdf";
+    const scope = [req.user.university_id, req.user.faculty_id, req.user.option_id, req.user.study_level_id].map(positiveId);
+    if (scope.some(id => !id)) return res.status(400).json({ error: "incomplete_academic_profile" });
+    const [universityId, facultyId, optionId, studyLevelId] = scope;
+    let publisherRole = null;
+    let courseId = null;
+    let subjectId = null;
+
     try {
-      const subject = await pool.query(
-        "SELECT id FROM subjects WHERE option_id=$1 AND study_level_id=$2 AND is_active=TRUE AND lower(name)=lower($3) LIMIT 1",
-        [option_id,study_level_id,course.trim()]
-      );
+      if (req.user.role === "delegate") {
+        publisherRole = "delegate";
+      } else if (req.user.role === "professor") {
+        const assignedCourse = await pool.query(
+          `SELECT c.id AS course_id, s.id AS subject_id
+           FROM professor_invites i
+           JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
+           JOIN courses c ON c.id=pa.course_id AND c.is_active=TRUE
+           JOIN subjects s ON s.id=c.subject_id AND s.is_active=TRUE
+           WHERE i.user_id=$1 AND i.is_active=TRUE
+             AND pa.university_id=$2 AND pa.faculty_id=$3
+             AND pa.option_id=$4 AND pa.study_level_id=$5
+             AND lower(c.name)=lower($6)
+           LIMIT 1`,
+          [req.user.id, universityId, facultyId, optionId, studyLevelId, course.trim()]
+        );
+        if (!assignedCourse.rowCount) {
+          return res.status(403).json({ error: "course_assignment_required", message: "Vous ne pouvez publier que dans un cours qui vous a été attribué." });
+        }
+        publisherRole = "professor";
+        courseId = assignedCourse.rows[0].course_id;
+        subjectId = assignedCourse.rows[0].subject_id;
+      } else {
+        const assignment = await pool.query(
+          `SELECT role FROM role_assignments
+           WHERE user_id=$1 AND status='active'
+             AND (
+               role='admin_general'
+               OR (role='university_admin' AND university_id=$2)
+               OR (role='faculty_manager' AND university_id=$2 AND faculty_id=$3)
+               OR (role='program_manager' AND university_id=$2 AND faculty_id=$3
+                   AND option_id=$4 AND (study_level_id IS NULL OR study_level_id=$5))
+             )
+           ORDER BY CASE role
+             WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+             WHEN 'faculty_manager' THEN 3 ELSE 4 END
+           LIMIT 1`,
+          [req.user.id, universityId, facultyId, optionId, studyLevelId]
+        );
+        if (!assignment.rowCount) return res.status(403).json({ error: "publication_not_authorized", message: "Votre compte ne possède pas de droit de publication dans ce parcours." });
+        publisherRole = assignment.rows[0].role;
+      }
+
+      if (!subjectId) {
+        const subject = await pool.query(
+          "SELECT id FROM subjects WHERE option_id=$1 AND study_level_id=$2 AND is_active=TRUE AND lower(name)=lower($3) LIMIT 1",
+          [optionId, studyLevelId, course.trim()]
+        );
+        subjectId = subject.rows[0]?.id || null;
+      }
+      if (!subjectId && publisherRole !== "admin_general" && publisherRole !== "university_admin" && publisherRole !== "faculty_manager") {
+        return res.status(400).json({ error: "subject_not_found", message: "La matière ou le cours doit exister dans le programme avant la publication." });
+      }
+
+      const fileKey = universityId + "/" + facultyId + "/" + optionId + "/" + studyLevelId + "/" + randomUUID() + ".pdf";
       await storePrivateObject(fileKey, req.file.buffer, "application/pdf", CLASS_BUCKET);
       try {
+        const authorName = [req.user.first_name, req.user.last_name].filter(Boolean).join(" ");
         const result = await pool.query(
-          "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status) " +
-          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,$14) " +
-          "RETURNING id,title,course,professor,description,file_name,status,created_at",
-          [subject.rows[0]?.id || null,title.trim(),fileKey,req.file.size,req.user.id,university_id,faculty_id,option_id,study_level_id,course.trim(),professor.trim() || null,description.trim() || null,req.file.originalname.slice(0,255),req.user.role === "delegate" ? "approved" : "pending"]
+          "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status,course_id,publication_scope,published_by_role) " +
+          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,'approved',$14,$15,$16) " +
+          "RETURNING id,title,course,professor,description,file_name,status,publication_scope,created_at",
+          [subjectId,title.trim(),fileKey,req.file.size,req.user.id,universityId,facultyId,optionId,studyLevelId,course.trim(),professor.trim() || (publisherRole === "professor" ? authorName : null),description.trim() || null,req.file.originalname.slice(0,255),courseId,courseId ? "course" : "class",publisherRole]
         );
-        if (req.user.role === "delegate") {
-          await pool.query(
-            "INSERT INTO notifications (user_id,document_id) SELECT u.id,$1 FROM users u WHERE u.is_active=TRUE AND u.university_id=$2 AND u.faculty_id=$3 AND u.option_id=$4 AND u.study_level_id=$5 AND u.id<>$6 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=u.id AND n.document_id=$1)",
-            [result.rows[0].id,university_id,faculty_id,option_id,study_level_id,req.user.id]
-          );
-        }
-        const direct = req.user.role === "delegate";
-        return res.status(201).json({ document: result.rows[0], message: direct ? "Document publié directement dans la bibliothèque de votre classe." : "Document reçu. Il sera visible dans la classe après validation." });
+        const notified = await pool.query(
+          "INSERT INTO notifications (user_id,document_id) SELECT u.id,$1 FROM users u WHERE u.is_active=TRUE AND u.university_id=$2 AND u.faculty_id=$3 AND u.option_id=$4 AND u.study_level_id=$5 AND u.id<>$6 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=u.id AND n.document_id=$1)",
+          [result.rows[0].id,universityId,facultyId,optionId,studyLevelId,req.user.id]
+        );
+        await pool.query(
+          "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata) VALUES($1,'document.published','document',$2,$3,$4,$5,$6,$7::jsonb)",
+          [req.user.id,result.rows[0].id,universityId,facultyId,optionId,studyLevelId,JSON.stringify({ publisherRole, publicationScope: courseId ? "course" : "class" })]
+        );
+        return res.status(201).json({ document: result.rows[0], notificationsCreated: notified.rowCount, message: "Document publié dans le périmètre autorisé." });
       } catch (error) {
         await deletePrivateObject(fileKey, CLASS_BUCKET).catch(() => {});
         throw error;
