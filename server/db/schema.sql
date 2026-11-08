@@ -198,3 +198,51 @@ CREATE INDEX IF NOT EXISTS delegate_messages_university_created_idx ON delegate_
 
 ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_key TEXT;
 ALTER TABLE announcements ADD COLUMN IF NOT EXISTS image_mime_type VARCHAR(80);
+
+-- Compatibility objects used by the current class-document and professor APIs.
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS university_id BIGINT REFERENCES public.universities(id),
+  ADD COLUMN IF NOT EXISTS faculty_id BIGINT REFERENCES public.faculties(id),
+  ADD COLUMN IF NOT EXISTS option_id BIGINT REFERENCES public.options(id),
+  ADD COLUMN IF NOT EXISTS study_level_id BIGINT REFERENCES public.study_levels(id),
+  ADD COLUMN IF NOT EXISTS course VARCHAR(180),
+  ADD COLUMN IF NOT EXISTS professor VARCHAR(180),
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS file_name VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'approved',
+  ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
+  ADD COLUMN IF NOT EXISTS reviewed_by BIGINT REFERENCES public.users(id),
+  ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  document_id BIGINT NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  read_at TIMESTAMPTZ,
+  UNIQUE(user_id, document_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.professor_invites (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email VARCHAR(254) NOT NULL UNIQUE,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  created_by BIGINT REFERENCES public.users(id),
+  user_id BIGINT UNIQUE REFERENCES public.users(id) ON DELETE SET NULL,
+  activated_at TIMESTAMPTZ,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.professor_assignments (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  invite_id BIGINT NOT NULL REFERENCES public.professor_invites(id) ON DELETE CASCADE,
+  university_id BIGINT NOT NULL REFERENCES public.universities(id),
+  faculty_id BIGINT NOT NULL REFERENCES public.faculties(id),
+  option_id BIGINT NOT NULL REFERENCES public.options(id),
+  study_level_id BIGINT NOT NULL REFERENCES public.study_levels(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(invite_id, study_level_id)
+);
+
