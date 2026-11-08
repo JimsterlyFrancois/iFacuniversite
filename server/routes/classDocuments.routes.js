@@ -250,7 +250,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const id=positiveId(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", course=typeof req.body?.course==="string"?req.body.course.trim():"", professor=typeof req.body?.professor==="string"?req.body.professor.trim():"", description=typeof req.body?.description==="string"?req.body.description.trim():"";
     if(!id||!title||title.length>220||!course||course.length>180||professor.length>180||description.length>3000) return res.status(400).json({error:"invalid_class_document_update"});
     try {
-      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND university_id=$6 AND is_active=TRUE RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.user.university_id]);
+      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND university_id=$6 AND is_active=TRUE AND storage_bucket='class-documents' RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.user.university_id]);
       return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"class_document_not_found"});
     } catch { return res.status(503).json({error:"class_document_update_failed"}); }
   });
@@ -272,7 +272,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const found = await client.query("SELECT * FROM documents WHERE id=$1 AND university_id=$2 AND is_active=TRUE FOR UPDATE", [documentId,req.user.university_id]);
+      const found = await client.query("SELECT * FROM documents WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND storage_bucket='class-documents' FOR UPDATE", [documentId,req.user.university_id]);
       if (!found.rowCount) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "class_document_not_found" });
