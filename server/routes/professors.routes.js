@@ -159,7 +159,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
           );
           inviteId=createdInvite.rows[0].id;
         }
-        const assigned=await client.query("SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE LIMIT 1",[inviteId]);
+        const assigned=await client.query("SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE AND course_id IS NOT NULL LIMIT 1",[inviteId]);
         await client.query(
           "INSERT INTO role_assignments(user_id,role,status) VALUES($1,'professor',$2) ON CONFLICT DO NOTHING",
           [userId,assigned.rowCount?"active":"pending"]
@@ -271,7 +271,17 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
       await ensureSchema();
       const r=await pool.query("UPDATE professor_invites SET is_active=$1 WHERE id=$2 RETURNING user_id",[active,id]);
       if(!r.rowCount)return res.status(404).json({error:"professor_not_found"});
-      if(r.rows[0].user_id)await pool.query("UPDATE users SET is_active=$1,disabled_at=$2,updated_at=NOW() WHERE id=$3",[active,active?null:new Date(),r.rows[0].user_id]);
+      if(r.rows[0].user_id){
+        await pool.query("UPDATE users SET is_active=$1,disabled_at=$2,updated_at=NOW() WHERE id=$3",[active,active?null:new Date(),r.rows[0].user_id]);
+        if(!active){
+          await pool.query("UPDATE role_assignments SET status='revoked',revoked_at=NOW(),updated_at=NOW() WHERE user_id=$1 AND role='professor' AND status<>'revoked'",[r.rows[0].user_id]);
+        }else{
+          await pool.query(
+            "UPDATE role_assignments SET status=CASE WHEN EXISTS (SELECT 1 FROM professor_assignments pa WHERE pa.invite_id=$2 AND pa.is_active=TRUE AND pa.course_id IS NOT NULL) THEN 'active' ELSE 'pending' END,revoked_at=NULL,updated_at=NOW() WHERE user_id=$1 AND role='professor'",
+            [r.rows[0].user_id,id]
+          );
+        }
+      }
       return res.json({message:active?"Professeur réactivé.":"Accès professeur suspendu."});
     }catch{return res.status(503).json({error:"professor_status_failed"});}
   });
