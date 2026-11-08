@@ -454,7 +454,10 @@ app.post("/api/v1/auth/logout", requireAuth, async (req, res) => {
     return res.status(204).end();
   } catch { return res.status(503).json({ error: "logout_unavailable" }); }
 });
-app.get("/api/v1/auth/me", requireAuth, async (req, res) => {\n  try { res.set("Cache-Control", "no-store"); return res.json({ user: await getPublicUser(req.user) }); }\n  catch { return res.status(503).json({ error: "profile_unavailable", message: "Impossible de charger les informations du profil." }); }\n});
+app.get("/api/v1/auth/me", requireAuth, async (req, res) => {
+  try { res.set("Cache-Control", "no-store"); return res.json({ user: await getPublicUser(req.user) }); }
+  catch { return res.status(503).json({ error: "profile_unavailable", message: "Impossible de charger les informations du profil." }); }
+});
 
 app.get("/api/v1/notes", requireAuth, async (req, res) => {
   try {
