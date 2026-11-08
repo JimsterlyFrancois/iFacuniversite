@@ -777,3 +777,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .mobile-dashboard-grid { grid-template-columns: 1fr !important; }
   .mobile-dashboard-tile { grid-template-columns: 38px minmax(0, 1fr) 16px; }
 }
+
+
+/* Profil : couleurs cohérentes dans les deux thèmes et aucun contrôle blanc parasite. */
+.profile-page, .profile-page * { min-width: 0; }
+.student-dark .profile-page .student-card,
+.student-dark .profile-page .profile-stat-card {
+  background-color: var(--student-panel);
+  color: var(--student-text);
+  border-color: var(--student-border);
+}
+.student-dark .profile-page .profile-info-row,
+.student-dark .profile-page .profile-info-row strong,
+.student-dark .profile-page .profile-overview,
+.student-dark .profile-page .profile-identity h2 {
+  color: var(--student-text);
+}
+.student-dark .profile-page .profile-info-row span,
+.student-dark .profile-page .profile-settings-card > p,
+.student-dark .profile-page .profile-setting-control small {
+  color: var(--student-muted);
+}
+.student-dark .profile-page input,
+.student-dark .profile-page select,
+.student-dark .profile-page textarea {
+  color: var(--student-text);
+  background: var(--student-panel-alt);
+  border-color: var(--student-border);
+}
+.student-dark .profile-page input::placeholder,
+.student-dark .profile-page textarea::placeholder {
+  color: var(--student-muted);
+}
+.student-dark .profile-page button {
+  color: #e7fffb;
+}
+.student-dark .profile-page .profile-role,
+.student-dark .profile-page .profile-tool-icon {
+  background: var(--student-panel-alt);
+  border-color: var(--student-border);
+  color: var(--student-accent);
+}
