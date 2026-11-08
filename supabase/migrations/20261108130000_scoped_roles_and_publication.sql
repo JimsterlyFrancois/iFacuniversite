@@ -59,6 +59,30 @@ CREATE TABLE IF NOT EXISTS public.courses (
   UNIQUE(id, subject_id)
 );
 
+-- Ensure legacy professor tables exist when this migration is run on a clean bootstrap database.
+CREATE TABLE IF NOT EXISTS public.professor_invites (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email VARCHAR(254) NOT NULL UNIQUE,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  created_by BIGINT REFERENCES public.users(id),
+  user_id BIGINT UNIQUE REFERENCES public.users(id) ON DELETE SET NULL,
+  activated_at TIMESTAMPTZ,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.professor_assignments (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  invite_id BIGINT NOT NULL REFERENCES public.professor_invites(id) ON DELETE CASCADE,
+  university_id BIGINT NOT NULL REFERENCES public.universities(id),
+  faculty_id BIGINT NOT NULL REFERENCES public.faculties(id),
+  option_id BIGINT NOT NULL REFERENCES public.options(id),
+  study_level_id BIGINT NOT NULL REFERENCES public.study_levels(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(invite_id, study_level_id)
+);
+
 ALTER TABLE public.professor_assignments
   ADD COLUMN IF NOT EXISTS course_id BIGINT REFERENCES public.courses(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
