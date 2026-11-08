@@ -156,8 +156,8 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
         );
         subjectId = subject.rows[0]?.id || null;
       }
-      if (!subjectId && publisherRole !== "admin_general" && publisherRole !== "university_admin" && publisherRole !== "faculty_manager") {
-        return res.status(400).json({ error: "subject_not_found", message: "La matière ou le cours doit exister dans le programme avant la publication." });
+      if (!subjectId) {
+        return res.status(400).json({ error: "subject_not_found", message: "La matière doit exister dans le programme avant la publication." });
       }
 
       const fileKey = universityId + "/" + facultyId + "/" + optionId + "/" + studyLevelId + "/" + randomUUID() + ".pdf";
