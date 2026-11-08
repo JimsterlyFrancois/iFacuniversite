@@ -217,6 +217,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
     const firstName=typeof req.body?.firstName==="string"?req.body.firstName.trim():"";
     const lastName=typeof req.body?.lastName==="string"?req.body.lastName.trim():"";
     const a=req.body?.assignment;
+    const courseId=Number(a?.courseId);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||!firstName||firstName.length>100||!lastName||lastName.length>100)
       return res.status(400).json({error:"invalid_professor",message:"Renseignez le nom, le prénom et une adresse e-mail valide."});
     const client=await pool.connect();
@@ -225,8 +226,20 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
       const existing=await client.query("SELECT id FROM users WHERE email=$1",[email]);
       if(existing.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"email_already_used",message:"Cette adresse est déjà associée à un compte iFac."});}
       if(!(await validAssignment(client,a))){await client.query("ROLLBACK");return res.status(400).json({error:"invalid_assignment",message:"Sélectionnez une affectation universitaire valide."});}
+      if(!Number.isSafeInteger(courseId)||courseId<1){await client.query("ROLLBACK");return res.status(400).json({error:"course_required",message:"Choisissez le cours auquel le professeur sera affecté."});}
+      const course=await client.query(
+        `SELECT c.id FROM courses c JOIN subjects s ON s.id=c.subject_id
+         JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
+         WHERE c.id=$1 AND s.option_id=$2 AND s.study_level_id=$3
+           AND f.university_id=$4 AND f.id=$5 AND c.is_active=TRUE AND s.is_active=TRUE`,
+        [courseId,Number(a.optionId),Number(a.studyLevelId),Number(a.universityId),Number(a.facultyId)]
+      );
+      if(!course.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"course_outside_assignment_scope"});}
       const inv=await client.query("INSERT INTO professor_invites(email,first_name,last_name,created_by) VALUES($1,$2,$3,$4) RETURNING id",[email,firstName,lastName,req.user.id]);
-      await client.query("INSERT INTO professor_assignments(invite_id,university_id,faculty_id,option_id,study_level_id) VALUES($1,$2,$3,$4,$5)",[inv.rows[0].id,Number(a.universityId),Number(a.facultyId),Number(a.optionId),Number(a.studyLevelId)]);
+      await client.query(
+        "INSERT INTO professor_assignments(invite_id,university_id,faculty_id,option_id,study_level_id,course_id,assigned_by) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [inv.rows[0].id,Number(a.universityId),Number(a.facultyId),Number(a.optionId),Number(a.studyLevelId),courseId,req.user.id]
+      );
       await client.query("COMMIT");
       return res.status(201).json({message:"Professeur déclaré. Il peut maintenant activer son compte avec cette adresse e-mail."});
     } catch(error){await client.query("ROLLBACK").catch(()=>{});if(error.code==="23505")return res.status(409).json({error:"professor_already_declared",message:"Cette adresse est déjà déclarée."});return res.status(503).json({error:"professor_create_failed"});}
