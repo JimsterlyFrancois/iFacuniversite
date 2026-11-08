@@ -179,13 +179,17 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
   router.get("/admin/professors/catalog", requireAuth, requireAdmin, async (_req,res) => {
     try {
       await ensureSchema();
-      const [universities,faculties,options,levels]=await Promise.all([
+      const [universities,faculties,options,levels,courses]=await Promise.all([
         pool.query("SELECT id,name FROM universities WHERE is_active ORDER BY name"),
         pool.query("SELECT id,university_id,name FROM faculties WHERE is_active ORDER BY name"),
         pool.query("SELECT id,faculty_id,name FROM options WHERE is_active ORDER BY name"),
-        pool.query("SELECT id,option_id,label FROM study_levels WHERE is_active ORDER BY sort_order")
+        pool.query("SELECT id,option_id,label FROM study_levels WHERE is_active ORDER BY sort_order"),
+        pool.query(`SELECT c.id,c.name,s.option_id,s.study_level_id,f.id AS faculty_id,f.university_id
+          FROM courses c JOIN subjects s ON s.id=c.subject_id
+          JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
+          WHERE c.is_active=TRUE AND s.is_active=TRUE ORDER BY c.name`)
       ]);
-      return res.json({data:{universities:universities.rows,faculties:faculties.rows,options:options.rows,levels:levels.rows}});
+      return res.json({data:{universities:universities.rows,faculties:faculties.rows,options:options.rows,levels:levels.rows,courses:courses.rows}});
     } catch { return res.status(503).json({error:"professor_catalog_unavailable"}); }
   });
   router.get("/admin/professors", requireAuth, requireAdmin, async (_req,res) => {
