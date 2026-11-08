@@ -95,6 +95,24 @@ export default function ProfessorManagement({ token, request }) {
     }
   }
 
+  async function toggleAssignment(professor, assignment) {
+    setBusy(true);
+    setFeedback("");
+    try {
+      const result = await request(`/admin/professors/${professor.id}/assignments/${assignment.id}`, {
+        token,
+        method: "PATCH",
+        body: JSON.stringify({ active: !assignment.is_active })
+      });
+      setFeedback(result.message);
+      await load();
+    } catch (e) {
+      setFeedback(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const renderAssignmentFields = () => <>
     <label className="field"><span>Université</span><select required value={universityId} onChange={e => { setUniversityId(e.target.value); setFacultyId(""); setOptionId(""); setLevelId(""); setCourseId(""); }}><option value="">Choisir</option>{catalog.universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <label className="field"><span>Faculté</span><select required disabled={!universityId} value={facultyId} onChange={e => { setFacultyId(e.target.value); setOptionId(""); setLevelId(""); setCourseId(""); }}><option value="">Choisir</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
@@ -119,7 +137,10 @@ export default function ProfessorManagement({ token, request }) {
       <h2>Professeurs déclarés</h2>
       {professors.length === 0 && !busy ? <p>Aucun professeur déclaré pour le moment.</p> : professors.map(p => <article className="student-data-item" key={p.id}>
         <div><strong>{p.first_name} {p.last_name}</strong><p>{p.email}</p><small>{p.activated_at ? "Compte créé" : "En attente d’activation"} · {p.is_active ? "Accès actif" : "Accès suspendu"}</small></div>
-        <ul>{(p.assignments || []).map(a => <li key={a.id}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}{a.course_name ? " · " + a.course_name : ""}{a.is_active === false ? " · Suspendue" : ""}</li>)}</ul>
+        <ul>{(p.assignments || []).map(a => <li key={a.id}>
+          {a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}{a.course_name ? " · " + a.course_name : ""}{a.is_active === false ? " · Suspendue" : ""}
+          <button type="button" className="theme-button" disabled={busy} onClick={() => toggleAssignment(p,a)}>{a.is_active === false ? "Réactiver ce cours" : "Retirer ce cours"}</button>
+        </li>)}</ul>
         <button type="button" className="theme-button" onClick={() => { setTargetId(String(p.id)); setFeedback("Ajoutez un autre cours à " + p.first_name + " " + p.last_name + "."); }}>Ajouter une affectation</button>
         <button type="button" className="theme-button" disabled={busy} onClick={() => toggleStatus(p)}>{p.is_active ? "Suspendre l’accès" : "Réactiver l’accès"}</button>
       </article>)}
