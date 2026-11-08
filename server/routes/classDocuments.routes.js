@@ -105,20 +105,23 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     let publisherRole=null;
     let courseId=null;
     let subjectId=null;
+    let courseLabel=course.trim();
 
     try {
       if (req.user.role === "professor") {
+        const requestedCourseId=positiveId(req.body?.courseId);
+        if(!requestedCourseId)return res.status(400).json({error:"course_id_required"});
         const assignedCourse = await pool.query(
-          `SELECT c.id AS course_id,s.id AS subject_id,
+          `SELECT c.id AS course_id,c.name AS course_name,s.id AS subject_id,
              pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
            FROM professor_invites i
            JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
            JOIN courses c ON c.id=pa.course_id AND c.is_active=TRUE
            JOIN subjects s ON s.id=c.subject_id AND s.is_active=TRUE
            WHERE i.user_id=$1 AND i.is_active=TRUE
-             AND pa.university_id IS NOT NULL AND lower(c.name)=lower($2)
+             AND pa.university_id IS NOT NULL AND c.id=$2
            LIMIT 1`,
-          [req.user.id,course.trim()]
+          [req.user.id,requestedCourseId]
         );
         if (!assignedCourse.rowCount) {
           return res.status(403).json({ error: "course_assignment_required", message: "Vous ne pouvez publier que dans un cours qui vous a été attribué." });
@@ -129,6 +132,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
         optionId=Number(assigned.option_id);
         studyLevelId=Number(assigned.study_level_id);
         courseId=assigned.course_id;
+        courseLabel=assigned.course_name;
         subjectId=assigned.subject_id;
         publisherRole="professor";
       } else {
@@ -178,7 +182,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
           "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status,course_id,publication_scope,published_by_role) " +
           "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,'approved',$14,$15,$16) " +
           "RETURNING id,title,course,professor,description,file_name,status,publication_scope,created_at",
-          [subjectId,title.trim(),fileKey,req.file.size,req.user.id,universityId,facultyId,optionId,studyLevelId,course.trim(),professor.trim() || (publisherRole === "professor" ? authorName : null),description.trim() || null,req.file.originalname.slice(0,255),courseId,courseId ? "course" : "class",publisherRole]
+          [subjectId,title.trim(),fileKey,req.file.size,req.user.id,universityId,facultyId,optionId,studyLevelId,courseLabel,professor.trim() || (publisherRole === "professor" ? authorName : null),description.trim() || null,req.file.originalname.slice(0,255),courseId,courseId ? "course" : "class",publisherRole]
         );
         const notified = await pool.query(
           "INSERT INTO notifications (user_id,document_id) SELECT u.id,$1 FROM users u WHERE u.is_active=TRUE AND u.university_id=$2 AND u.faculty_id=$3 AND u.option_id=$4 AND u.study_level_id=$5 AND u.id<>$6 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=u.id AND n.document_id=$1)",
