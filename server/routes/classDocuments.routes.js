@@ -115,6 +115,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
           `SELECT c.id AS course_id,c.name AS course_name,s.id AS subject_id,
              pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
            FROM professor_invites i
+           JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
            JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
            JOIN courses c ON c.id=pa.course_id AND c.is_active=TRUE
            JOIN subjects s ON s.id=c.subject_id AND s.is_active=TRUE
@@ -211,6 +212,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
           `SELECT DISTINCT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.mime_type,d.file_size_bytes,d.created_at
            FROM documents d
            JOIN professor_invites i ON i.user_id=$1 AND i.is_active=TRUE
+           JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
            JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE AND pa.course_id=d.course_id
            WHERE d.status='approved' AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND d.course_id IS NOT NULL
            ORDER BY d.created_at DESC LIMIT 300`,
@@ -319,6 +321,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
            OR ($6=TRUE AND d.university_id=$7)
            OR ($8=TRUE AND d.course_id IS NOT NULL AND EXISTS (
              SELECT 1 FROM professor_invites i
+             JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
              JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
              WHERE i.user_id=$9 AND i.is_active=TRUE AND pa.course_id=d.course_id
            ))
