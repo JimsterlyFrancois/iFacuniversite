@@ -97,6 +97,85 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
     }
   });
 
+  router.post("/auth/professor/register", async (req,res) => {
+    if (!pool) return res.status(503).json({error:"service_unavailable"});
+    const email=typeof req.body?.email==="string"?req.body.email.trim().toLowerCase():"";
+    const firstName=typeof req.body?.firstName==="string"?req.body.firstName.trim():"";
+    const lastName=typeof req.body?.lastName==="string"?req.body.lastName.trim():"";
+    const password=req.body?.password;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||
+        !firstName||firstName.length>100||!lastName||lastName.length>100||
+        typeof password!=="string"||password.length<10||password.length>128) {
+      return res.status(400).json({error:"invalid_professor_registration",message:"Renseignez votre nom, votre prénom, une adresse e-mail valide et un mot de passe de 10 caractères minimum."});
+    }
+    try {
+      await ensureSchema();
+      const existing=await pool.query("SELECT id FROM users WHERE email=$1",[email]);
+      if(existing.rowCount) return res.status(409).json({error:"email_already_registered",message:"Cette adresse e-mail possède déjà un compte iFac."});
+      const supabaseUrl=(process.env.SUPABASE_URL||"").replace(/\/$/,"");
+      const apiKey=process.env.SUPABASE_PUBLISHABLE_KEY||"";
+      if(!supabaseUrl||!apiKey) return res.status(503).json({error:"auth_not_configured"});
+      const verifyUrl=new URL("/verify-email",process.env.APP_BASE_URL||"http://localhost:3435");
+      const auth=await fetch(`${supabaseUrl}/auth/v1/signup?redirect_to=${encodeURIComponent(verifyUrl.toString())}`,{
+        method:"POST",headers:{apikey:apiKey,"Content-Type":"application/json"},
+        body:JSON.stringify({email,password,data:{first_name:firstName,last_name:lastName,role:"professor"}})
+      });
+      const data=await auth.json().catch(()=>({}));
+      if(!auth.ok){
+        const detail=String(data.code||data.error_code||data.msg||data.message||"");
+        if(auth.status===429)return res.status(429).json({error:"email_rate_limited",message:"Trop de demandes. Réessayez plus tard."});
+        if(/already registered|already been registered|user already exists|email_exists/i.test(detail))
+          return res.status(409).json({error:"email_already_registered",message:"Cette adresse e-mail possède déjà un compte d’authentification."});
+        console.error("Inscription professeur Supabase:",auth.status,detail);
+        return res.status(503).json({error:"professor_registration_unavailable",message:"Le compte n’a pas pu être créé. Vérifiez le service de confirmation e-mail."});
+      }
+
+      const passwordHash=await bcrypt.hash(randomBytes(48).toString("hex"),12);
+      const client=await pool.connect();
+      try{
+        await client.query("BEGIN");
+        const invite=await client.query("SELECT id,user_id FROM professor_invites WHERE email=$1 FOR UPDATE",[email]);
+        if(invite.rowCount&&invite.rows[0].user_id){
+          await client.query("ROLLBACK");
+          return res.status(409).json({error:"professor_account_already_linked",message:"Cette adresse est déjà reliée à un compte professeur."});
+        }
+        const created=await client.query(
+          `INSERT INTO users(university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
+           VALUES(NULL,NULL,NULL,NULL,$1,$2,$3,$4,'professor') RETURNING id`,
+          [firstName,lastName,email,passwordHash]
+        );
+        const userId=created.rows[0].id;
+        let inviteId;
+        if(invite.rowCount){
+          inviteId=invite.rows[0].id;
+          await client.query(
+            "UPDATE professor_invites SET first_name=$1,last_name=$2,user_id=$3,activated_at=NOW(),is_active=TRUE WHERE id=$4",
+            [firstName,lastName,userId,inviteId]
+          );
+        }else{
+          const createdInvite=await client.query(
+            "INSERT INTO professor_invites(email,first_name,last_name,user_id,activated_at,is_active) VALUES($1,$2,$3,$4,NOW(),TRUE) RETURNING id",
+            [email,firstName,lastName,userId]
+          );
+          inviteId=createdInvite.rows[0].id;
+        }
+        const assigned=await client.query("SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE LIMIT 1",[inviteId]);
+        await client.query(
+          "INSERT INTO role_assignments(user_id,role,status) VALUES($1,'professor',$2) ON CONFLICT DO NOTHING",
+          [userId,assigned.rowCount?"active":"pending"]
+        );
+        await client.query("COMMIT");
+      }catch(error){
+        await client.query("ROLLBACK").catch(()=>{});
+        throw error;
+      }finally{client.release();}
+      return res.status(201).json({message:"Compte professeur créé. Confirmez votre adresse e-mail. Votre espace pédagogique sera activé après affectation."});
+    }catch(error){
+      console.error("Inscription professeur:",error?.message||error);
+      return res.status(503).json({error:"professor_registration_unavailable",message:"L’inscription est temporairement indisponible."});
+    }
+  });
+
   router.get("/admin/professors/catalog", requireAuth, requireAdmin, async (_req,res) => {
     try {
       await ensureSchema();
