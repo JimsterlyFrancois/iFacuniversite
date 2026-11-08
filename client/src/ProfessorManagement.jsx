@@ -19,7 +19,7 @@ export default function ProfessorManagement({ token, request }) {
   const faculties = useMemo(() => catalog.faculties.filter(x => String(x.university_id) === String(universityId)), [catalog.faculties, universityId]);
   const options = useMemo(() => catalog.options.filter(x => String(x.faculty_id) === String(facultyId)), [catalog.options, facultyId]);
   const levels = useMemo(() => catalog.levels.filter(x => String(x.option_id) === String(optionId)), [catalog.levels, optionId]);
-  const courses = useMemo(() => catalog.courses.filter(x => String(x.option_id) === String(optionId) && String(x.study_level_id) === String(levelId)), [catalog.courses, optionId, levelId]);
+  const courses = useMemo(() => catalog.courses.filter(x => String(x.university_id) === String(universityId) && String(x.faculty_id) === String(facultyId) && String(x.option_id) === String(optionId) && String(x.study_level_id) === String(levelId)), [catalog.courses, universityId, facultyId, optionId, levelId]);
   const assignment = () => ({ universityId: Number(universityId), facultyId: Number(facultyId), optionId: Number(optionId), studyLevelId: Number(levelId), courseId: Number(courseId) });
 
   async function load() {
