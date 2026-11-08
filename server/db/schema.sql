@@ -553,3 +553,9 @@ END;
 CREATE INDEX IF NOT EXISTS documents_storage_bucket_scope_idx
   ON public.documents(storage_bucket, publication_scope, university_id, faculty_id, option_id, study_level_id)
   WHERE is_active = TRUE;
+
+-- Restrict direct execution of the automatic RLS event trigger.
+-- Keep the automatic RLS event trigger, but prevent direct invocation by API roles.
+REVOKE EXECUTE ON FUNCTION public.rls_auto_enable()
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rls_auto_enable() TO postgres;
