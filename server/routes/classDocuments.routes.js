@@ -201,10 +201,23 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
 
   router.get("/class-documents", requireAuth, async (req, res) => {
     try {
-      const result = await pool.query(
-        "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE ORDER BY created_at DESC LIMIT 300",
-        [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
-      );
+      let result;
+      if (req.user.role === "professor") {
+        result = await pool.query(
+          `SELECT DISTINCT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.mime_type,d.file_size_bytes,d.created_at
+           FROM documents d
+           JOIN professor_invites i ON i.user_id=$1 AND i.is_active=TRUE
+           JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE AND pa.course_id=d.course_id
+           WHERE d.status='approved' AND d.is_active=TRUE AND d.course_id IS NOT NULL
+           ORDER BY d.created_at DESC LIMIT 300`,
+          [req.user.id]
+        );
+      } else {
+        result = await pool.query(
+          "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE ORDER BY created_at DESC LIMIT 300",
+          [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
+        );
+      }
       return res.json({ data: result.rows });
     } catch (error) {
       console.error("Documents de classe indisponibles:", error?.message);
