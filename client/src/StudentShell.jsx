@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProfessorManagement from "./ProfessorManagement.jsx";
+import CourseManagement from "./CourseManagement.jsx";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
@@ -7,6 +8,7 @@ const destinations = [
   { id: "notifications", label: "Notifications", short: "Alertes" },
   { id: "classAdmin", label: "Gestion des classes", short: "Gestion", adminOnly: true },
   { id: "professors", label: "Gestion des professeurs", short: "Profs", adminOnly: true },
+  { id: "courses", label: "Gestion des cours", short: "Cours", adminOnly: true },
   { id: "adminMessages", label: "Messages des délégués", short: "Délégués", adminOnly: true },
   { id: "groupAdmin", label: "Groupes de messagerie", short: "Groupes", adminOnly: true },
   { id: "messages", label: "Messagerie", short: "Messages" },
@@ -362,7 +364,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (e) { setFeedback(e.message); }
   }
 
-  const headings = { home: ["Accueil", "Retrouvez ici tous les services de votre espace universitaire."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Consultez les supports de cours validés pour votre classe."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], professors: ["Gestion des professeurs", "Déclarez les adresses e-mail et gérez les affectations universitaires."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
+  const headings = { home: ["Accueil", "Retrouvez ici tous les services de votre espace universitaire."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Consultez les supports de cours validés pour votre classe."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], professors: ["Gestion des professeurs", "Déclarez les adresses e-mail et gérez les affectations universitaires."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."], courses: ["Gestion des cours", "Créez les cours à partir des matières et des niveaux existants."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
   const homeDestinations = visibleDestinations.filter(x => !["messages", "home", "notes", "profile"].includes(x.id));
   const profileImage = user.avatarUrl || user.avatar_url || user.profileImageUrl || user.profile_image_url || "";
@@ -384,7 +386,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
             </button>)}
           </div>
         </nav>}
-        {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
+        {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}
+        {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
             <div className="profile-avatar" aria-hidden="true">{profileImage ? <img src={profileImage} alt="" /> : (user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
             <div className="profile-identity">
