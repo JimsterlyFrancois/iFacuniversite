@@ -98,55 +98,65 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       return res.status(400).json({ error: "invalid_document_metadata" });
     }
 
-    const scope = [req.user.university_id, req.user.faculty_id, req.user.option_id, req.user.study_level_id].map(positiveId);
-    if (scope.some(id => !id)) return res.status(400).json({ error: "incomplete_academic_profile" });
-    const [universityId, facultyId, optionId, studyLevelId] = scope;
-    let publisherRole = null;
-    let courseId = null;
-    let subjectId = null;
+    let universityId=positiveId(req.user.university_id);
+    let facultyId=positiveId(req.user.faculty_id);
+    let optionId=positiveId(req.user.option_id);
+    let studyLevelId=positiveId(req.user.study_level_id);
+    let publisherRole=null;
+    let courseId=null;
+    let subjectId=null;
 
     try {
-      if (req.user.role === "delegate") {
-        publisherRole = "delegate";
-      } else if (req.user.role === "professor") {
+      if (req.user.role === "professor") {
         const assignedCourse = await pool.query(
-          `SELECT c.id AS course_id, s.id AS subject_id
+          `SELECT c.id AS course_id,s.id AS subject_id,
+             pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
            FROM professor_invites i
            JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
            JOIN courses c ON c.id=pa.course_id AND c.is_active=TRUE
            JOIN subjects s ON s.id=c.subject_id AND s.is_active=TRUE
            WHERE i.user_id=$1 AND i.is_active=TRUE
-             AND pa.university_id=$2 AND pa.faculty_id=$3
-             AND pa.option_id=$4 AND pa.study_level_id=$5
-             AND lower(c.name)=lower($6)
+             AND pa.university_id IS NOT NULL AND lower(c.name)=lower($2)
            LIMIT 1`,
-          [req.user.id, universityId, facultyId, optionId, studyLevelId, course.trim()]
+          [req.user.id,course.trim()]
         );
         if (!assignedCourse.rowCount) {
           return res.status(403).json({ error: "course_assignment_required", message: "Vous ne pouvez publier que dans un cours qui vous a été attribué." });
         }
-        publisherRole = "professor";
-        courseId = assignedCourse.rows[0].course_id;
-        subjectId = assignedCourse.rows[0].subject_id;
+        const assigned=assignedCourse.rows[0];
+        universityId=Number(assigned.university_id);
+        facultyId=Number(assigned.faculty_id);
+        optionId=Number(assigned.option_id);
+        studyLevelId=Number(assigned.study_level_id);
+        courseId=assigned.course_id;
+        subjectId=assigned.subject_id;
+        publisherRole="professor";
       } else {
-        const assignment = await pool.query(
-          `SELECT role FROM role_assignments
-           WHERE user_id=$1 AND status='active'
-             AND (
-               role='admin_general'
-               OR (role='university_admin' AND university_id=$2)
-               OR (role='faculty_manager' AND university_id=$2 AND faculty_id=$3)
-               OR (role='program_manager' AND university_id=$2 AND faculty_id=$3
-                   AND option_id=$4 AND (study_level_id IS NULL OR study_level_id=$5))
-             )
-           ORDER BY CASE role
-             WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
-             WHEN 'faculty_manager' THEN 3 ELSE 4 END
-           LIMIT 1`,
-          [req.user.id, universityId, facultyId, optionId, studyLevelId]
-        );
-        if (!assignment.rowCount) return res.status(403).json({ error: "publication_not_authorized", message: "Votre compte ne possède pas de droit de publication dans ce parcours." });
-        publisherRole = assignment.rows[0].role;
+        if (![universityId,facultyId,optionId,studyLevelId].every(Boolean)) {
+          return res.status(400).json({ error: "incomplete_academic_profile" });
+        }
+        if (req.user.role === "delegate") {
+          publisherRole = "delegate";
+        } else {
+          const assignment = await pool.query(
+            `SELECT role FROM role_assignments
+             WHERE user_id=$1 AND status='active'
+               AND (
+                 role='admin_general'
+                 OR (role='university_admin' AND university_id=$2)
+                 OR (role='faculty_manager' AND university_id=$2 AND faculty_id=$3)
+                 OR (role='program_manager' AND university_id=$2 AND faculty_id=$3
+                     AND option_id=$4 AND (study_level_id IS NULL OR study_level_id=$5))
+               )
+             ORDER BY CASE role
+               WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+               WHEN 'faculty_manager' THEN 3 ELSE 4 END
+             LIMIT 1`,
+            [req.user.id,universityId,facultyId,optionId,studyLevelId]
+          );
+          if (!assignment.rowCount) return res.status(403).json({ error: "publication_not_authorized", message: "Votre compte ne possède pas de droit de publication dans ce parcours." });
+          publisherRole=assignment.rows[0].role;
+        }
       }
 
       if (!subjectId) {
