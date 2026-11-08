@@ -85,6 +85,11 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,'professor') RETURNING id
         `,[a.university_id,a.faculty_id,a.option_id,a.study_level_id,invite.rows[0].first_name,invite.rows[0].last_name,email,hash]);
         await client.query("UPDATE professor_invites SET user_id=$1,activated_at=NOW() WHERE id=$2",[created.rows[0].id,invite.rows[0].id]);
+        const courseAssignment=await client.query("SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE AND course_id IS NOT NULL LIMIT 1",[invite.rows[0].id]);
+        await client.query(
+          "INSERT INTO role_assignments(user_id,role,status) VALUES($1,'professor',$2) ON CONFLICT DO NOTHING",
+          [created.rows[0].id,courseAssignment.rowCount?"active":"pending"]
+        );
         await client.query("COMMIT");
       } catch(error) {
         await client.query("ROLLBACK").catch(()=>{});
