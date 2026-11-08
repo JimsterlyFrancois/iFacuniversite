@@ -379,7 +379,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
             {homeDestinations.map(x => <button key={x.id} type="button" className="mobile-dashboard-tile" onClick={() => setActive(x.id)}>
               <span className={"mobile-dashboard-icon nav-symbol-" + x.id}>{x.short[0]}</span>
               <span className="mobile-dashboard-label">{x.label}</span>
-              {serviceCount(x.id)>0 && <span className="mobile-dashboard-count">{badgeText(serviceCount(x.id))} {x.id === "class" ? "annonce(s)" : x.id === "notifications" ? "notification(s)" : x.id === "classDocs" ? "document(s)" : "élément(s)"}</span>}
+              {(["class", "notifications", "classDocs"].includes(x.id) || serviceCount(x.id)>0) && <span className="mobile-dashboard-count">{badgeText(serviceCount(x.id))} {x.id === "class" ? "annonce(s)" : x.id === "notifications" ? "notification(s)" : x.id === "classDocs" ? "document(s)" : "élément(s)"}</span>}
               <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
             </button>)}
           </div>
