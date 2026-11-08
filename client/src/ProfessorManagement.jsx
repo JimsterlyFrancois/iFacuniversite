@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 export default function ProfessorManagement({ token, request }) {
-  const [catalog,setCatalog]=useState({universities:[],faculties:[],options:[],levels:[]});
+  const [catalog,setCatalog]=useState({universities:[],faculties:[],options:[],levels:[],courses:[]});
   const [professors,setProfessors]=useState([]);
   const [firstName,setFirstName]=useState("");
   const [lastName,setLastName]=useState("");
@@ -10,23 +10,25 @@ export default function ProfessorManagement({ token, request }) {
   const [facultyId,setFacultyId]=useState("");
   const [optionId,setOptionId]=useState("");
   const [levelId,setLevelId]=useState("");
+  const [courseId,setCourseId]=useState("");
   const [targetId,setTargetId]=useState("");
   const [busy,setBusy]=useState(false);
   const [feedback,setFeedback]=useState("");
   const faculties=useMemo(()=>catalog.faculties.filter(x=>String(x.university_id)===String(universityId)),[catalog.faculties,universityId]);
   const options=useMemo(()=>catalog.options.filter(x=>String(x.faculty_id)===String(facultyId)),[catalog.options,facultyId]);
   const levels=useMemo(()=>catalog.levels.filter(x=>String(x.option_id)===String(optionId)),[catalog.levels,optionId]);
-  const assignment=()=>({universityId:Number(universityId),facultyId:Number(facultyId),optionId:Number(optionId),studyLevelId:Number(levelId)});
+  const courses=useMemo(()=>catalog.courses.filter(x=>String(x.option_id)===String(optionId)&&String(x.study_level_id)===String(levelId)),[catalog.courses,optionId,levelId]);
+  const assignment=()=>({universityId:Number(universityId),facultyId:Number(facultyId),optionId:Number(optionId),studyLevelId:Number(levelId),courseId:Number(courseId)});
   async function load(){
     setBusy(true);setFeedback("");
     try{
       const [c,p]=await Promise.all([request("/admin/professors/catalog",{token}),request("/admin/professors",{token})]);
-      setCatalog(c.data||{universities:[],faculties:[],options:[],levels:[]});setProfessors(p.data||[]);
+      setCatalog(c.data||{universities:[],faculties:[],options:[],levels:[],courses:[]});setProfessors(p.data||[]);
     }catch(e){setFeedback(e.message||"Impossible de charger les professeurs.");}
     finally{setBusy(false);}
   }
   useEffect(()=>{load();},[]);
-  function resetAssignment(){setUniversityId("");setFacultyId("");setOptionId("");setLevelId("");}
+  function resetAssignment(){setUniversityId("");setFacultyId("");setOptionId("");setLevelId("");setCourseId("");setCourseId("");}
   async function createProfessor(e){
     e.preventDefault();setBusy(true);setFeedback("");
     try{
@@ -60,21 +62,21 @@ export default function ProfessorManagement({ token, request }) {
         <div className="field-row"><label className="field"><span>Prénom</span><input required maxLength="100" value={firstName} onChange={e=>setFirstName(e.target.value)}/></label><label className="field"><span>Nom</span><input required maxLength="100" value={lastName} onChange={e=>setLastName(e.target.value)}/></label></div>
         <label className="field"><span>Adresse e-mail du professeur</span><input type="email" required maxLength="254" value={email} onChange={e=>setEmail(e.target.value)}/></label>
         <h3>Première affectation</h3><div className="field-row">{renderAssignmentFields()}</div>
-        <button className="submit-button" disabled={busy||!universityId||!facultyId||!optionId||!levelId}>Déclarer le professeur</button>
+        <button className="submit-button" disabled={busy||!universityId||!facultyId||!optionId||!levelId||!courseId}>Déclarer le professeur</button>
       </form>
     </section>
     <section className="student-card">
       <h2>Professeurs déclarés</h2>
       {professors.length===0&&!busy?<p>Aucun professeur déclaré pour le moment.</p>:professors.map(p=><article className="student-data-item" key={p.id}>
         <div><strong>{p.first_name} {p.last_name}</strong><p>{p.email}</p><small>{p.activated_at?"Activation commencée":"En attente d’activation"} · {p.is_active?"Accès actif":"Accès suspendu"}</small></div>
-        <ul>{(p.assignments||[]).map(a=><li key={a.id}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}</li>)}</ul>
+        <ul>{(p.assignments||[]).map(a=><li key={a.id}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}{a.course_name ? " · "+a.course_name : ""}</li>)}</ul>
         <button type="button" className="theme-button" onClick={()=>{setTargetId(String(p.id));setFeedback("Ajoutez une autre affectation pour "+p.first_name+" "+p.last_name+".");}}>Ajouter une affectation</button>
         <button type="button" className="theme-button" disabled={busy} onClick={()=>toggleStatus(p)}>{p.is_active?"Suspendre l’accès":"Réactiver l’accès"}</button>
       </article>)}
     </section>
     {targetId&&<section className="student-card">
       <h2>Ajouter une affectation</h2><p>Cette affectation sera ajoutée sans modifier les précédentes.</p>
-      <form className="auth-form" onSubmit={addAssignment}><div className="field-row">{assignmentFields}</div><div className="field-row"><button className="submit-button" disabled={busy||!universityId||!facultyId||!optionId||!levelId}>Enregistrer l’affectation</button><button type="button" className="theme-button" onClick={()=>{setTargetId("");resetAssignment();}}>Annuler</button></div></form>
+      <form className="auth-form" onSubmit={addAssignment}><div className="field-row">{renderAssignmentFields()}</div><div className="field-row"><button className="submit-button" disabled={busy||!universityId||!facultyId||!optionId||!levelId||!courseId}>Enregistrer l’affectation</button><button type="button" className="theme-button" onClick={()=>{setTargetId("");resetAssignment();}}>Annuler</button></div></form>
     </section>}
     {feedback&&<p className="form-feedback" role="status">{feedback}</p>}
   </div>;
