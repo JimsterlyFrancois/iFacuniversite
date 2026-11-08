@@ -286,6 +286,38 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
     }catch(error){await client.query("ROLLBACK").catch(()=>{});if(error.code==="23505")return res.status(409).json({error:"assignment_exists",message:"Cette affectation existe déjà."});return res.status(503).json({error:"assignment_failed"});}
     finally{client.release();}
   });
+  router.patch("/admin/professors/:id/assignments/:assignmentId", requireAuth, requireAdmin, async(req,res)=>{
+    const professorId=Number(req.params.id),assignmentId=Number(req.params.assignmentId),active=req.body?.active;
+    if(!Number.isSafeInteger(professorId)||professorId<1||!Number.isSafeInteger(assignmentId)||assignmentId<1||typeof active!=="boolean")
+      return res.status(400).json({error:"invalid_assignment_status"});
+    const client=await pool.connect();
+    try{
+      await client.query("BEGIN");
+      const updated=await client.query(
+        "UPDATE professor_assignments SET is_active=$1 WHERE id=$2 AND invite_id=$3 RETURNING id,is_active,course_id",
+        [active,assignmentId,professorId]
+      );
+      if(!updated.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"professor_assignment_not_found"});}
+      const account=await client.query("SELECT user_id,is_active FROM professor_invites WHERE id=$1",[professorId]);
+      if(account.rows[0]?.user_id){
+        const activeCourse=await client.query(
+          "SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE AND course_id IS NOT NULL LIMIT 1",
+          [professorId]
+        );
+        const roleStatus=account.rows[0].is_active&&activeCourse.rowCount?"active":"pending";
+        await client.query(
+          "UPDATE role_assignments SET status=$1,revoked_at=NULL,updated_at=NOW() WHERE user_id=$2 AND role='professor'",
+          [roleStatus,account.rows[0].user_id]
+        );
+      }
+      await client.query("COMMIT");
+      return res.json({assignment:updated.rows[0],message:active?"Affectation réactivée.":"Affectation retirée. Le compte et les autres cours restent inchangés."});
+    }catch(error){
+      await client.query("ROLLBACK").catch(()=>{});
+      return res.status(503).json({error:"professor_assignment_status_failed"});
+    }finally{client.release();}
+  });
+
   router.patch("/admin/professors/:id/status", requireAuth, requireAdmin, async(req,res)=>{
     const id=Number(req.params.id),active=req.body?.active;
     if(!Number.isSafeInteger(id)||id<1||typeof active!=="boolean")return res.status(400).json({error:"invalid_status"});
@@ -313,7 +345,8 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
       await ensureSchema();
       const r=await pool.query(`
         SELECT u.name AS university_name,f.name AS faculty_name,o.name AS option_name,l.label AS level_label,c.id AS course_id,c.name AS course_name
-        FROM professor_invites i JOIN professor_assignments a ON a.invite_id=i.id
+        FROM professor_invites i JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
+        JOIN professor_assignments a ON a.invite_id=i.id
         JOIN universities u ON u.id=a.university_id JOIN faculties f ON f.id=a.faculty_id
         JOIN options o ON o.id=a.option_id JOIN study_levels l ON l.id=a.study_level_id
         LEFT JOIN courses c ON c.id=a.course_id
