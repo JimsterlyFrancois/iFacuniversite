@@ -15,6 +15,21 @@ const destinations = [
   { id: "profile", label: "Profil", short: "Profil" }
 ];
 
+const primaryDestinations = [
+  { id: "messages", label: "Messagerie", short: "Messagerie" },
+  { id: "home", label: "Accueil", short: "Accueil" },
+  { id: "notes", label: "Notes privées", short: "Notes" },
+  { id: "profile", label: "Profil", short: "Profil" }
+];
+
+function NavigationIcon({ name }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (name === "messages") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m4 7 8 6 8-6" /></svg>;
+  if (name === "home") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" /></svg>;
+  if (name === "notes") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="M6 3h9l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v5h5M8 12h8M8 16h8" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
+}
+
 export default function StudentShell({ token, user, onLogout, request }) {
   const [active, setActive] = useState("home");
   const [dark, setDark] = useState(true);
@@ -341,26 +356,28 @@ export default function StudentShell({ token, user, onLogout, request }) {
 
   const headings = { home: ["Bibliothèque documentaire", "Documents disponibles pour votre option et votre niveau."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Partagez les supports de cours et consultez les documents validés."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], professors: ["Gestion des professeurs", "Déclarez les adresses e-mail et gérez les affectations universitaires."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
+  const homeDestinations = visibleDestinations.filter(x => !["messages", "home", "notes", "profile"].includes(x.id));
+  const profileImage = user.avatarUrl || user.avatar_url || user.profileImageUrl || user.profile_image_url || "";
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
   const badgeText = count => count >= 10 ? "10+" : String(count);
   return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
-        <nav className="mobile-dashboard" aria-label="Tableau de bord">
+        {active === "home" && <nav className="mobile-dashboard" aria-label="Services universitaires">
           <div className="mobile-dashboard-heading"><span>TABLEAU DE BORD</span><small>Accès rapides</small></div>
           <div className="mobile-dashboard-grid">
-            {visibleDestinations.map(x => <button key={x.id} type="button" className={active === x.id ? "mobile-dashboard-tile selected" : "mobile-dashboard-tile"} onClick={() => setActive(x.id)}>
+            {homeDestinations.map(x => <button key={x.id} type="button" className="mobile-dashboard-tile" onClick={() => setActive(x.id)}>
               <span className={"mobile-dashboard-icon nav-symbol-" + x.id}>{x.short[0]}</span>
               <span className="mobile-dashboard-label">{x.label}</span>
               {badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}
               <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
             </button>)}
           </div>
-        </nav>
+        </nav>}
         {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
-            <div className="profile-avatar" aria-hidden="true">{(user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
+            <div className="profile-avatar" aria-hidden="true">{profileImage ? <img src={profileImage} alt="" /> : (user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
             <div className="profile-identity">
               <p className="profile-kicker">MON ESPACE PERSONNEL</p>
               <h2>{user.firstName} {user.lastName}</h2>
@@ -458,6 +475,6 @@ export default function StudentShell({ token, user, onLogout, request }) {
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
-    <nav className="student-mobile-nav" aria-label="Navigation mobile">{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}><span className={"mobile-nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.short}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}</nav>
+    <nav className="student-mobile-nav" aria-label="Navigation principale">{primaryDestinations.map(x => <button key={x.id} type="button" aria-current={active === x.id ? "page" : undefined} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}>{x.id === "profile" && profileImage ? <img className="mobile-nav-avatar" src={profileImage} alt="" /> : <span className="mobile-nav-symbol"><NavigationIcon name={x.id} /></span>}<span>{x.short}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}</nav>
   </main>;
 }
