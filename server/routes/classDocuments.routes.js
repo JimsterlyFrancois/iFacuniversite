@@ -309,10 +309,21 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const documentId = positiveId(req.params.id);
     if (!documentId) return res.status(400).json({ error: "invalid_document_id" });
     const isAdmin = req.user.role === "admin";
+    const isProfessor = req.user.role === "professor";
     try {
       const result = await pool.query(
-        "SELECT id,file_key,file_name,mime_type FROM documents WHERE id=$1 AND is_active=TRUE AND ((status='approved' AND university_id=$2 AND faculty_id=$3 AND option_id=$4 AND study_level_id=$5) OR ($6=TRUE AND university_id=$7))",
-        [documentId,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,isAdmin,req.user.university_id]
+        `SELECT d.id,d.file_key,d.file_name,d.mime_type
+         FROM documents d
+         WHERE d.id=$1 AND d.is_active=TRUE AND (
+           (d.status='approved' AND d.university_id=$2 AND d.faculty_id=$3 AND d.option_id=$4 AND d.study_level_id=$5)
+           OR ($6=TRUE AND d.university_id=$7)
+           OR ($8=TRUE AND d.course_id IS NOT NULL AND EXISTS (
+             SELECT 1 FROM professor_invites i
+             JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
+             WHERE i.user_id=$9 AND i.is_active=TRUE AND pa.course_id=d.course_id
+           ))
+         )`,
+        [documentId,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,isAdmin,req.user.university_id,isProfessor,req.user.id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
       const row = result.rows[0];
