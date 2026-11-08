@@ -732,3 +732,48 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .mobile-dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mobile-dashboard-tile { grid-template-columns: 36px minmax(0, 1fr) auto; }
 }
+
+
+/* Accueil : services en liste verticale avec compteurs lisibles. */
+.mobile-dashboard-grid {
+  display: flex !important;
+  flex-direction: column;
+  gap: 10px;
+}
+.mobile-dashboard-tile {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 14px;
+  text-align: left;
+}
+.mobile-dashboard-icon {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.mobile-dashboard-label {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 13px;
+}
+.mobile-dashboard-count {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--student-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.mobile-dashboard-arrow {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.mobile-dashboard-tile .nav-count { display: none; }
+@media (max-width: 520px) {
+  .mobile-dashboard-grid { grid-template-columns: 1fr !important; }
+  .mobile-dashboard-tile { grid-template-columns: 38px minmax(0, 1fr) 16px; }
+}
