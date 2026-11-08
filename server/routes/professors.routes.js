@@ -195,9 +195,10 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
         SELECT i.id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,i.created_at,
           COALESCE(json_agg(json_build_object('id',a.id,'university_id',a.university_id,'university_name',u.name,
             'faculty_id',a.faculty_id,'faculty_name',f.name,'option_id',a.option_id,'option_name',o.name,
-            'study_level_id',a.study_level_id,'level_label',l.label)) FILTER (WHERE a.id IS NOT NULL),'[]') AS assignments
+            'study_level_id',a.study_level_id,'level_label',l.label,'course_id',a.course_id,'course_name',c.name,'is_active',a.is_active)) FILTER (WHERE a.id IS NOT NULL),'[]') AS assignments
         FROM professor_invites i
         LEFT JOIN professor_assignments a ON a.invite_id=i.id
+        LEFT JOIN courses c ON c.id=a.course_id
         LEFT JOIN universities u ON u.id=a.university_id
         LEFT JOIN faculties f ON f.id=a.faculty_id
         LEFT JOIN options o ON o.id=a.option_id
@@ -229,6 +230,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
   });
   router.post("/admin/professors/:id/assignments", requireAuth, requireAdmin, async(req,res)=>{
     const id=Number(req.params.id),a=req.body?.assignment;
+    const courseId=Number(req.body?.courseId ?? a?.courseId);
     if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:"invalid_professor_id"});
     const client=await pool.connect();
     try{
@@ -236,8 +238,29 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
       const exists=await client.query("SELECT id FROM professor_invites WHERE id=$1 AND is_active=TRUE",[id]);
       if(!exists.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"professor_not_found"});}
       if(!(await validAssignment(client,a))){await client.query("ROLLBACK");return res.status(400).json({error:"invalid_assignment"});}
-      await client.query("INSERT INTO professor_assignments(invite_id,university_id,faculty_id,option_id,study_level_id) VALUES($1,$2,$3,$4,$5)",[id,Number(a.universityId),Number(a.facultyId),Number(a.optionId),Number(a.studyLevelId)]);
-      await client.query("COMMIT");return res.status(201).json({message:"Affectation ajoutée."});
+      let selectedCourseId=null;
+      if(Number.isSafeInteger(courseId)&&courseId>0){
+        const course=await client.query(
+          `SELECT c.id FROM courses c JOIN subjects s ON s.id=c.subject_id
+           JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
+           WHERE c.id=$1 AND s.option_id=$2 AND s.study_level_id=$3
+             AND f.university_id=$4 AND f.id=$5 AND c.is_active=TRUE AND s.is_active=TRUE`,
+          [courseId,Number(a.optionId),Number(a.studyLevelId),Number(a.universityId),Number(a.facultyId)]
+        );
+        if(!course.rowCount){await client.query("ROLLBACK");return res.status(400).json({error:"course_outside_assignment_scope",message:"Le cours choisi ne correspond pas à l’affectation universitaire."});}
+        selectedCourseId=course.rows[0].id;
+      }
+      await client.query(
+        "INSERT INTO professor_assignments(invite_id,university_id,faculty_id,option_id,study_level_id,course_id,assigned_by) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [id,Number(a.universityId),Number(a.facultyId),Number(a.optionId),Number(a.studyLevelId),selectedCourseId,req.user.id]
+      );
+      if(selectedCourseId){
+        await client.query(
+          "UPDATE role_assignments SET status='active',updated_at=NOW() WHERE user_id=(SELECT user_id FROM professor_invites WHERE id=$1) AND role='professor' AND status='pending'",
+          [id]
+        );
+      }
+      await client.query("COMMIT");return res.status(201).json({message:selectedCourseId?"Cours attribué au professeur. Son droit de publication est activé.":"Affectation de niveau ajoutée. Attribuez aussi un cours pour autoriser la publication."});
     }catch(error){await client.query("ROLLBACK").catch(()=>{});if(error.code==="23505")return res.status(409).json({error:"assignment_exists",message:"Cette affectation existe déjà."});return res.status(503).json({error:"assignment_failed"});}
     finally{client.release();}
   });
@@ -257,11 +280,12 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
     try{
       await ensureSchema();
       const r=await pool.query(`
-        SELECT u.name AS university_name,f.name AS faculty_name,o.name AS option_name,l.label AS level_label
+        SELECT u.name AS university_name,f.name AS faculty_name,o.name AS option_name,l.label AS level_label,c.id AS course_id,c.name AS course_name
         FROM professor_invites i JOIN professor_assignments a ON a.invite_id=i.id
         JOIN universities u ON u.id=a.university_id JOIN faculties f ON f.id=a.faculty_id
         JOIN options o ON o.id=a.option_id JOIN study_levels l ON l.id=a.study_level_id
-        WHERE i.user_id=$1 AND i.is_active=TRUE ORDER BY u.name,f.name,o.name,l.sort_order
+        LEFT JOIN courses c ON c.id=a.course_id
+        WHERE i.user_id=$1 AND i.is_active=TRUE AND a.is_active=TRUE ORDER BY u.name,f.name,o.name,l.sort_order
       `,[req.user.id]);
       return res.json({data:r.rows});
     }catch{return res.status(503).json({error:"professor_assignments_unavailable"});}
