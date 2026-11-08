@@ -107,8 +107,24 @@ const makeToken = () => randomBytes(32).toString("base64url");
 const publicUser = (u) => ({
   id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email,
   role: u.role, universityId: u.university_id, facultyId: u.faculty_id,
-  optionId: u.option_id, studyLevelId: u.study_level_id
+  optionId: u.option_id, studyLevelId: u.study_level_id,
+  universityName: u.university_name || "", facultyName: u.faculty_name || "",
+  optionName: u.option_name || "", studyLevelLabel: u.study_level_label || ""
 });
+async function getPublicUser(user) {
+  const result = await pool.query(
+    `SELECT u.*, un.name AS university_name, f.name AS faculty_name,
+            o.name AS option_name, l.label AS study_level_label
+     FROM users u
+     LEFT JOIN universities un ON un.id=u.university_id
+     LEFT JOIN faculties f ON f.id=u.faculty_id
+     LEFT JOIN options o ON o.id=u.option_id
+     LEFT JOIN study_levels l ON l.id=u.study_level_id
+     WHERE u.id=$1 LIMIT 1`,
+    [user.id]
+  );
+  return publicUser(result.rows[0] || user);
+}
 async function requireAuth(req, res, next) {
   if (!pool) return res.status(503).json({ error: "service_unavailable" });
   const match = /^Bearer ([A-Za-z0-9_-]+)$/.exec(req.get("authorization") || "");
@@ -424,7 +440,7 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
     const token = makeToken();
     await pool.query("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1,$2,NOW()+INTERVAL '7 days')", [user.id, hashToken(token)]);
     res.set("Cache-Control", "no-store");
-    return res.json({ token, expiresIn: 604800, user: publicUser(user) });
+    return res.json({ token, expiresIn: 604800, user: await getPublicUser(user) });
   } catch (error) {
     console.error("Échec connexion iFac:", error?.message || "unknown");
     return res.status(503).json({ error: "login_unavailable", message: "Le service de connexion est temporairement indisponible." });
@@ -438,7 +454,10 @@ app.post("/api/v1/auth/logout", requireAuth, async (req, res) => {
     return res.status(204).end();
   } catch { return res.status(503).json({ error: "logout_unavailable" }); }
 });
-app.get("/api/v1/auth/me", requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
+app.get("/api/v1/auth/me", requireAuth, async (req, res) => {
+  try { res.set("Cache-Control", "no-store"); return res.json({ user: await getPublicUser(req.user) }); }
+  catch { return res.status(503).json({ error: "profile_unavailable", message: "Impossible de charger les informations du profil." }); }
+});
 
 app.get("/api/v1/notes", requireAuth, async (req, res) => {
   try {
