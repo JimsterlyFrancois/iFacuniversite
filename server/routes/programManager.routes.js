@@ -177,10 +177,10 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
         return res.status(403).json({ error: "course_outside_program_scope", message: "Ce cours ne relève pas de votre programme." });
       }
       let invite = await client.query("SELECT id,is_active,user_id,first_name,last_name FROM professor_invites WHERE email=$1 FOR UPDATE", [email]);
-      const existingUser = await client.query("SELECT id,role FROM users WHERE email=$1", [email]);
-      if (existingUser.rowCount && (!invite.rowCount || Number(invite.rows[0].user_id) !== Number(existingUser.rows[0].id) || existingUser.rows[0].role !== "professor")) {
+      const existingUser = await client.query("SELECT id,role,is_active FROM users WHERE email=$1", [email]);
+      if (existingUser.rowCount && (!invite.rowCount || Number(invite.rows[0].user_id) !== Number(existingUser.rows[0].id) || existingUser.rows[0].role !== "professor" || !existingUser.rows[0].is_active)) {
         await client.query("ROLLBACK");
-        return res.status(409).json({ error: "email_already_used", message: "Cette adresse possède déjà un compte qui n’est pas relié à cette fiche professeur." });
+        return res.status(409).json({ error: "email_already_used", message: "Cette adresse possède déjà un compte qui n’est pas relié à cette fiche professeur ou qui est suspendu." });
       }
       if (invite.rowCount && !invite.rows[0].is_active) {
         await client.query("ROLLBACK");
