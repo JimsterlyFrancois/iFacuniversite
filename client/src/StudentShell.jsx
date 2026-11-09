@@ -291,7 +291,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     const form = new FormData(formElement);
     const hasImage = Boolean(flyerUpload.fileSignature);
     if (hasImage) {
-      if (flyerUpload.status !== "ready" || flyerUpload.fileSignature !== fileSignature || !flyerUpload.imageKey) {
+      if (flyerUpload.status !== "ready" || !flyerUpload.imageKey) {
         setFeedback("Veuillez attendre la fin du transfert de l’image avant de publier l’annonce.");
         return;
       }
