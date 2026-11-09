@@ -55,6 +55,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [courseName, setCourseName] = useState("");
@@ -90,6 +91,27 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
     professors: ["Gestion des professeurs", "Déclarez un professeur et associez-le à un cours de votre programme."],
     documents: ["Ressources pédagogiques", "Consultez les documents publiés dans votre périmètre de responsabilité."]
   }[active];
+
+  async function downloadDocument(doc) {
+    setDownloadingId(doc.id); setFeedback("");
+    try {
+      const response = await fetch(`/api/v1/program-manager/documents/${doc.id}/download`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || "Téléchargement impossible pour ce document.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = doc.file_name || `document-ifac-${doc.id}`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) { setFeedback(error.message); }
+    finally { setDownloadingId(null); }
+  }
 
   async function createCourse(event) {
     event.preventDefault();
@@ -142,7 +164,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
       <section className="program-main" aria-live="polite">
         <div className="program-heading">
           <div><p className="program-eyebrow">iFAC UNIVERSITÉ · GESTION ACADÉMIQUE</p><h1>{page[0]}</h1><p>{page[1]}</p></div>
-          <span className="program-badge">RESPONSABLE DE PROGRAMME</span>
+          <div className="program-form-actions"><button className="program-button secondary" type="button" onClick={load} disabled={loading || busy}>Actualiser</button><span className="program-badge">RESPONSABLE DE PROGRAMME</span></div>
         </div>
         {scopes.length > 0 && <div className="program-scope"><strong>Votre périmètre :</strong> {scopes.map(scope => [scope.university_name, scope.faculty_name, scope.option_name, scope.study_level_id ? "Niveau attribué" : "Tous les niveaux du programme"].filter(Boolean).join(" · ")).join(" / ")}</div>}
         {feedback && <p className="program-feedback" role="status">{feedback}</p>}
@@ -188,7 +210,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
             </section>
           </>}
           {active === "documents" && <section className="program-card"><h2>Documents pédagogiques du programme</h2>
-            {documents.length ? <div className="program-list">{documents.map(doc => <article className="program-item" key={doc.id}><div><strong>{doc.title}</strong><div className="program-muted">{doc.course || "Cours"} · {doc.option_name} · {doc.level_label} · {doc.status}</div>{doc.description && <div className="program-muted">{doc.description}</div>}</div><span className="program-pill">{doc.status === "approved" ? "Publié" : doc.status === "pending" ? "À examiner" : "Refusé"}</span></article>)}</div> : <div className="program-empty">Aucun document disponible dans votre périmètre.</div>}
+            {documents.length ? <div className="program-list">{documents.map(doc => <article className="program-item" key={doc.id}><div><strong>{doc.title}</strong><div className="program-muted">{doc.course || "Cours"} · {doc.option_name} · {doc.level_label}</div>{doc.description && <div className="program-muted">{doc.description}</div>}</div><div className="program-form-actions"><span className="program-pill">{doc.status === "approved" ? "Publié" : doc.status === "pending" ? "En attente" : "Refusé"}</span>{doc.status === "approved" && <button className="program-button secondary" type="button" onClick={() => downloadDocument(doc)} disabled={downloadingId === doc.id}>{downloadingId === doc.id ? "Téléchargement…" : "Télécharger"}</button>}</div></article>)}</div> : <div className="program-empty">Aucun document disponible dans votre périmètre.</div>}
           </section>}
         </>}
       </section>
