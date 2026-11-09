@@ -9,7 +9,8 @@
     "dev:client": "vite --config client/vite.config.js",
     "dev:server": "node --watch server/index.js",
     "start": "node server/index.js",
-    "build": "vite build --config client/vite.config.js"
+    "build": "vite build --config client/vite.config.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^5.1.0",
