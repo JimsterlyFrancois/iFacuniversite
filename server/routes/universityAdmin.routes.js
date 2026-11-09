@@ -86,8 +86,12 @@ export function createUniversityAdminRouter({pool,requireAuth}){
  router.post("/university-admin/announcements",requireAuth,scope,async(req,res)=>{
   const title=typeof req.body?.title==="string"?req.body.title.trim():"",body=typeof req.body?.body==="string"?req.body.body.trim():"";
   if(!title||title.length>220||!body||body.length>20000)return res.status(400).json({error:"invalid_announcement"});
-  const universityId=idOf(req.body?.universityId);
-  if(!universityId||!req.universityScopes.some(x=>Number(x.university_id)===universityId))return res.status(403).json({error:"university_scope_forbidden"});
+  const assignmentId=idOf(req.body?.scopeAssignmentId);
+  const selectedScope=assignmentId
+    ? req.universityScopes.find(x=>Number(x.id)===assignmentId)
+    : req.universityScopes.length===1?req.universityScopes[0]:null;
+  if(!selectedScope)return res.status(403).json({error:"university_scope_forbidden",message:"Sélectionnez une université que vous administrez."});
+  const universityId=selectedScope.university_id;
   try{const r=await pool.query("INSERT INTO announcements(university_id,title,body,is_active,created_by,starts_at) VALUES($1,$2,$3,TRUE,$4,NOW()) RETURNING id,title,body,created_at,is_active",[universityId,title,body,req.user.id]);return res.status(201).json({announcement:r.rows[0],message:"Annonce publiée dans votre université."});}
   catch{return res.status(503).json({error:"announcement_create_failed"});}
  });
