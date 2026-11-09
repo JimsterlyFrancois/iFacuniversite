@@ -13,13 +13,13 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
   async function requireUniversityAdmin(req, res, next) {
     try {
       const result = await pool.query(
-        \`SELECT ra.id AS assignment_id, ra.university_id, u.name AS university_name,
+        `SELECT ra.id AS assignment_id, ra.university_id, u.name AS university_name,
                 u.registration_enabled
          FROM role_assignments ra
          JOIN universities u ON u.id = ra.university_id
          WHERE ra.user_id = $1 AND ra.role = 'university_admin'
            AND ra.status = 'active' AND u.is_active = TRUE
-         ORDER BY u.name, ra.id\`,
+         ORDER BY u.name, ra.id`,
         [req.user.id]
       );
       if (!result.rowCount) {
@@ -43,9 +43,9 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
 
   async function audit(client, req, action, type, id, universityId, facultyId = null, optionId = null, metadata = {}) {
     await client.query(
-      \`INSERT INTO admin_audit_logs
+      `INSERT INTO admin_audit_logs
        (actor_user_id, action, target_type, target_id, university_id, faculty_id, option_id, metadata)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)\`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
       [req.user.id, action, type, id, universityId, facultyId, optionId, JSON.stringify(metadata)]
     );
   }
@@ -59,18 +59,18 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
           [ids]
         ),
         pool.query(
-          \`SELECT o.id,o.faculty_id,o.code,o.name,o.is_active,f.university_id
+          `SELECT o.id,o.faculty_id,o.code,o.name,o.is_active,f.university_id
            FROM options o JOIN faculties f ON f.id=o.faculty_id
-           WHERE f.university_id=ANY($1::bigint[]) ORDER BY f.university_id,f.name,o.name\`,
+           WHERE f.university_id=ANY($1::bigint[]) ORDER BY f.university_id,f.name,o.name`,
           [ids]
         ),
         pool.query(
-          \`SELECT l.id,l.option_id,l.code,l.label,l.sort_order,l.is_active,
+          `SELECT l.id,l.option_id,l.code,l.label,l.sort_order,l.is_active,
                   f.university_id,o.faculty_id
            FROM study_levels l JOIN options o ON o.id=l.option_id
            JOIN faculties f ON f.id=o.faculty_id
            WHERE f.university_id=ANY($1::bigint[])
-           ORDER BY f.university_id,f.name,o.name,l.sort_order\`,
+           ORDER BY f.university_id,f.name,o.name,l.sort_order`,
           [ids]
         )
       ]);
@@ -112,9 +112,9 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     if (!id || !validCode(code) || name.length < 2 || typeof active !== "boolean") return res.status(400).json({ error: "invalid_faculty_update" });
     try {
       const result = await pool.query(
-        \`UPDATE faculties SET code=$1,name=$2,is_active=$3,updated_at=NOW()
+        `UPDATE faculties SET code=$1,name=$2,is_active=$3,updated_at=NOW()
          WHERE id=$4 AND university_id=ANY($5::bigint[])
-         RETURNING id,university_id,code,name,is_active\`,
+         RETURNING id,university_id,code,name,is_active`,
         [code, name, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "faculty_not_found" });
@@ -178,10 +178,10 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     if (!id || !validCode(code) || name.length < 2 || typeof active !== "boolean") return res.status(400).json({ error: "invalid_option_update" });
     try {
       const result = await pool.query(
-        \`UPDATE options o SET code=$1,name=$2,is_active=$3
+        `UPDATE options o SET code=$1,name=$2,is_active=$3
          FROM faculties f WHERE o.id=$4 AND f.id=o.faculty_id
            AND f.university_id=ANY($5::bigint[])
-         RETURNING o.id,o.faculty_id,o.code,o.name,o.is_active\`,
+         RETURNING o.id,o.faculty_id,o.code,o.name,o.is_active`,
         [code, name, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "option_not_found" });
@@ -197,9 +197,9 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     if (!id) return res.status(400).json({ error: "invalid_option_id" });
     try {
       const result = await pool.query(
-        \`UPDATE options o SET is_active=FALSE FROM faculties f
+        `UPDATE options o SET is_active=FALSE FROM faculties f
          WHERE o.id=$1 AND f.id=o.faculty_id AND f.university_id=ANY($2::bigint[])
-         RETURNING o.id\`,
+         RETURNING o.id`,
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "option_not_found" });
@@ -215,8 +215,8 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     }
     try {
       const option = await pool.query(
-        \`SELECT o.id,o.faculty_id,f.university_id FROM options o JOIN faculties f ON f.id=o.faculty_id
-         WHERE o.id=$1 AND f.university_id=ANY($2::bigint[]) AND o.is_active=TRUE AND f.is_active=TRUE\`,
+        `SELECT o.id,o.faculty_id,f.university_id FROM options o JOIN faculties f ON f.id=o.faculty_id
+         WHERE o.id=$1 AND f.university_id=ANY($2::bigint[]) AND o.is_active=TRUE AND f.is_active=TRUE`,
         [optionId, scopeIds(req)]
       );
       if (!option.rowCount) return res.status(404).json({ error: "option_not_found" });
@@ -241,10 +241,10 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     if (!id || !/^[A-Z0-9_-]{1,16}$/.test(code) || !label || !Number.isSafeInteger(sortOrder) || sortOrder < 1 || sortOrder > 100 || typeof active !== "boolean") return res.status(400).json({ error: "invalid_study_level_update" });
     try {
       const result = await pool.query(
-        \`UPDATE study_levels l SET code=$1,label=$2,sort_order=$3,is_active=$4
+        `UPDATE study_levels l SET code=$1,label=$2,sort_order=$3,is_active=$4
          FROM options o JOIN faculties f ON f.id=o.faculty_id
          WHERE l.id=$5 AND o.id=l.option_id AND f.university_id=ANY($6::bigint[])
-         RETURNING l.id,l.option_id,l.code,l.label,l.sort_order,l.is_active\`,
+         RETURNING l.id,l.option_id,l.code,l.label,l.sort_order,l.is_active`,
         [code, label, sortOrder, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "study_level_not_found" });
@@ -260,9 +260,9 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     if (!id) return res.status(400).json({ error: "invalid_study_level_id" });
     try {
       const result = await pool.query(
-        \`UPDATE study_levels l SET is_active=FALSE FROM options o JOIN faculties f ON f.id=o.faculty_id
+        `UPDATE study_levels l SET is_active=FALSE FROM options o JOIN faculties f ON f.id=o.faculty_id
          WHERE l.id=$1 AND o.id=l.option_id AND f.university_id=ANY($2::bigint[])
-         RETURNING l.id\`,
+         RETURNING l.id`,
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "study_level_not_found" });
@@ -275,13 +275,13 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     if (!scope) return res.status(400).json({ error: "university_scope_selection_required" });
     try {
       const counts = await pool.query(
-        \`SELECT COUNT(DISTINCT f.id)::int faculties,
+        `SELECT COUNT(DISTINCT f.id)::int faculties,
                 COUNT(DISTINCT o.id)::int options,
                 COUNT(DISTINCT l.id)::int levels
          FROM faculties f
          LEFT JOIN options o ON o.faculty_id=f.id AND o.is_active=TRUE
          LEFT JOIN study_levels l ON l.option_id=o.id AND l.is_active=TRUE
-         WHERE f.university_id=$1 AND f.is_active=TRUE\`,
+         WHERE f.university_id=$1 AND f.is_active=TRUE`,
         [scope.university_id]
       );
       const c = counts.rows[0];
