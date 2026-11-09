@@ -9,6 +9,7 @@ import { randomBytes, createHash } from "node:crypto";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
+import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { createProfessorsRouter } from "./routes/professors.routes.js";
@@ -330,12 +331,17 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     // Supabase Auth stores and verifies the real password. This legacy column receives
     // an unusable random hash so no duplicate usable password is stored by iFac.
     const passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"), 12);
+    const authUserId = signup.data?.user?.id;
+    if (typeof authUserId !== "string") {
+      await client.query("ROLLBACK");
+      return res.status(503).json({ error: "auth_identity_unavailable", message: "Supabase n’a pas retourné l’identifiant sécurisé du compte." });
+    }
     const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
     const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "student";
     const createdUser = await client.query(
-      `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,university_id,faculty_id,option_id,study_level_id,role`,
-      [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
+      `INSERT INTO users (auth_user_id,university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,university_id,faculty_id,option_id,study_level_id,role`,
+      [authUserId,profile.rows[0].university_id,profile.rows[0].faculty_id,profile.rows[0].option_id,profile.rows[0].study_level_id,firstName.trim(),lastName.trim(),normalizedEmail,passwordHash,role]
     );
     await client.query("COMMIT");
     return res.status(201).json({ message: "Compte créé. Consultez votre boîte e-mail pour confirmer votre adresse avant de vous connecter." });
@@ -417,15 +423,32 @@ app.post("/api/v1/auth/password-reset/confirm", requireDatabase, async (req, res
   try {
     await client.query("BEGIN");
     const match = await client.query(
-      "SELECT user_id FROM email_tokens WHERE token_hash=$1 AND purpose='reset_password' AND used_at IS NULL AND expires_at>NOW() FOR UPDATE",
+      "SELECT t.user_id,u.auth_user_id FROM email_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1 AND t.purpose='reset_password' AND t.used_at IS NULL AND t.expires_at>NOW() FOR UPDATE OF t,u",
       [hashToken(token)]
     );
     if (!match.rowCount) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "invalid_or_expired_token" });
     }
-    const passwordHash = await bcrypt.hash(password,12);
     const userId = match.rows[0].user_id;
+    let passwordHash;
+    if (match.rows[0].auth_user_id) {
+      const authUpdate = await updateSupabaseUserPassword({
+        supabaseUrl: supabaseAuthUrl,
+        secretKey: storageKey,
+        userId: match.rows[0].auth_user_id,
+        password
+      });
+      if (!authUpdate.ok) {
+        await client.query("ROLLBACK");
+        return res.status(503).json({ error: "supabase_password_update_failed", message: "Supabase Auth n’a pas accepté le changement. Le lien reste valable ; réessayez plus tard." });
+      }
+      // Keep the local legacy hash unusable; Supabase Auth remains the password authority.
+      passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"),12);
+    } else {
+      // Accounts predating Supabase Auth continue to use the legacy password verifier.
+      passwordHash = await bcrypt.hash(password,12);
+    }
     await client.query("UPDATE users SET password_hash=$1,updated_at=NOW() WHERE id=$2", [passwordHash,userId]);
     await client.query("UPDATE email_tokens SET used_at=NOW() WHERE user_id=$1 AND purpose='reset_password' AND used_at IS NULL", [userId]);
     await client.query("UPDATE sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL", [userId]);
