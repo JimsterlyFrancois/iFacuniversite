@@ -57,3 +57,16 @@ Les contrôles CI sur la révision récente ont confirmé : syntaxe de toutes le
 ## Décision de livraison
 
 **Ne pas fusionner et ne pas publier en production à ce stade.** La version de production reste indépendante de cette branche. La fusion ne sera envisagée qu'après migrations, tests d'autorisation, CI verte, prévisualisation Vercel prête et vérification des parcours critiques.
+
+
+## Vérification de la base Supabase de production
+
+Projet contrôlé en lecture seule : \`iFac universitaire\` (\`vrwxmsohomeqjqjpgzwn\`), état \`ACTIVE_HEALTHY\`, PostgreSQL 17.11.0.003.
+
+- La base contient actuellement 5 migrations appliquées, jusqu'à \`20261108213315_secure_rls_event_trigger\`.
+- La colonne \`universities.registration_enabled\` n'existe pas encore en production. La migration \`20261109100000_university_catalog_admin.sql\` est donc indispensable avant l'activation de la nouvelle gestion du catalogue.
+- Les 22 tables du schéma public observées ont RLS activé et aucune policy. Cela bloque l'accès direct par les rôles Data API ; l'application doit continuer à passer par son backend de confiance. Ne pas ajouter de policies publiques génériques.
+- L'advisor Supabase signale que la protection des mots de passe compromis est désactivée. À activer dans les paramètres Auth du projet.
+- L'advisor performance signale 38 clés étrangères sans index couvrant et 15 index non utilisés. Ce sont des alertes d'optimisation, pas des preuves d'erreur fonctionnelle ; ne pas supprimer ou ajouter ces index sans examiner les requêtes et la charge réelle.
+
+Aucune migration n'a été appliquée à la base de production pendant cet audit.
