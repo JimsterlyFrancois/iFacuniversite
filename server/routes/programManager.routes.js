@@ -47,7 +47,11 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
               AND (ra.study_level_id IS NULL OR ra.study_level_id=u.study_level_id)
           )`, [req.user.id]),
         pool.query(`SELECT COUNT(*)::int AS total FROM courses c JOIN subjects s ON s.id=c.subject_id
-          WHERE c.is_active=TRUE AND ${inScope("s")}`, [req.user.id, req.programScopes[0].university_id, req.programScopes[0].faculty_id]),
+          WHERE c.is_active=TRUE AND EXISTS (SELECT 1 FROM role_assignments ra
+            JOIN options o ON o.id=ra.option_id JOIN faculties f ON f.id=o.faculty_id
+            WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
+              AND ra.university_id=f.university_id AND ra.faculty_id=f.id
+              AND ra.option_id=s.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id))`, [req.user.id]),
         pool.query(`SELECT COUNT(DISTINCT i.id)::int AS total FROM professor_invites i
           JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
           WHERE EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
@@ -78,9 +82,10 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
         pool.query(`SELECT s.id,s.name,s.option_id,s.study_level_id,l.label AS level_label,o.name AS option_name
           FROM subjects s JOIN options o ON o.id=s.option_id JOIN study_levels l ON l.id=s.study_level_id
           WHERE s.is_active=TRUE AND EXISTS (SELECT 1 FROM role_assignments ra
+            JOIN options scope_option ON scope_option.id=ra.option_id
+            JOIN faculties scope_faculty ON scope_faculty.id=scope_option.faculty_id
             WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
-              AND ra.university_id=(SELECT university_id FROM role_assignments WHERE user_id=$1 AND role='program_manager' AND status='active' ORDER BY id LIMIT 1)
-              AND ra.faculty_id=(SELECT faculty_id FROM role_assignments WHERE user_id=$1 AND role='program_manager' AND status='active' ORDER BY id LIMIT 1)
+              AND ra.university_id=scope_faculty.university_id AND ra.faculty_id=scope_faculty.id
               AND ra.option_id=s.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id))
           ORDER BY o.name,l.sort_order,s.name`, [req.user.id]),
         pool.query(`SELECT c.id,c.name,c.description,s.id AS subject_id,s.name AS subject_name,
@@ -88,7 +93,10 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
           FROM courses c JOIN subjects s ON s.id=c.subject_id JOIN options o ON o.id=s.option_id
           JOIN study_levels l ON l.id=s.study_level_id
           WHERE c.is_active=TRUE AND EXISTS (SELECT 1 FROM role_assignments ra
+            JOIN options scope_option ON scope_option.id=ra.option_id
+            JOIN faculties scope_faculty ON scope_faculty.id=scope_option.faculty_id
             WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
+              AND ra.university_id=scope_faculty.university_id AND ra.faculty_id=scope_faculty.id
               AND ra.option_id=s.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id))
           ORDER BY o.name,l.sort_order,s.name,c.name`, [req.user.id])
       ]);
