@@ -15,6 +15,7 @@ import { createProfessorsRouter } from "./routes/professors.routes.js";
 import { createProgramManagerRouter } from "./routes/programManager.routes.js";
 import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
 import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
+import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -165,6 +166,7 @@ app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
 app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));
+app.use("/api/v1", createGeneralAdminRouter({ pool, requireAuth }));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
