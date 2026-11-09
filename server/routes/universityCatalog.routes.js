@@ -41,6 +41,21 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
   };
   const scopeIds = req => req.universityScopes.map(scope => scope.university_id);
 
+  async function closeRegistrationIfCatalogIncomplete(req) {
+    for (const scope of req.universityScopes) {
+      const result = await pool.query(`SELECT COUNT(DISTINCT f.id)::int faculties,
+          COUNT(DISTINCT o.id)::int options, COUNT(DISTINCT l.id)::int levels
+        FROM faculties f
+        LEFT JOIN options o ON o.faculty_id=f.id AND o.is_active=TRUE
+        LEFT JOIN study_levels l ON l.option_id=o.id AND l.is_active=TRUE
+        WHERE f.university_id=$1 AND f.is_active=TRUE`, [scope.university_id]);
+      const counts = result.rows[0] || {};
+      if (!counts.faculties || !counts.options || !counts.levels) {
+        await pool.query("UPDATE universities SET registration_enabled=FALSE,updated_at=NOW() WHERE id=$1", [scope.university_id]);
+      }
+    }
+  }
+
   async function audit(client, req, action, type, id, universityId, facultyId = null, optionId = null, metadata = {}) {
     await client.query(
       `INSERT INTO admin_audit_logs
@@ -118,6 +133,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         [code, name, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "faculty_not_found" });
+      if (!active) await closeRegistrationIfCatalogIncomplete(req);
       await pool.query(
         "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,metadata) VALUES($1,'academic.faculty_updated','faculty',$2,$3,$4::jsonb)",
         [req.user.id, id, result.rows[0].university_id, JSON.stringify({ code, name, isActive: active })]
@@ -138,6 +154,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "faculty_not_found" });
+      await closeRegistrationIfCatalogIncomplete(req);
       await pool.query(
         "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,metadata) VALUES($1,'academic.faculty_deactivated','faculty',$2,$3,'{}'::jsonb)",
         [req.user.id, id, result.rows[0].university_id]
@@ -185,6 +202,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         [code, name, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "option_not_found" });
+      if (!active) await closeRegistrationIfCatalogIncomplete(req);
       return res.json({ option: result.rows[0], message: "Option mise à jour." });
     } catch (error) {
       if (error?.code === "23505") return res.status(409).json({ error: "option_already_exists" });
@@ -203,6 +221,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "option_not_found" });
+      await closeRegistrationIfCatalogIncomplete(req);
       return res.json({ message: "Option désactivée. Les données historiques sont conservées." });
     } catch { return res.status(503).json({ error: "option_deactivate_failed" }); }
   });
@@ -248,6 +267,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         [code, label, sortOrder, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "study_level_not_found" });
+      if (!active) await closeRegistrationIfCatalogIncomplete(req);
       return res.json({ level: result.rows[0], message: "Niveau d’études mis à jour." });
     } catch (error) {
       if (error?.code === "23505") return res.status(409).json({ error: "study_level_already_exists" });
@@ -266,6 +286,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "study_level_not_found" });
+      await closeRegistrationIfCatalogIncomplete(req);
       return res.json({ message: "Niveau désactivé. Les données historiques sont conservées." });
     } catch { return res.status(503).json({ error: "study_level_deactivate_failed" }); }
   });
