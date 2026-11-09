@@ -287,7 +287,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
       const location = created.headers.get("Location");
       if (!location) throw new Error("Le stockage n’a pas confirmé le début du transfert.");
       const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
-      const chunkSize = 2 * 1024 * 1024;
+      const chunkSize = 6 * 1024 * 1024;
       for (let offset = 0; offset < image.size;) {
         const end = Math.min(offset + chunkSize, image.size);
         const uploaded = await fetch(uploadUrl, {
