@@ -4,7 +4,7 @@ const nav = [
   ["overview","Tableau de bord"],["faculties","Facultés"],["options","Options"],["levels","Niveaux d’études"],
   ["managers","Responsables de faculté"],["announcements","Annonces"]
 ];
-const css = \`
+const css = `
 .ua-app{min-height:100vh;background:#f4f6f9;color:#171717;font-family:inherit}
 .ua-top{height:68px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:5}
 .ua-brand{display:flex;align-items:center;gap:9px;color:#171717;text-decoration:none;font-weight:800}.ua-brand img{width:34px;height:34px;object-fit:contain}.ua-brand em{font-style:normal;color:#a16207;font-weight:400}
@@ -22,7 +22,7 @@ const css = \`
 .ua-feedback{padding:10px 12px;border-radius:8px;background:#fff5d9;color:#765000;font-size:12px;margin:0 0 14px}.ua-empty{padding:20px;border:1px dashed #ddd;border-radius:10px;color:#888;text-align:center;font-size:12px}.ua-scope{padding:12px 14px;background:#fffaf0;border:1px solid #f0dfb5;border-radius:9px;color:#795000;font-size:11px;margin-bottom:15px}
 @media(max-width:850px){.ua-layout{grid-template-columns:1fr}.ua-side{position:sticky;top:68px;z-index:4;flex-direction:row;overflow:auto;padding:7px;border:0;border-bottom:1px solid #eee}.ua-kicker,.ua-note{display:none}.ua-nav{white-space:nowrap;padding:10px;font-size:11px}.ua-main{padding:20px 14px}.ua-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.ua-top{height:60px;padding:0 12px}.ua-layout{min-height:calc(100vh - 60px)}.ua-side{top:60px}.ua-user{display:none}.ua-heading{flex-direction:column}.ua-heading h1{font-size:22px}.ua-form{grid-template-columns:1fr}.ua-field.full{grid-column:auto}.ua-item{align-items:flex-start;flex-direction:column}.ua-grid{gap:8px}.ua-card{padding:13px}}
-\`;
+`;
 
 const blank = { code:"", name:"" };
 export default function UniversityAdminShell({ token, user, onLogout, request }) {
