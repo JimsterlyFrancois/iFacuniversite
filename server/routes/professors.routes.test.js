@@ -30,3 +30,16 @@ test("faculty_manager cannot access global professor management routes",async()=
  let queried=false;const pool={async query(){queried=true;return {rows:[],rowCount:0};}};
  await api({pool,activeRoles:["faculty_manager"]},async base=>{assert.equal((await fetch(base+"/admin/professors")).status,403);assert.equal(queried,false);});
 });
+
+test("professor self-registration requires a valid university and academic path",async()=>{
+ let queried=false;const pool={async query(){queried=true;return {rows:[],rowCount:0};}};
+ await api({pool},async base=>{
+  const response=await fetch(base+"/auth/professor/register",{
+   method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({firstName:"Jean",lastName:"Pierre",email:"jean@example.com",password:"secure-pass-123"})
+  });
+  assert.equal(response.status,400);
+  assert.equal((await response.json()).error,"invalid_professor_registration");
+  assert.equal(queried,false);
+ });
+});
