@@ -177,7 +177,7 @@ export default function App() {
     let workspace;
     if (activeRole === "admin" || activeRole === "admin_general") {
       workspace = adminView === "general"
-        ? <GeneralAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
+        ? <GeneralAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} onOpenAcademicAdmin={user.baseRole === "admin" ? () => setAdminView("academic") : undefined} />
         : <StudentShell token={token} user={studentAdminUser} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
     } else if (activeRole === "university_admin") workspace = <UniversityAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
