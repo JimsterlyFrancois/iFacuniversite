@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
+import { hasActiveRole, isGeneralAdmin } from "../lib/roleAuthorization.js";
 
 const CLASS_BUCKET = "class-documents";
 let delegateMessagesTableReady;
@@ -27,8 +28,8 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
         "SELECT u.id AS university_id,u.name AS university_name,f.id AS faculty_id,f.name AS faculty_name,o.id AS option_id,o.name AS option_name,l.id AS study_level_id,l.label AS study_level_label,COUNT(st.id) FILTER (WHERE st.is_active=TRUE AND st.role IN ('student','delegate'))::int AS student_count,COUNT(st.id) FILTER (WHERE st.is_active=TRUE AND st.role='delegate')::int AS delegate_count\n" +
         "FROM universities u JOIN faculties f ON f.university_id=u.id AND f.is_active=TRUE JOIN options o ON o.faculty_id=f.id AND o.is_active=TRUE JOIN study_levels l ON l.option_id=o.id AND l.is_active=TRUE\n" +
         "LEFT JOIN users st ON st.university_id=u.id AND st.faculty_id=f.id AND st.option_id=o.id AND st.study_level_id=l.id\n" +
-        "WHERE u.id=$1 AND u.is_active=TRUE GROUP BY u.id,u.name,f.id,f.name,o.id,o.name,l.id,l.label,l.sort_order ORDER BY f.name,o.name,l.sort_order",
-        [req.user.university_id]
+        "WHERE ($1::bigint IS NULL OR u.id=$1) AND u.is_active=TRUE GROUP BY u.id,u.name,f.id,f.name,o.id,o.name,l.id,l.label,l.sort_order ORDER BY u.name,f.name,o.name,l.sort_order",
+        [req.isAdminGeneral ? null : req.user.university_id]
       );
       return res.json({ data: result.rows });
     } catch (error) {
@@ -39,7 +40,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
 
   router.get("/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/students", requireAuth, requireAdmin, async (req, res) => {
     const ids = ["universityId","facultyId","optionId","studyLevelId"].map(key => positiveId(req.params[key]));
-    if (ids.some(id => !id) || ids[0] !== Number(req.user.university_id)) return res.status(400).json({ error: "invalid_class_scope" });
+    if (ids.some(id => !id) || (!req.isAdminGeneral && ids[0] !== Number(req.user.university_id))) return res.status(400).json({ error: "invalid_class_scope" });
     try {
       const result = await pool.query(
         "SELECT id,first_name,last_name,email,role,created_at FROM users WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND is_active=TRUE AND role IN ('student','delegate') ORDER BY role DESC,last_name,first_name",
@@ -55,7 +56,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
   router.post("/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/delegates", requireAuth, requireAdmin, async (req, res) => {
     const ids = ["universityId","facultyId","optionId","studyLevelId"].map(key => positiveId(req.params[key]));
     const userId = positiveId(req.body?.userId);
-    if (ids.some(id => !id) || ids[0] !== Number(req.user.university_id) || !userId) return res.status(400).json({ error: "invalid_delegate_assignment" });
+    if (ids.some(id => !id) || (!req.isAdminGeneral && ids[0] !== Number(req.user.university_id)) || !userId) return res.status(400).json({ error: "invalid_delegate_assignment" });
     try {
       const result = await pool.query(
         "UPDATE users SET role='delegate',updated_at=NOW() WHERE id=$1 AND university_id=$2 AND faculty_id=$3 AND option_id=$4 AND study_level_id=$5 AND is_active=TRUE AND role IN ('student','delegate') RETURNING id,first_name,last_name,email,role",
@@ -73,7 +74,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
   router.delete("/admin/classes/:universityId/:facultyId/:optionId/:studyLevelId/delegates/:userId", requireAuth, requireAdmin, async (req, res) => {
     const ids = ["universityId","facultyId","optionId","studyLevelId"].map(key => positiveId(req.params[key]));
     const userId = positiveId(req.params.userId);
-    if (ids.some(id => !id) || ids[0] !== Number(req.user.university_id) || !userId) return res.status(400).json({ error: "invalid_delegate_removal" });
+    if (ids.some(id => !id) || (!req.isAdminGeneral && ids[0] !== Number(req.user.university_id)) || !userId) return res.status(400).json({ error: "invalid_delegate_removal" });
     try {
       const result = await pool.query(
         "UPDATE users SET role='student',updated_at=NOW() WHERE id=$1 AND university_id=$2 AND faculty_id=$3 AND option_id=$4 AND study_level_id=$5 AND role='delegate' RETURNING id,first_name,last_name,email,role",
@@ -108,7 +109,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     let courseLabel=course.trim();
 
     try {
-      if (req.user.role === "professor") {
+      if (hasActiveRole(req, "professor")) {
         const requestedCourseId=positiveId(req.body?.courseId);
         if(!requestedCourseId)return res.status(400).json({error:"course_id_required"});
         const assignedCourse = await pool.query(
@@ -207,7 +208,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
   router.get("/class-documents", requireAuth, async (req, res) => {
     try {
       let result;
-      if (req.user.role === "professor") {
+      if (hasActiveRole(req, "professor")) {
         result = await pool.query(
           `SELECT DISTINCT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.mime_type,d.file_size_bytes,d.created_at
            FROM documents d
@@ -218,9 +219,25 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
            ORDER BY d.created_at DESC LIMIT 300`,
           [req.user.id]
         );
+      } else if (isGeneralAdmin(req)) {
+        result = await pool.query(
+          "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE status='approved' AND is_active=TRUE AND storage_bucket='class-documents' ORDER BY created_at DESC LIMIT 500"
+        );
       } else {
         result = await pool.query(
-          "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE AND storage_bucket='class-documents' ORDER BY created_at DESC LIMIT 300",
+          `SELECT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.mime_type,d.file_size_bytes,d.created_at
+           FROM documents d
+           WHERE d.status='approved' AND d.is_active=TRUE AND d.storage_bucket='class-documents'
+             AND (
+               d.publication_scope='global'
+               OR (d.university_id=$1 AND (
+                 d.publication_scope='university'
+                 OR (d.publication_scope='faculty' AND d.faculty_id=$2)
+                 OR (d.publication_scope='program' AND d.faculty_id=$2 AND d.option_id=$3)
+                 OR (d.publication_scope IN ('class','course') AND d.faculty_id=$2 AND d.option_id=$3 AND d.study_level_id=$4)
+               ))
+             )
+           ORDER BY d.created_at DESC LIMIT 300`,
           [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
         );
       }
@@ -238,8 +255,8 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       const result = await pool.query(
         "SELECT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.status,d.rejection_reason,d.created_at,d.file_size_bytes,u.first_name AS uploader_first_name,u.last_name AS uploader_last_name,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label " +
         "FROM documents d LEFT JOIN users u ON u.id=d.uploaded_by LEFT JOIN faculties f ON f.id=d.faculty_id LEFT JOIN options o ON o.id=d.option_id LEFT JOIN study_levels l ON l.id=d.study_level_id " +
-        "WHERE d.university_id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND ($2='all' OR d.status=$2) ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 500",
-        [req.user.university_id,status]
+        "WHERE ($1::bigint IS NULL OR d.university_id=$1) AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND ($2='all' OR d.status=$2) ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 500",
+        [req.isAdminGeneral ? null : req.user.university_id,status]
       );
       return res.json({ data: result.rows });
     } catch (error) {
@@ -252,14 +269,14 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const id=positiveId(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", course=typeof req.body?.course==="string"?req.body.course.trim():"", professor=typeof req.body?.professor==="string"?req.body.professor.trim():"", description=typeof req.body?.description==="string"?req.body.description.trim():"";
     if(!id||!title||title.length>220||!course||course.length>180||professor.length>180||description.length>3000) return res.status(400).json({error:"invalid_class_document_update"});
     try {
-      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND university_id=$6 AND is_active=TRUE AND storage_bucket='class-documents' RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.user.university_id]);
+      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND ($6::bigint IS NULL OR university_id=$6) AND is_active=TRUE AND storage_bucket='class-documents' RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.isAdminGeneral ? null : req.user.university_id]);
       return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"class_document_not_found"});
     } catch { return res.status(503).json({error:"class_document_update_failed"}); }
   });
   router.delete("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
     const id=positiveId(req.params.id); if(!id) return res.status(400).json({error:"invalid_document_id"});
     try {
-      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND storage_bucket='class-documents' RETURNING file_key", [id,req.user.university_id]);
+      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND ($2::bigint IS NULL OR university_id=$2) AND is_active=TRUE AND storage_bucket='class-documents' RETURNING file_key", [id,req.isAdminGeneral ? null : req.user.university_id]);
       if(!found.rowCount) return res.status(404).json({error:"class_document_not_found"});
       await deletePrivateObject(found.rows[0].file_key,CLASS_BUCKET).catch(error=>console.error("Suppression PDF classe:",error?.message));
       return res.status(204).end();
@@ -274,7 +291,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const found = await client.query("SELECT * FROM documents WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND storage_bucket='class-documents' FOR UPDATE", [documentId,req.user.university_id]);
+      const found = await client.query("SELECT * FROM documents WHERE id=$1 AND ($2::bigint IS NULL OR university_id=$2) AND is_active=TRUE AND storage_bucket='class-documents' FOR UPDATE", [documentId,req.isAdminGeneral ? null : req.user.university_id]);
       if (!found.rowCount) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "class_document_not_found" });
@@ -310,23 +327,31 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
   router.get("/class-documents/:id/download", requireAuth, async (req, res) => {
     const documentId = positiveId(req.params.id);
     if (!documentId) return res.status(400).json({ error: "invalid_document_id" });
-    const isAdmin = req.user.role === "admin";
-    const isProfessor = req.user.role === "professor";
+    const isAdmin = isGeneralAdmin(req);
+    const isProfessor = hasActiveRole(req, "professor");
     try {
       const result = await pool.query(
         `SELECT d.id,d.file_key,d.file_name,d.mime_type
          FROM documents d
          WHERE d.id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND (
-           (d.status='approved' AND d.university_id=$2 AND d.faculty_id=$3 AND d.option_id=$4 AND d.study_level_id=$5)
-           OR ($6=TRUE AND d.university_id=$7)
-           OR ($8=TRUE AND d.course_id IS NOT NULL AND EXISTS (
+           ($6=TRUE)
+           OR (d.status='approved' AND (
+             d.publication_scope='global'
+             OR (d.university_id=$2 AND (
+               d.publication_scope='university'
+               OR (d.publication_scope='faculty' AND d.faculty_id=$3)
+               OR (d.publication_scope='program' AND d.faculty_id=$3 AND d.option_id=$4)
+               OR (d.publication_scope IN ('class','course') AND d.faculty_id=$3 AND d.option_id=$4 AND d.study_level_id=$5)
+             ))
+           ))
+           OR ($7=TRUE AND d.status='approved' AND d.course_id IS NOT NULL AND EXISTS (
              SELECT 1 FROM professor_invites i
              JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
              JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
-             WHERE i.user_id=$9 AND i.is_active=TRUE AND pa.course_id=d.course_id
+             WHERE i.user_id=$8 AND i.is_active=TRUE AND pa.course_id=d.course_id
            ))
          )`,
-        [documentId,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,isAdmin,req.user.university_id,isProfessor,req.user.id]
+        [documentId,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,isAdmin,isProfessor,req.user.id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
       const row = result.rows[0];
@@ -367,8 +392,8 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     try {
       await ensureDelegateMessagesTable(pool);
       const result = await pool.query(
-        "SELECT dm.id,dm.subject,dm.body,dm.created_at,dm.read_at,u.id AS sender_id,u.first_name,u.last_name,u.email,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label FROM delegate_messages dm JOIN users u ON u.id=dm.sender_id LEFT JOIN faculties f ON f.id=dm.faculty_id LEFT JOIN options o ON o.id=dm.option_id LEFT JOIN study_levels l ON l.id=dm.study_level_id WHERE dm.university_id=$1 ORDER BY dm.created_at DESC LIMIT 300",
-        [req.user.university_id]
+        "SELECT dm.id,dm.subject,dm.body,dm.created_at,dm.read_at,u.id AS sender_id,u.first_name,u.last_name,u.email,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label FROM delegate_messages dm JOIN users u ON u.id=dm.sender_id LEFT JOIN faculties f ON f.id=dm.faculty_id LEFT JOIN options o ON o.id=dm.option_id LEFT JOIN study_levels l ON l.id=dm.study_level_id WHERE ($1::bigint IS NULL OR dm.university_id=$1) ORDER BY dm.created_at DESC LIMIT 500",
+        [req.isAdminGeneral ? null : req.user.university_id]
       );
       return res.json({ data: result.rows, unreadCount: result.rows.filter(row => !row.read_at).length });
     } catch (error) {
@@ -382,7 +407,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     if(!id||!subject||subject.length>220||!body||body.length>5000) return res.status(400).json({error:"invalid_delegate_message"});
     try {
       await ensureDelegateMessagesTable(pool);
-      const result=await pool.query("UPDATE delegate_messages SET subject=$1,body=$2 WHERE id=$3 AND university_id=$4 RETURNING id,subject,body", [subject,body,id,req.user.university_id]);
+      const result=await pool.query("UPDATE delegate_messages SET subject=$1,body=$2 WHERE id=$3 AND ($4::bigint IS NULL OR university_id=$4) RETURNING id,subject,body", [subject,body,id,req.isAdminGeneral ? null : req.user.university_id]);
       return result.rowCount?res.json({message:result.rows[0]}):res.status(404).json({error:"delegate_message_not_found"});
     } catch { return res.status(503).json({error:"delegate_message_update_failed"}); }
   });
@@ -390,7 +415,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const id=positiveId(req.params.id); if(!id) return res.status(400).json({error:"invalid_message_id"});
     try {
       await ensureDelegateMessagesTable(pool);
-      const result=await pool.query("DELETE FROM delegate_messages WHERE id=$1 AND university_id=$2 RETURNING id", [id,req.user.university_id]);
+      const result=await pool.query("DELETE FROM delegate_messages WHERE id=$1 AND ($2::bigint IS NULL OR university_id=$2) RETURNING id", [id,req.isAdminGeneral ? null : req.user.university_id]);
       return result.rowCount?res.status(204).end():res.status(404).json({error:"delegate_message_not_found"});
     } catch { return res.status(503).json({error:"delegate_message_delete_failed"}); }
   });
@@ -399,7 +424,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     if (!id) return res.status(400).json({ error: "invalid_message_id" });
     try {
       await ensureDelegateMessagesTable(pool);
-      const result = await pool.query("UPDATE delegate_messages SET read_at=COALESCE(read_at,NOW()) WHERE id=$1 AND university_id=$2 RETURNING id,read_at", [id,req.user.university_id]);
+      const result = await pool.query("UPDATE delegate_messages SET read_at=COALESCE(read_at,NOW()) WHERE id=$1 AND ($2::bigint IS NULL OR university_id=$2) RETURNING id,read_at", [id,req.isAdminGeneral ? null : req.user.university_id]);
       return result.rowCount ? res.json({ message: result.rows[0] }) : res.status(404).json({ error: "delegate_message_not_found" });
     } catch {
       return res.status(503).json({ error: "delegate_message_update_failed" });

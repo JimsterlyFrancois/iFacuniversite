@@ -32,3 +32,12 @@ test("password update fails closed when the server secret is missing", async () 
   });
   assert.deepEqual(result, { ok: false, status: 0 });
 });
+
+test("password update reports a provider rejection without claiming success", async () => {
+  const result = await updateSupabaseUserPassword({
+    supabaseUrl: "https://project.supabase.co", secretKey: "server-secret",
+    userId: "f8d2f2d0-55d8-4d33-9c0a-8f5b1e1f1234", password: "A-new-password-123",
+    fetchImpl: async () => ({ ok: false, status: 401 })
+  });
+  assert.deepEqual(result, { ok: false, status: 401 });
+});

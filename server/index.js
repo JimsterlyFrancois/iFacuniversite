@@ -10,6 +10,8 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
 import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
+import { requireGeneralAdmin } from "./lib/roleAuthorization.js";
+import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { createProfessorsRouter } from "./routes/professors.routes.js";
@@ -169,15 +171,19 @@ async function requireAuth(req, res, next) {
       [hashToken(match[1])]
     );
     if (!result.rowCount) return res.status(401).json({ error: "invalid_or_expired_session" });
+    const assignments = await pool.query(
+      "SELECT id,role,university_id,faculty_id,option_id,study_level_id FROM role_assignments WHERE user_id=$1 AND status='active'",
+      [result.rows[0].id]
+    );
     req.user = result.rows[0];
+    req.roleAssignments = assignments.rows;
+    req.activeRoles = assignments.rows.map(assignment => assignment.role);
     next();
   } catch {
     return res.status(503).json({ error: "service_unavailable" });
   }
 }
-const requireAdmin = (req, res, next) => req.user?.role === "admin"
-  ? next()
-  : res.status(403).json({ error: "administrator_required" });
+const requireAdmin = requireGeneralAdmin;
 
 app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
@@ -431,13 +437,7 @@ app.post("/api/v1/auth/password-reset/confirm", requireDatabase, async (req, res
       return res.status(400).json({ error: "invalid_or_expired_token" });
     }
     const userId = match.rows[0].user_id;
-    const authLink = match.rows[0].auth_user_id
-      ? { rows: [{ id: match.rows[0].auth_user_id }] }
-      : await client.query("SELECT au.id FROM auth.users au JOIN users u ON lower(u.email)=lower(au.email) WHERE u.id=$1 LIMIT 1", [userId]);
-    const authUserId = authLink.rows[0]?.id || null;
-    if (authUserId && !match.rows[0].auth_user_id) {
-      await client.query("UPDATE users SET auth_user_id=$1 WHERE id=$2", [authUserId,userId]);
-    }
+    const authUserId = await resolveAuthUserId(client, userId, match.rows[0].auth_user_id);
     let passwordHash;
     if (authUserId) {
       const authUpdate = await updateSupabaseUserPassword({
@@ -477,9 +477,10 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
     try {
       const auth = await supabaseAuth("/token?grant_type=password", { method: "POST", body: { email, password } });
       if (auth.response.ok && auth.data?.access_token) {
+        const authUserId = typeof auth.data?.user?.id === "string" ? auth.data.user.id : null;
         const result = await pool.query(
-          "UPDATE users SET email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE email=$1 AND is_active=TRUE RETURNING *",
-          [email]
+          "UPDATE users SET auth_user_id=COALESCE(auth_user_id,$2::uuid),email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE lower(email)=lower($1) AND is_active=TRUE AND ($2::uuid IS NULL OR auth_user_id IS NULL OR auth_user_id=$2::uuid) RETURNING *",
+          [email,authUserId]
         );
         user = result.rows[0] || null;
       } else {

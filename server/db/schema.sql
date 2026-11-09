@@ -50,6 +50,7 @@ CREATE TABLE study_levels (
 
 CREATE TABLE users (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   university_id BIGINT NOT NULL REFERENCES universities(id),
   faculty_id BIGINT NOT NULL REFERENCES faculties(id),
   option_id BIGINT NOT NULL REFERENCES options(id),

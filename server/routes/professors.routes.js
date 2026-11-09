@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
+import { hasActiveRole } from "../lib/roleAuthorization.js";
 
 export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
   const router = express.Router();
@@ -344,7 +345,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
     }catch{return res.status(503).json({error:"professor_status_failed"});}
   });
   router.get("/professor/assignments", requireAuth, async(req,res)=>{
-    if(req.user.role!=="professor")return res.status(403).json({error:"professor_required"});
+    if(!hasActiveRole(req,"professor"))return res.status(403).json({error:"professor_required"});
     try{
       await ensureSchema();
       const r=await pool.query(`
