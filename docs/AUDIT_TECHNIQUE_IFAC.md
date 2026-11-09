@@ -19,6 +19,7 @@ L'audit a identifié des blocages fonctionnels qui empêchaient l'onboarding com
 | P1 | Le Responsable de programme ne pouvait pas créer de matières, ce qui bloquait ensuite la création des cours dans un programme nouvellement configuré. | Routes de création, modification et désactivation des matières, avec contrôle du périmètre ; formulaire dans son espace. | Implémenté, tests API simulés |
 | P2 | Le contrôle CI vérifiait seulement quelques fichiers serveur et n'exécutait pas de tests. | Vérification syntaxique de toutes les routes, tests Node intégrés au pipeline. | Implémenté ; exécutions récentes réussies |
 | P1 | Nodemailer présentait une vulnérabilité de sévérité élevée dans la version installée. | Mise à niveau vers Nodemailer 10.4.0 ; audit npm exécuté dans CI. | Corrigé ; 0 vulnérabilité signalée dans l'audit actuel |
+| P1 | La réinitialisation modifiait seulement le hash local, pas le mot de passe vérifié par Supabase Auth. | Liaison des profils à `auth.users`, mise à jour Auth Admin côté serveur, conservation du hash aléatoire pour les comptes Supabase. | Corrigé dans la branche ; migration et tests ajoutés, à valider en préproduction |
 
 ## Règles de sécurité appliquées
 
@@ -41,6 +42,7 @@ Les tests de routes utilisent un pool PostgreSQL simulé et vérifient notamment
 - la création d'une matière dans le programme autorisé ;
 - le refus de créer une matière dans un autre programme.
 - le refus de nommer un Responsable de programme dans une faculté extérieure au périmètre.
+- l'appel à l'API Auth Admin utilise uniquement la clé secrète serveur et l'identifiant Auth du compte.
 
 Les contrôles CI sur la révision récente ont confirmé : syntaxe de toutes les routes, tests automatisés, build frontend et audit npm sans vulnérabilité signalée. Ces tests ne remplacent pas les essais sur une base Supabase de préproduction avec des comptes réels.
 
@@ -66,7 +68,9 @@ Projet contrôlé en lecture seule : `iFac universitaire` (`vrwxmsohomeqjqjpgzwn
 
 - La base contient actuellement 5 migrations appliquées, jusqu'à `20261108213315_secure_rls_event_trigger`.
 - Le catalogue existant contient 1 université, 4 facultés, 12 options et 48 niveaux d'études.
+- Sur les 4 profils applicatifs existants, 3 correspondent à un utilisateur Auth par e-mail ; le quatrième est un compte historique sans correspondance Auth et conservera le flux de mot de passe local.
 - La colonne `universities.registration_enabled` n'existe pas encore en production. La migration `20261109100000_university_catalog_admin.sql` est donc indispensable avant l'activation de la nouvelle gestion du catalogue.
+- La colonne `users.auth_user_id` n'existe pas encore en production. La migration `20261109110000_auth_user_password_recovery.sql` doit suivre la migration du catalogue ; elle relie les 3 profils Auth existants par e-mail.
 - Les 22 tables du schéma public observées ont RLS activé et aucune policy. Cela bloque l'accès direct par les rôles Data API ; l'application doit continuer à passer par son backend de confiance. Ne pas ajouter de policies publiques génériques.
 - L'advisor Supabase signale que la protection des mots de passe compromis est désactivée. À activer dans les paramètres Auth du projet.
 - L'advisor performance signale 38 clés étrangères sans index couvrant et 15 index non utilisés. Ce sont des alertes d'optimisation, pas des preuves d'erreur fonctionnelle ; ne pas supprimer ou ajouter ces index sans examiner les requêtes et la charge réelle.
