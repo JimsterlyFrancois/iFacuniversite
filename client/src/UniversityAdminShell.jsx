@@ -35,7 +35,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request })
   const [optionForm,setOptionForm]=useState({facultyId:"",...blank}),[editingOption,setEditingOption]=useState(null);
   const [levelForm,setLevelForm]=useState({optionId:"",code:"",label:"",sortOrder:"1"}),[editingLevel,setEditingLevel]=useState(null);
   const [managerForm,setManagerForm]=useState({email:"",facultyId:""});
-  const [notice,setNotice]=useState({universityId:"",title:"",body:""});
+  const [notice,setNotice]=useState({scopeAssignmentId:"",title:"",body:""});
 
   const load=useCallback(async()=>{
     setLoading(true);setFeedback("");
@@ -46,7 +46,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request })
       const value=results[1].value;setCatalog(value.data||{faculties:[],options:[],levels:[]});
       const nextScopes=value.scopes||[];setScopes(nextScopes);
       setScopeAssignmentId(current=>current||String(nextScopes[0]?.assignment_id||""));
-      setNotice(current=>({...current,universityId:current.universityId||String(nextScopes[0]?.university_id||"")}));
+      setNotice(current=>({...current,scopeAssignmentId:current.scopeAssignmentId||String(nextScopes[0]?.assignment_id||"")}));
     }
     if(results[2].status==="fulfilled")setManagers(results[2].value.data||[]);
     if(results[3].status==="fulfilled")setAnnouncements(results[3].value.data||[]);
@@ -99,7 +99,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request })
   }
   async function publish(event){
     event.preventDefault();
-    const result=await action("/university-admin/announcements","POST",{...notice,universityId:Number(notice.universityId)});
+    const result=await action("/university-admin/announcements","POST",{...notice,scopeAssignmentId:Number(notice.scopeAssignmentId)});
     if(result)setNotice(value=>({...value,title:"",body:""}));
   }
   function editFaculty(item){setEditingFaculty(item);setFacultyForm({code:item.code,name:item.name});}
@@ -160,7 +160,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request })
             <article className="ua-card"><h2>Responsables nommés</h2><div className="ua-list">{managers.map(m=><div className="ua-item" key={m.assignment_id}><div><strong>{m.first_name} {m.last_name}</strong><div className="ua-muted">{m.email} · {m.faculty_name}</div></div><div className="ua-actions"><span className="ua-pill">{m.status==="active"?"Actif":"Révoqué"}</span><button className="ua-btn secondary" type="button" disabled={busy} onClick={()=>action("/university-admin/faculty-managers/"+m.assignment_id+"/status","PATCH",{active:m.status!=="active"})}>{m.status==="active"?"Retirer":"Réactiver"}</button></div></div>)}</div>{!managers.length&&<div className="ua-empty">Aucun responsable nommé.</div>}</article>
           </>}
           {tab==="announcements"&&<>
-            <article className="ua-card"><h2>Publier une annonce</h2><form className="ua-form" onSubmit={publish}><label className="ua-field full">Université<select required value={notice.universityId} onChange={e=>setNotice(v=>({...v,universityId:e.target.value}))}>{scopes.map(s=><option key={s.university_id} value={s.university_id}>{s.university_name}</option>)}</select></label><label className="ua-field full">Titre<input required maxLength="220" value={notice.title} onChange={e=>setNotice(v=>({...v,title:e.target.value}))}/></label><label className="ua-field full">Contenu<textarea required maxLength="20000" value={notice.body} onChange={e=>setNotice(v=>({...v,body:e.target.value}))}/></label><div className="ua-field full"><button className="ua-btn" disabled={busy}>Publier l’annonce</button></div></form></article>
+            <article className="ua-card"><h2>Publier une annonce</h2><form className="ua-form" onSubmit={publish}><label className="ua-field full">Université<select required value={notice.scopeAssignmentId} onChange={e=>setNotice(v=>({...v,scopeAssignmentId:e.target.value}))}>{scopes.map(s=><option key={s.assignment_id} value={s.assignment_id}>{s.university_name}</option>)}</select></label><label className="ua-field full">Titre<input required maxLength="220" value={notice.title} onChange={e=>setNotice(v=>({...v,title:e.target.value}))}/></label><label className="ua-field full">Contenu<textarea required maxLength="20000" value={notice.body} onChange={e=>setNotice(v=>({...v,body:e.target.value}))}/></label><div className="ua-field full"><button className="ua-btn" disabled={busy}>Publier l’annonce</button></div></form></article>
             <article className="ua-card"><h2>Historique</h2><div className="ua-list">{announcements.map(a=><div className="ua-item" key={a.id}><div><strong>{a.title}</strong><div className="ua-muted">{new Date(a.created_at).toLocaleString("fr-FR")} · {a.body}</div></div><span className="ua-pill">{a.is_active?"Active":"Archivée"}</span></div>)}</div>{!announcements.length&&<div className="ua-empty">Aucune annonce publiée.</div>}</article>
           </>}
         </>}
