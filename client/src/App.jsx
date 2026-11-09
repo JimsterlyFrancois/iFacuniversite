@@ -94,7 +94,8 @@ export default function App() {
 
   useEffect(() => {
     if (!user) { setWorkspaceRole(""); return; }
-    const roles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
+    const rawRoles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
+    const roles = rawRoles.filter(role => !(role === "admin" && rawRoles.includes("admin_general")));
     const preferred = user.role === "admin" && roles.includes("admin_general") ? "admin_general" : user.role;
     setWorkspaceRole(roles.includes(preferred) ? preferred : (roles[0] || preferred));
   }, [user]);
