@@ -15,6 +15,7 @@ import { createProfessorsRouter } from "./routes/professors.routes.js";
 import { createProgramManagerRouter } from "./routes/programManager.routes.js";
 import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
 import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
+import { createUniversityCatalogRouter } from "./routes/universityCatalog.routes.js";
 import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
 import { mkdir } from "node:fs/promises";
 
@@ -113,13 +114,26 @@ const publicUser = (u) => ({
   role: u.effective_role || u.role, universityId: u.university_id, facultyId: u.faculty_id,
   optionId: u.option_id, studyLevelId: u.study_level_id,
   universityName: u.university_name || "", facultyName: u.faculty_name || "",
-  optionName: u.option_name || "", studyLevelLabel: u.study_level_label || ""
+  optionName: u.option_name || "", studyLevelLabel: u.study_level_label || "",
+  workspaces: Array.isArray(u.workspaces) && u.workspaces.length ? u.workspaces : [{ role: u.effective_role || u.role }]
 });
 async function getPublicUser(user) {
   const result = await pool.query(
     `SELECT u.*, un.name AS university_name, f.name AS faculty_name,
             o.name AS option_name, l.label AS study_level_label,
-            CASE WHEN u.role='admin' THEN 'admin' ELSE COALESCE(ra.role,u.role) END AS effective_role
+            CASE WHEN u.role='admin' THEN 'admin' ELSE COALESCE(ra.role,u.role) END AS effective_role,
+            COALESCE((SELECT json_agg(json_build_object(
+              'assignmentId',a.id,'role',a.role,'universityId',a.university_id,
+              'facultyId',a.faculty_id,'optionId',a.option_id,'studyLevelId',a.study_level_id,
+              'universityName',au.name,'facultyName',af.name,'optionName',ao.name,'studyLevelLabel',al.label
+            ) ORDER BY CASE a.role WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+              WHEN 'faculty_manager' THEN 3 WHEN 'program_manager' THEN 4 WHEN 'professor' THEN 5 ELSE 9 END,a.id)
+             FROM role_assignments a
+             LEFT JOIN universities au ON au.id=a.university_id
+             LEFT JOIN faculties af ON af.id=a.faculty_id
+             LEFT JOIN options ao ON ao.id=a.option_id
+             LEFT JOIN study_levels al ON al.id=a.study_level_id
+             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id
      LEFT JOIN faculties f ON f.id=u.faculty_id
@@ -166,6 +180,7 @@ app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
 app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));
+app.use("/api/v1", createUniversityCatalogRouter({ pool, requireAuth }));
 app.use("/api/v1", createGeneralAdminRouter({ pool, requireAuth }));
 
 app.get("/api/health", async (_req, res) => {
@@ -197,7 +212,7 @@ function requireDatabase(_req, res, next) {
 app.get("/api/v1/catalog/universities", requireDatabase, async (_req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, code, name FROM universities WHERE is_active = TRUE ORDER BY name"
+      "SELECT id, code, name FROM universities WHERE is_active = TRUE AND registration_enabled = TRUE ORDER BY name"
     );
     res.set("Cache-Control", "no-store");
     return res.json({ data: result.rows });
@@ -275,7 +290,7 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
        FROM universities u JOIN faculties f ON f.university_id=u.id
        JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
        WHERE u.code=$1 AND f.code=$2 AND o.code=$3 AND l.code=$4
-       AND u.is_active AND f.is_active AND o.is_active AND l.is_active`,
+       AND u.is_active AND u.registration_enabled = TRUE AND f.is_active AND o.is_active AND l.is_active`,
       [universityCode, facultyCode, optionCode, studyLevelCode]
     );
     if (!profile.rowCount) {
