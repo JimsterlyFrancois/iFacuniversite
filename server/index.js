@@ -12,6 +12,10 @@ import nodemailer from "nodemailer";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { createProfessorsRouter } from "./routes/professors.routes.js";
+import { createProgramManagerRouter } from "./routes/programManager.routes.js";
+import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
+import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
+import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -106,7 +110,7 @@ const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const makeToken = () => randomBytes(32).toString("base64url");
 const publicUser = (u) => ({
   id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email,
-  role: u.role, universityId: u.university_id, facultyId: u.faculty_id,
+  role: u.effective_role || u.role, universityId: u.university_id, facultyId: u.faculty_id,
   optionId: u.option_id, studyLevelId: u.study_level_id,
   universityName: u.university_name || "", facultyName: u.faculty_name || "",
   optionName: u.option_name || "", studyLevelLabel: u.study_level_label || ""
@@ -114,12 +118,20 @@ const publicUser = (u) => ({
 async function getPublicUser(user) {
   const result = await pool.query(
     `SELECT u.*, un.name AS university_name, f.name AS faculty_name,
-            o.name AS option_name, l.label AS study_level_label
+            o.name AS option_name, l.label AS study_level_label,
+            CASE WHEN u.role='admin' THEN 'admin' ELSE COALESCE(ra.role,u.role) END AS effective_role
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id
      LEFT JOIN faculties f ON f.id=u.faculty_id
      LEFT JOIN options o ON o.id=u.option_id
      LEFT JOIN study_levels l ON l.id=u.study_level_id
+     LEFT JOIN LATERAL (
+       SELECT role FROM role_assignments
+       WHERE user_id=u.id AND status='active'
+       ORDER BY CASE role WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+         WHEN 'faculty_manager' THEN 3 WHEN 'program_manager' THEN 4 WHEN 'professor' THEN 5 ELSE 9 END
+       LIMIT 1
+     ) ra ON TRUE
      WHERE u.id=$1 LIMIT 1`,
     [user.id]
   );
@@ -151,6 +163,10 @@ app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
+app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
+app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));
+app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));
+app.use("/api/v1", createGeneralAdminRouter({ pool, requireAuth }));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
