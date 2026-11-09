@@ -160,7 +160,7 @@ app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
-app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth }));
+app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
