@@ -20,6 +20,7 @@ import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
 import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
 import { createUniversityCatalogRouter } from "./routes/universityCatalog.routes.js";
 import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
+import { createRoleRegistrationRouter } from "./routes/roleRegistration.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -123,7 +124,8 @@ const publicUser = (u) => ({
     const assignments = Array.isArray(u.workspaces) ? u.workspaces : [];
     const base = ["student","delegate","professor","admin"].includes(u.role) ? [{ role: u.role, base: true }] : [];
     return [...assignments, ...base.filter(item => !assignments.some(workspace => workspace.role === item.role))];
-  })()
+  })(),
+  roleRequests: Array.isArray(u.role_requests) ? u.role_requests : []
 });
 async function getPublicUser(user) {
   const result = await pool.query(
@@ -141,7 +143,24 @@ async function getPublicUser(user) {
              LEFT JOIN faculties af ON af.id=a.faculty_id
              LEFT JOIN options ao ON ao.id=a.option_id
              LEFT JOIN study_levels al ON al.id=a.study_level_id
-             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces
+             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces,
+            COALESCE((SELECT json_agg(json_build_object(
+              'assignmentId',a.id,'role',a.role,'status',a.status,
+              'universityId',COALESCE(a.university_id,u.university_id),
+              'facultyId',COALESCE(a.faculty_id,u.faculty_id),
+              'optionId',COALESCE(a.option_id,u.option_id),
+              'studyLevelId',COALESCE(a.study_level_id,u.study_level_id),
+              'universityName',COALESCE(ru.name,un.name),
+              'facultyName',COALESCE(rf.name,f.name),
+              'optionName',COALESCE(ro.name,o.name),
+              'studyLevelLabel',COALESCE(rl.label,l.label)
+            ) ORDER BY a.created_at DESC)
+              FROM role_assignments a
+              LEFT JOIN universities ru ON ru.id=a.university_id
+              LEFT JOIN faculties rf ON rf.id=a.faculty_id
+              LEFT JOIN options ro ON ro.id=a.option_id
+              LEFT JOIN study_levels rl ON rl.id=a.study_level_id
+              WHERE a.user_id=u.id AND a.status IN ('pending','revoked')),'[]'::json) AS role_requests
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id
      LEFT JOIN faculties f ON f.id=u.faculty_id
@@ -189,6 +208,7 @@ app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
+app.use("/api/v1", createRoleRegistrationRouter({ pool, supabaseAuth }));
 app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));
@@ -221,10 +241,12 @@ function requireDatabase(_req, res, next) {
   next();
 }
 
-app.get("/api/v1/catalog/universities", requireDatabase, async (_req, res) => {
+app.get("/api/v1/catalog/universities", requireDatabase, async (req, res) => {
   try {
+    const staffCatalog = req.query.audience === "staff";
     const result = await pool.query(
-      "SELECT id, code, name FROM universities WHERE is_active = TRUE AND registration_enabled = TRUE ORDER BY name"
+      "SELECT id, code, name FROM universities WHERE is_active = TRUE AND ($1::boolean OR registration_enabled = TRUE) ORDER BY name",
+      [staffCatalog]
     );
     res.set("Cache-Control", "no-store");
     return res.json({ data: result.rows });

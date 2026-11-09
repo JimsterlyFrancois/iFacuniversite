@@ -52,6 +52,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
   const [scopes, setScopes] = useState([]);
   const [catalog, setCatalog] = useState({ subjects: [], courses: [] });
   const [professors, setProfessors] = useState([]);
+  const [professorRequests, setProfessorRequests] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -76,7 +77,10 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
       setScopes(results[0].value.scopes || []);
     }
     if (results[1].status === "fulfilled") setCatalog(results[1].value.data || { subjects: [], courses: [] });
-    if (results[2].status === "fulfilled") setProfessors(results[2].value.data || []);
+    if (results[2].status === "fulfilled") {
+      setProfessors(results[2].value.data || []);
+      setProfessorRequests(results[2].value.requests || []);
+    }
     if (results[3].status === "fulfilled") setDocuments(results[3].value.data || []);
     const failed = results.find(item => item.status === "rejected");
     if (failed) setFeedback(failed.reason?.message || "Certaines informations n’ont pas pu être chargées.");
@@ -234,7 +238,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
             </section>
           </>}
           {active === "professors" && <>
-            <section className="program-card"><h2>Déclarer un professeur</h2>
+            <section className="program-card" id="professor-declaration-form"><h2>Déclarer ou affecter un professeur</h2>
               {!courses.length ? <div className="program-empty">Créez ou faites créer un cours avant de pouvoir affecter un professeur.</div> : <form className="program-form" onSubmit={createProfessor}>
                 <label className="program-field">Prénom<input required maxLength="100" value={professorForm.firstName} onChange={event => setProfessorForm(v => ({ ...v, firstName: event.target.value }))} /></label>
                 <label className="program-field">Nom<input required maxLength="100" value={professorForm.lastName} onChange={event => setProfessorForm(v => ({ ...v, lastName: event.target.value }))} /></label>
@@ -242,6 +246,19 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
                 <label className="program-field full">Cours à attribuer<select required value={professorForm.courseId} onChange={event => setProfessorForm(v => ({ ...v, courseId: event.target.value }))}><option value="">Choisir un cours</option>{courses.map(course => <option key={course.id} value={course.id}>{course.name} · {course.option_name} · {course.level_label}</option>)}</select></label>
                 <div className="program-field full"><button className="program-button" disabled={busy}>Déclarer et affecter le professeur</button></div>
               </form>}
+            </section>
+            <section className="program-card"><h2>Demandes d’inscription en attente</h2>
+              {professorRequests.length ? <div className="program-list">{professorRequests.map(application => <article className="program-item" key={application.invite_id}>
+                <div><strong>{application.first_name} {application.last_name}</strong>
+                  <div className="program-muted">{application.email} · {application.university_name} · {application.faculty_name} · {application.option_name} · {application.level_label}</div>
+                  <div className="program-muted">Le professeur attend la validation du responsable de programme.</div>
+                </div>
+                <button className="program-button" type="button" disabled={busy || !courses.length} onClick={() => {
+                  setProfessorForm({ firstName: application.first_name, lastName: application.last_name, email: application.email, courseId: "" });
+                  document.getElementById("professor-declaration-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  setFeedback("Choisissez un cours de ce programme, puis validez l’affectation pour approuver la demande.");
+                }}>Préparer l’affectation</button>
+              </article>)}</div> : <div className="program-empty">Aucune demande de professeur en attente dans votre programme.</div>}
             </section>
             <section className="program-card"><h2>Professeurs et affectations</h2>
               {professors.length ? <div className="program-list">{professors.map(professor => <article className="program-item" key={professor.id}><div><strong>{professor.first_name} {professor.last_name}</strong><div className="program-muted">{professor.email} · {professor.activated_at ? "Compte activé" : "En attente d’activation"}</div>{(professor.assignments || []).map((assignment,index) => <div className="program-muted" key={assignment.assignment_id || index}>{assignment.course_name} · {assignment.option_name} · {assignment.level_label} · {assignment.active ? "Affectation active" : "Suspendue"}</div>)}</div><span className="program-pill">{professor.is_active ? "Actif" : "Suspendu"}</span></article>)}</div> : <div className="program-empty">Aucun professeur n’est encore déclaré dans votre programme.</div>}

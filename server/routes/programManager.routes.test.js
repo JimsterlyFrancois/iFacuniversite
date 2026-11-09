@@ -62,3 +62,30 @@ test("program manager cannot create a subject in another program", async () => {
     assert.equal(pool.calls.some(call => call.sql.includes("INSERT INTO subjects")), false);
   });
 });
+
+test("program manager sees pending professor applications in the exact managed program", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT ra.university_id,ra.faculty_id,ra.option_id,ra.study_level_id")) {
+        return { rows: [{ university_id: 10, faculty_id: 20, option_id: 30, study_level_id: null, university_name: "Université A", faculty_name: "Faculté A", option_name: "Psychopédagogie" }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT i.id AS invite_id")) {
+        return { rows: [{ invite_id: 71, email: "prof@example.com", first_name: "Jean", last_name: "Pierre", university_id: 10, faculty_id: 20, option_id: 30, study_level_id: 40 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+  };
+  await withApi(pool, async base => {
+    const response = await fetch(base + "/program-manager/professors");
+    const data = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(data.requests.length, 1);
+    assert.equal(data.requests[0].email, "prof@example.com");
+    const query = calls.find(call => call.sql.includes("SELECT i.id AS invite_id"));
+    assert.match(query.sql, /application.status='pending'/);
+    assert.match(query.sql, /scope.university_id=u.university_id/);
+    assert.match(query.sql, /scope.option_id=u.option_id/);
+  });
+});

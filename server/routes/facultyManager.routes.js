@@ -197,11 +197,12 @@ export function createFacultyManagerRouter({ pool, requireAuth, readPrivateObjec
     try{
       const result=await pool.query(`UPDATE role_assignments ra SET
           status=CASE WHEN $1 THEN 'active' ELSE 'revoked' END,
+          approved_by=CASE WHEN $1 THEN $4 ELSE ra.approved_by END,
           revoked_at=CASE WHEN $1 THEN NULL ELSE NOW() END,updated_at=NOW()
         WHERE ra.id=$2 AND ra.role='program_manager' AND EXISTS (
           SELECT 1 FROM role_assignments fm WHERE fm.user_id=$3 AND fm.role='faculty_manager'
             AND fm.status='active' AND fm.university_id=ra.university_id AND fm.faculty_id=ra.faculty_id)
-        RETURNING ra.id,ra.status`,[active,assignmentId,req.user.id]);
+        RETURNING ra.id,ra.status`,[active,assignmentId,req.user.id,req.user.id]);
       if(!result.rowCount)return res.status(404).json({error:"program_manager_assignment_not_found"});
       await pool.query(`INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,metadata)
         VALUES($1,$2,'role_assignment',$3,$4::jsonb)`,

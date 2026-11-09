@@ -214,20 +214,41 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
 
   router.get("/program-manager/professors", requireAuth, requireProgramManager, async (req, res) => {
     try {
-      const result = await pool.query(`SELECT i.id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,
-          COALESCE(json_agg(json_build_object('assignment_id',pa.id,'course_id',c.id,'course_name',c.name,
-            'option_name',o.name,'level_label',l.label,'active',pa.is_active)) FILTER (WHERE pa.id IS NOT NULL),'[]') AS assignments
-        FROM professor_invites i
-        JOIN professor_assignments pa ON pa.invite_id=i.id
-        JOIN courses c ON c.id=pa.course_id
-        JOIN subjects s ON s.id=c.subject_id
-        JOIN options o ON o.id=pa.option_id
-        JOIN study_levels l ON l.id=pa.study_level_id
-        WHERE EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager'
-          AND ra.status='active' AND ra.university_id=pa.university_id AND ra.faculty_id=pa.faculty_id
-          AND ra.option_id=pa.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=pa.study_level_id))
-        GROUP BY i.id ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]);
-      return res.json({ data: result.rows });
+      const [result, requests] = await Promise.all([
+        pool.query(`SELECT i.id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,
+            COALESCE(json_agg(json_build_object('assignment_id',pa.id,'course_id',c.id,'course_name',c.name,
+              'option_name',o.name,'level_label',l.label,'active',pa.is_active)) FILTER (WHERE pa.id IS NOT NULL),'[]') AS assignments
+          FROM professor_invites i
+          JOIN professor_assignments pa ON pa.invite_id=i.id
+          JOIN courses c ON c.id=pa.course_id
+          JOIN subjects s ON s.id=c.subject_id
+          JOIN options o ON o.id=pa.option_id
+          JOIN study_levels l ON l.id=pa.study_level_id
+          WHERE EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager'
+            AND ra.status='active' AND ra.university_id=pa.university_id AND ra.faculty_id=pa.faculty_id
+            AND ra.option_id=pa.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=pa.study_level_id))
+          GROUP BY i.id ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]),
+        pool.query(`SELECT i.id AS invite_id,i.email,i.first_name,i.last_name,i.activated_at,
+            un.name AS university_name,f.name AS faculty_name,o.name AS option_name,l.label AS level_label,
+            u.university_id,u.faculty_id,u.option_id,u.study_level_id
+          FROM professor_invites i
+          JOIN users u ON u.id=i.user_id AND u.is_active=TRUE
+          JOIN role_assignments application ON application.user_id=u.id
+            AND application.role='professor' AND application.status='pending'
+          JOIN universities un ON un.id=u.university_id AND un.is_active=TRUE
+          JOIN faculties f ON f.id=u.faculty_id AND f.university_id=un.id AND f.is_active=TRUE
+          JOIN options o ON o.id=u.option_id AND o.faculty_id=f.id AND o.is_active=TRUE
+          JOIN study_levels l ON l.id=u.study_level_id AND l.option_id=o.id AND l.is_active=TRUE
+          WHERE i.is_active=TRUE AND EXISTS (
+            SELECT 1 FROM role_assignments scope
+            WHERE scope.user_id=$1 AND scope.role='program_manager' AND scope.status='active'
+              AND scope.university_id=u.university_id AND scope.faculty_id=u.faculty_id
+              AND scope.option_id=u.option_id
+              AND (scope.study_level_id IS NULL OR scope.study_level_id=u.study_level_id)
+          )
+          ORDER BY i.created_at DESC LIMIT 200`, [req.user.id])
+      ]);
+      return res.json({ data: result.rows, requests: requests.rows });
     } catch {
       return res.status(503).json({ error: "program_professors_unavailable" });
     }
@@ -257,10 +278,25 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
         return res.status(403).json({ error: "course_outside_program_scope", message: "Ce cours ne relève pas de votre programme." });
       }
       let invite = await client.query("SELECT id,is_active,user_id,first_name,last_name FROM professor_invites WHERE email=$1 FOR UPDATE", [email]);
-      const existingUser = await client.query("SELECT id,role,is_active FROM users WHERE email=$1", [email]);
+      const existingUser = await client.query("SELECT id,role,is_active,university_id,faculty_id,option_id,study_level_id FROM users WHERE email=$1", [email]);
       if (existingUser.rowCount && (!invite.rowCount || Number(invite.rows[0].user_id) !== Number(existingUser.rows[0].id) || existingUser.rows[0].role !== "professor" || !existingUser.rows[0].is_active)) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "email_already_used", message: "Cette adresse possède déjà un compte qui n’est pas relié à cette fiche professeur ou qui est suspendu." });
+      }
+      if (existingUser.rowCount) {
+        const pendingRequest = await client.query(
+          "SELECT id FROM role_assignments WHERE user_id=$1 AND role='professor' AND status='pending' LIMIT 1",
+          [existingUser.rows[0].id]
+        );
+        const profile = existingUser.rows[0];
+        if (pendingRequest.rowCount &&
+            (Number(profile.university_id) !== Number(course.rows[0].university_id) ||
+             Number(profile.faculty_id) !== Number(course.rows[0].faculty_id) ||
+             Number(profile.option_id) !== Number(course.rows[0].option_id) ||
+             Number(profile.study_level_id) !== Number(course.rows[0].study_level_id))) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ error: "professor_request_outside_program", message: "Cette demande de professeur concerne un autre programme ou niveau." });
+        }
       }
       if (invite.rowCount && !invite.rows[0].is_active) {
         await client.query("ROLLBACK");
@@ -281,7 +317,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
         [inviteId, course.rows[0].university_id, course.rows[0].faculty_id, course.rows[0].option_id, course.rows[0].study_level_id, courseId, req.user.id]
       );
       if (existingUser.rowCount) {
-        await client.query("UPDATE role_assignments SET status='active',revoked_at=NULL,updated_at=NOW() WHERE user_id=$1 AND role='professor'", [existingUser.rows[0].id]);
+        await client.query("UPDATE role_assignments SET status='active',approved_by=$2,assigned_by=COALESCE(assigned_by,$2),revoked_at=NULL,updated_at=NOW() WHERE user_id=$1 AND role='professor'", [existingUser.rows[0].id, req.user.id]);
       }
       await client.query(
         "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata) VALUES($1,'professor.course_assigned','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)",

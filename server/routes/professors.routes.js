@@ -111,13 +111,25 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
     const firstName=typeof req.body?.firstName==="string"?req.body.firstName.trim():"";
     const lastName=typeof req.body?.lastName==="string"?req.body.lastName.trim():"";
     const password=req.body?.password;
+    const universityId=Number(req.body?.universityId);
+    const facultyId=Number(req.body?.facultyId);
+    const optionId=Number(req.body?.optionId);
+    const studyLevelId=Number(req.body?.studyLevelId);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||
         !firstName||firstName.length>100||!lastName||lastName.length>100||
-        typeof password!=="string"||password.length<10||password.length>128) {
-      return res.status(400).json({error:"invalid_professor_registration",message:"Renseignez votre nom, votre prénom, une adresse e-mail valide et un mot de passe de 10 caractères minimum."});
+        typeof password!=="string"||password.length<10||password.length>128||
+        ![universityId,facultyId,optionId,studyLevelId].every(value=>Number.isSafeInteger(value)&&value>0)) {
+      return res.status(400).json({error:"invalid_professor_registration",message:"Renseignez votre nom, votre prénom, une adresse e-mail valide, votre parcours universitaire et un mot de passe de 10 caractères minimum."});
     }
     try {
       await ensureSchema();
+      const scope=await pool.query(`SELECT u.id AS university_id,f.id AS faculty_id,o.id AS option_id,l.id AS study_level_id
+        FROM universities u JOIN faculties f ON f.university_id=u.id
+        JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
+        WHERE u.id=$1 AND f.id=$2 AND o.id=$3 AND l.id=$4
+          AND u.is_active=TRUE AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE`,
+        [universityId,facultyId,optionId,studyLevelId]);
+      if(!scope.rowCount)return res.status(400).json({error:"invalid_professor_scope",message:"Le parcours sélectionné ne correspond pas à cette université."});
       const existing=await pool.query("SELECT id FROM users WHERE email=$1",[email]);
       if(existing.rowCount) return res.status(409).json({error:"email_already_registered",message:"Cette adresse e-mail possède déjà un compte iFac."});
       const supabaseUrl=(process.env.SUPABASE_URL||"").replace(/\/$/,"");
@@ -151,8 +163,8 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
         }
         const created=await client.query(
           `INSERT INTO users(auth_user_id,university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
-           VALUES($1,NULL,NULL,NULL,NULL,$2,$3,$4,$5,'professor') RETURNING id`,
-          [authUserId,firstName,lastName,email,passwordHash]
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'professor') RETURNING id`,
+          [authUserId,universityId,facultyId,optionId,studyLevelId,firstName,lastName,email,passwordHash]
         );
         const userId=created.rows[0].id;
         let inviteId;
@@ -169,7 +181,10 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
           );
           inviteId=createdInvite.rows[0].id;
         }
-        const assigned=await client.query("SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE AND course_id IS NOT NULL LIMIT 1",[inviteId]);
+        const assigned=await client.query(`SELECT 1 FROM professor_assignments
+          WHERE invite_id=$1 AND university_id=$2 AND faculty_id=$3 AND option_id=$4
+            AND study_level_id=$5 AND is_active=TRUE AND course_id IS NOT NULL LIMIT 1`,
+          [inviteId,universityId,facultyId,optionId,studyLevelId]);
         await client.query(
           "INSERT INTO role_assignments(user_id,role,status) VALUES($1,'professor',$2) ON CONFLICT DO NOTHING",
           [userId,assigned.rowCount?"active":"pending"]
@@ -179,7 +194,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
         await client.query("ROLLBACK").catch(()=>{});
         throw error;
       }finally{client.release();}
-      return res.status(201).json({message:"Compte professeur créé. Confirmez votre adresse e-mail. Votre espace pédagogique sera activé après affectation."});
+      return res.status(201).json({message:"Compte professeur créé. Confirmez votre e-mail. Votre demande sera transmise au responsable de programme pour validation et affectation à un cours.",status:"pending"});
     }catch(error){
       console.error("Inscription professeur:",error?.message||error);
       return res.status(503).json({error:"professor_registration_unavailable",message:"L’inscription est temporairement indisponible."});
