@@ -75,7 +75,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
 
   router.get("/program-manager/catalog", requireAuth, requireProgramManager, async (req, res) => {
     try {
-      const [subjects, courses] = await Promise.all([
+      const [subjects, courses, levels] = await Promise.all([
         pool.query(`SELECT s.id,s.name,s.option_id,s.study_level_id,l.label AS level_label,o.name AS option_name
           FROM subjects s JOIN options o ON o.id=s.option_id JOIN study_levels l ON l.id=s.study_level_id
           WHERE s.is_active=TRUE AND EXISTS (SELECT 1 FROM role_assignments ra
@@ -95,12 +95,92 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
             WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
               AND ra.university_id=scope_faculty.university_id AND ra.faculty_id=scope_faculty.id
               AND ra.option_id=s.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id))
-          ORDER BY o.name,l.sort_order,s.name,c.name`, [req.user.id])
+          ORDER BY o.name,l.sort_order,s.name,c.name`, [req.user.id]),
+        pool.query(`SELECT o.id AS option_id,o.name AS option_name,l.id AS study_level_id,l.label AS level_label
+          FROM options o JOIN faculties f ON f.id=o.faculty_id
+          JOIN study_levels l ON l.option_id=o.id
+          WHERE o.is_active=TRUE AND f.is_active=TRUE AND l.is_active=TRUE
+            AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1
+              AND ra.role='program_manager' AND ra.status='active'
+              AND ra.university_id=f.university_id AND ra.faculty_id=f.id
+              AND ra.option_id=o.id AND (ra.study_level_id IS NULL OR ra.study_level_id=l.id))
+          ORDER BY o.name,l.sort_order`, [req.user.id])
       ]);
-      return res.json({ data: { subjects: subjects.rows, courses: courses.rows, scopes: req.programScopes } });
+      return res.json({ data: { subjects: subjects.rows, courses: courses.rows, levels: levels.rows, scopes: req.programScopes } });
     } catch {
       return res.status(503).json({ error: "program_catalog_unavailable" });
     }
+  });
+
+  router.post("/program-manager/subjects", requireAuth, requireProgramManager, async (req, res) => {
+    const optionId = positiveId(req.body?.optionId);
+    const studyLevelId = positiveId(req.body?.studyLevelId);
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!optionId || !studyLevelId || !name || name.length > 180) {
+      return res.status(400).json({ error: "invalid_subject", message: "Choisissez une option, un niveau et indiquez le nom de la matière." });
+    }
+    try {
+      const scope = await pool.query(`SELECT o.id,o.faculty_id,f.university_id,l.id AS study_level_id
+        FROM options o JOIN faculties f ON f.id=o.faculty_id
+        JOIN study_levels l ON l.option_id=o.id
+        WHERE o.id=$1 AND l.id=$2 AND o.is_active=TRUE AND f.is_active=TRUE AND l.is_active=TRUE
+          AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$3
+            AND ra.role='program_manager' AND ra.status='active'
+            AND ra.university_id=f.university_id AND ra.faculty_id=f.id
+            AND ra.option_id=o.id AND (ra.study_level_id IS NULL OR ra.study_level_id=l.id))`,
+        [optionId, studyLevelId, req.user.id]);
+      if (!scope.rowCount) return res.status(403).json({ error: "subject_outside_program_scope" });
+      const created = await pool.query(
+        "INSERT INTO subjects(option_id,study_level_id,name,is_active) VALUES($1,$2,$3,TRUE) RETURNING id,name,option_id,study_level_id",
+        [optionId, studyLevelId, name]
+      );
+      await pool.query(
+        "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata) VALUES($1,'program.subject_created','subject',$2,$3,$4,$5,$6,$7::jsonb)",
+        [req.user.id, created.rows[0].id, scope.rows[0].university_id, scope.rows[0].faculty_id, optionId, studyLevelId, JSON.stringify({ name })]
+      );
+      return res.status(201).json({ subject: created.rows[0], message: "Matière créée dans votre programme." });
+    } catch (error) {
+      if (error?.code === "23505") return res.status(409).json({ error: "subject_already_exists", message: "Cette matière existe déjà pour ce niveau." });
+      return res.status(503).json({ error: "subject_create_failed" });
+    }
+  });
+
+  router.patch("/program-manager/subjects/:id", requireAuth, requireProgramManager, async (req, res) => {
+    const id = positiveId(req.params.id);
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const active = req.body?.isActive;
+    if (!id || !name || name.length > 180 || typeof active !== "boolean") return res.status(400).json({ error: "invalid_subject_update" });
+    try {
+      const result = await pool.query(`UPDATE subjects s SET name=$1,is_active=$2
+        WHERE s.id=$3 AND EXISTS (SELECT 1 FROM options o JOIN faculties f ON f.id=o.faculty_id
+          JOIN role_assignments ra ON ra.user_id=$4 AND ra.role='program_manager' AND ra.status='active'
+            AND ra.university_id=f.university_id AND ra.faculty_id=f.id AND ra.option_id=o.id
+            AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id)
+          WHERE o.id=s.option_id)
+        RETURNING s.id,s.name,s.option_id,s.study_level_id,s.is_active`,
+        [name, active, id, req.user.id]);
+      if (!result.rowCount) return res.status(404).json({ error: "subject_not_found" });
+      return res.json({ subject: result.rows[0], message: "Matière mise à jour." });
+    } catch (error) {
+      if (error?.code === "23505") return res.status(409).json({ error: "subject_already_exists" });
+      return res.status(503).json({ error: "subject_update_failed" });
+    }
+  });
+
+  router.delete("/program-manager/subjects/:id", requireAuth, requireProgramManager, async (req, res) => {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(400).json({ error: "invalid_subject_id" });
+    try {
+      const result = await pool.query(`UPDATE subjects s SET is_active=FALSE
+        WHERE s.id=$1 AND EXISTS (SELECT 1 FROM options o JOIN faculties f ON f.id=o.faculty_id
+          JOIN role_assignments ra ON ra.user_id=$2 AND ra.role='program_manager' AND ra.status='active'
+            AND ra.university_id=f.university_id AND ra.faculty_id=f.id AND ra.option_id=o.id
+            AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id)
+          WHERE o.id=s.option_id)
+        RETURNING s.id`, [id, req.user.id]);
+      if (!result.rowCount) return res.status(404).json({ error: "subject_not_found" });
+      return res.json({ message: "Matière désactivée. Les cours et documents historiques sont conservés." });
+    } catch { return res.status(503).json({ error: "subject_deactivate_failed" }); }
   });
 
   router.post("/program-manager/courses", requireAuth, requireProgramManager, async (req, res) => {
