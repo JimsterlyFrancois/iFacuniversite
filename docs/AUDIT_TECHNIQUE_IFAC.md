@@ -77,3 +77,30 @@ Projet contrôlé en lecture seule : `iFac universitaire` (`vrwxmsohomeqjqjpgzwn
 - Les tables publiques contrôlées ont RLS activé sans policy ; cela doit rester intentionnel tant que le backend est le seul chemin d'accès aux données. Ne pas ajouter de policy permissive sans matrice de permissions et tests.
 
 Aucune migration n'a été appliquée à la base de production pendant cet audit.
+
+
+## Autres blocages de liaison entre interfaces et hiérarchie
+
+### A. Contrôle d'accès hérité incompatible avec les rôles attribués
+
+Le middleware commun \`requireAdmin\` dans \`server/index.js\` n'autorise que \`users.role = 'admin'\`. Il ne reconnaît pas une affectation active \`admin_general\` dans \`role_assignments\`. Or les routes historiques \`/admin/*\` des fichiers \`classDocuments.routes.js\` et \`professors.routes.js\` utilisent ce middleware.
+
+Conséquence : un Administrateur général nommé uniquement par affectation peut ouvrir sa console SaaS, mais recevoir 403 sur les fonctions historiques de gestion des professeurs, classes, documents et délégués. Le compte principal historique ayant \`users.role='admin'\` n'est pas touché. Correction nécessaire : créer des gardes distinctes pour le rôle général et pour les rôles locaux, puis contrôler le périmètre sur chaque route. Ne pas simplement autoriser tous les rôles de gestion sur toutes les routes historiques.
+
+### B. Migration d'identité Auth pas encore appliquée
+
+Le code de la branche utilise maintenant \`users.auth_user_id\` pour relier le profil iFac au compte Supabase Auth. La base de production ne possède pas encore cette colonne. La migration \`20261109110000_auth_user_password_recovery.sql\` est obligatoire avant le déploiement de cette version. À la vérification en lecture seule, la base contenait 4 profils ; 3 correspondaient à un compte Supabase Auth par e-mail et 1 n'avait pas de compte correspondant. Ce dernier profil devra être traité selon son statut réel avant d'activer la récupération de mot de passe.
+
+### C. Hiérarchie insuffisamment représentée dans les données réelles
+
+La base de production observée ne contient qu'une seule affectation de rôle active, associée au compte administrateur historique. Les espaces Responsable d'université, Responsable de faculté et Responsable de programme ne peuvent donc pas encore être validés par des parcours réels de comptes nommés. Il faut créer des comptes de test dédiés, leur attribuer les rôles et tester les changements d'espace ainsi que les refus d'accès croisé.
+
+### D. Prévisualisation Vercel indisponible temporairement
+
+Les contrôles GitHub de la branche passent, mais Vercel a refusé les déploiements de prévisualisation en raison de la limite quotidienne du plan gratuit (\`api-deployments-free-per-day\`). Le succès CI ne prouve donc pas que les routes fonctionnent dans l'environnement Vercel. Une prévisualisation doit être obtenue après réinitialisation du quota, puis testée avant fusion.
+
+### E. Couverture des parcours encore incomplète
+
+Les tests actuels sont principalement des tests de routes avec PostgreSQL simulé, plus la syntaxe et le build frontend. Il manque une suite de bout en bout couvrant : Administrateur général → création université → nomination Responsable d'université → création faculté/option/niveau → ouverture des inscriptions → inscription étudiant → nomination Responsable de faculté → nomination Responsable de programme → création matière/cours → affectation professeur → connexion professeur → dépôt et validation d'un document.
+
+Ces lacunes sont des conditions de livraison, pas des détails cosmétiques.
