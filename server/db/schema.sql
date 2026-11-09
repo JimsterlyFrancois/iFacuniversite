@@ -14,6 +14,7 @@ CREATE TABLE universities (
 
 CREATE TABLE faculties (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   university_id BIGINT NOT NULL REFERENCES universities(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
