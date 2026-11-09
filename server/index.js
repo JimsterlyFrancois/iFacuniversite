@@ -111,11 +111,16 @@ const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const makeToken = () => randomBytes(32).toString("base64url");
 const publicUser = (u) => ({
   id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email,
-  role: u.effective_role || u.role, universityId: u.university_id, facultyId: u.faculty_id,
+  role: u.effective_role || u.role, baseRole: u.role,
+  universityId: u.university_id, facultyId: u.faculty_id,
   optionId: u.option_id, studyLevelId: u.study_level_id,
   universityName: u.university_name || "", facultyName: u.faculty_name || "",
   optionName: u.option_name || "", studyLevelLabel: u.study_level_label || "",
-  workspaces: Array.isArray(u.workspaces) && u.workspaces.length ? u.workspaces : [{ role: u.effective_role || u.role }]
+  workspaces: (() => {
+    const assignments = Array.isArray(u.workspaces) ? u.workspaces : [];
+    const base = ["student","delegate","professor","admin"].includes(u.role) ? [{ role: u.role, base: true }] : [];
+    return [...assignments, ...base.filter(item => !assignments.some(workspace => workspace.role === item.role))];
+  })()
 });
 async function getPublicUser(user) {
   const result = await pool.query(
