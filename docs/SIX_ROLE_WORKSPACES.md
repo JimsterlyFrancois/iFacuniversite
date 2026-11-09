@@ -157,3 +157,18 @@ Les références de périmètre doivent être cohérentes entre elles : une facu
 ## État de cette livraison
 
 Ce document fixe les décisions fonctionnelles et le plan technique. Aucun changement de comportement de l'application ou de la base de données n'est inclus dans cette fondation. La première étape de code devra implémenter et tester les permissions serveur avant d'activer les nouveaux tableaux de bord.
+
+
+## Mise à jour d'implémentation — branche de travail
+
+La conception ci-dessus est désormais partiellement implémentée dans la PR #28. Les changements suivants sont présents dans la branche :
+
+- Les affectations actives sont renvoyées au client dans le profil authentifié et l'utilisateur peut basculer entre les espaces auxquels il a réellement droit.
+- Le Responsable d'université dispose d'un espace pour créer, modifier et désactiver les facultés, options et niveaux de sa ou ses universités attribuées.
+- Une université créée par l'Administrateur général reste en mode configuration. Les inscriptions ne s'ouvrent qu'après vérification du catalogue académique.
+- Le Responsable de programme peut créer et gérer les matières de son programme avant d'y ajouter des cours.
+- Les tests automatisés contrôlent plusieurs refus d'accès hors périmètre.
+
+La migration \`20261109100000_university_catalog_admin.sql\` doit être appliquée à Supabase avant d'utiliser cette fonctionnalité en production. Les tests actuels sont des tests de routes avec base simulée ; les parcours réels Supabase et les contrôles de sécurité de bout en bout restent obligatoires.
+
+Voir \`docs/AUDIT_TECHNIQUE_IFAC.md\` pour les constats, les tests effectués et les conditions restantes avant fusion.
