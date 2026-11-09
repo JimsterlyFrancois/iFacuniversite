@@ -64,7 +64,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request })
 
   async function action(path,method,body){
     setBusy(true);setFeedback("");
-    try{const result=await request(path,{token,method,body:body?JSON.stringify(body):undefined});setFeedback(result?.message||"Modification enregistrée.");await load();return result;}
+    try{const result=await request(path,{token,method,body:body?JSON.stringify(body):undefined});await load();setFeedback(result?.message||"Modification enregistrée.");return result;}
     catch(error){setFeedback(error.message);return null;}
     finally{setBusy(false);}
   }
