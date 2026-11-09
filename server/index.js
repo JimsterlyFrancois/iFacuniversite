@@ -792,6 +792,10 @@ app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => 
     await client.query("BEGIN");
     const scope = await client.query(`SELECT 1 FROM faculties f LEFT JOIN options o ON o.id=$2 AND o.faculty_id=f.id LEFT JOIN study_levels l ON l.id=$3 AND l.option_id=o.id WHERE f.id=$1 AND f.university_id=$4 AND f.is_active=TRUE AND ($2::bigint IS NULL OR o.id IS NOT NULL) AND ($3::bigint IS NULL OR l.id IS NOT NULL)`, [ids[0],ids[1],ids[2],req.user.university_id]);
     if (!scope.rowCount) { await client.query("ROLLBACK"); return res.status(400).json({ error: "invalid_group_scope" }); }
+    // Serialize creation requests for the exact same university/group scope.
+    // This closes the check-then-insert race when two admins submit simultaneously.
+    const groupScopeKey = [req.user.university_id, groupType, ids[0], ids[1] ?? "null", ids[2] ?? "null"].join(":");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [groupScopeKey]);
     const duplicate = await client.query(
       `SELECT id FROM message_groups WHERE university_id=$1 AND group_type=$2
        AND faculty_id IS NOT DISTINCT FROM $3::bigint
