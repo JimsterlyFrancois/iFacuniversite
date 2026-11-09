@@ -21,9 +21,17 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Report dependency advisories
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e "const a=require('./npm-audit.json'); for (const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(name+' | '+v.severity+' | direct='+v.isDirect+' | fix='+JSON.stringify(v.fixAvailable)+' | '+(v.via||[]).map(x=>typeof x==='string'?x:x.title).join('; ')); console.log('Totals:',JSON.stringify(a.metadata?.vulnerabilities||{}));"
+      - name: Enforce dependency security audit
+        run: npm audit --audit-level=high
       - name: Check server syntax
         run: |
           node --check server/index.js
-          node --check server/routes/classDocuments.routes.js
+          for file in server/routes/*.js; do node --check "$file"; done
+      - name: Run automated tests
+        run: npm test
       - name: Build frontend
         run: npm run build

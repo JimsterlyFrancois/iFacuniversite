@@ -9,7 +9,8 @@
     "dev:client": "vite --config client/vite.config.js",
     "dev:server": "node --watch server/index.js",
     "start": "node server/index.js",
-    "build": "vite build --config client/vite.config.js"
+    "build": "vite build --config client/vite.config.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^5.1.0",
@@ -19,7 +20,7 @@
     "bcryptjs": "^3.0.2",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
-    "nodemailer": "^7.0.5",
+    "nodemailer": "^10.4.0",
     "multer": "^2.0.2",
     "dotenv": "^16.6.1"
   },

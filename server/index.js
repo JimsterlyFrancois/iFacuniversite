@@ -9,9 +9,17 @@ import { randomBytes, createHash } from "node:crypto";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import nodemailer from "nodemailer";
+import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
+import { requireGeneralAdmin } from "./lib/roleAuthorization.js";
+import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { createProfessorsRouter } from "./routes/professors.routes.js";
+import { createProgramManagerRouter } from "./routes/programManager.routes.js";
+import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
+import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
+import { createUniversityCatalogRouter } from "./routes/universityCatalog.routes.js";
+import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -106,20 +114,46 @@ const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 const makeToken = () => randomBytes(32).toString("base64url");
 const publicUser = (u) => ({
   id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email,
-  role: u.role, universityId: u.university_id, facultyId: u.faculty_id,
+  role: u.effective_role || u.role, baseRole: u.role,
+  universityId: u.university_id, facultyId: u.faculty_id,
   optionId: u.option_id, studyLevelId: u.study_level_id,
   universityName: u.university_name || "", facultyName: u.faculty_name || "",
-  optionName: u.option_name || "", studyLevelLabel: u.study_level_label || ""
+  optionName: u.option_name || "", studyLevelLabel: u.study_level_label || "",
+  workspaces: (() => {
+    const assignments = Array.isArray(u.workspaces) ? u.workspaces : [];
+    const base = ["student","delegate","professor","admin"].includes(u.role) ? [{ role: u.role, base: true }] : [];
+    return [...assignments, ...base.filter(item => !assignments.some(workspace => workspace.role === item.role))];
+  })()
 });
 async function getPublicUser(user) {
   const result = await pool.query(
     `SELECT u.*, un.name AS university_name, f.name AS faculty_name,
-            o.name AS option_name, l.label AS study_level_label
+            o.name AS option_name, l.label AS study_level_label,
+            CASE WHEN u.role='admin' THEN 'admin' ELSE COALESCE(ra.role,u.role) END AS effective_role,
+            COALESCE((SELECT json_agg(json_build_object(
+              'assignmentId',a.id,'role',a.role,'universityId',a.university_id,
+              'facultyId',a.faculty_id,'optionId',a.option_id,'studyLevelId',a.study_level_id,
+              'universityName',au.name,'facultyName',af.name,'optionName',ao.name,'studyLevelLabel',al.label
+            ) ORDER BY CASE a.role WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+              WHEN 'faculty_manager' THEN 3 WHEN 'program_manager' THEN 4 WHEN 'professor' THEN 5 ELSE 9 END,a.id)
+             FROM role_assignments a
+             LEFT JOIN universities au ON au.id=a.university_id
+             LEFT JOIN faculties af ON af.id=a.faculty_id
+             LEFT JOIN options ao ON ao.id=a.option_id
+             LEFT JOIN study_levels al ON al.id=a.study_level_id
+             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id
      LEFT JOIN faculties f ON f.id=u.faculty_id
      LEFT JOIN options o ON o.id=u.option_id
      LEFT JOIN study_levels l ON l.id=u.study_level_id
+     LEFT JOIN LATERAL (
+       SELECT role FROM role_assignments
+       WHERE user_id=u.id AND status='active'
+       ORDER BY CASE role WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+         WHEN 'faculty_manager' THEN 3 WHEN 'program_manager' THEN 4 WHEN 'professor' THEN 5 ELSE 9 END
+       LIMIT 1
+     ) ra ON TRUE
      WHERE u.id=$1 LIMIT 1`,
     [user.id]
   );
@@ -137,20 +171,29 @@ async function requireAuth(req, res, next) {
       [hashToken(match[1])]
     );
     if (!result.rowCount) return res.status(401).json({ error: "invalid_or_expired_session" });
+    const assignments = await pool.query(
+      "SELECT id,role,university_id,faculty_id,option_id,study_level_id FROM role_assignments WHERE user_id=$1 AND status='active'",
+      [result.rows[0].id]
+    );
     req.user = result.rows[0];
+    req.roleAssignments = assignments.rows;
+    req.activeRoles = assignments.rows.map(assignment => assignment.role);
     next();
   } catch {
     return res.status(503).json({ error: "service_unavailable" });
   }
 }
-const requireAdmin = (req, res, next) => req.user?.role === "admin"
-  ? next()
-  : res.status(403).json({ error: "administrator_required" });
+const requireAdmin = requireGeneralAdmin;
 
 app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
+app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
+app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));
+app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));
+app.use("/api/v1", createUniversityCatalogRouter({ pool, requireAuth }));
+app.use("/api/v1", createGeneralAdminRouter({ pool, requireAuth }));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
@@ -181,7 +224,7 @@ function requireDatabase(_req, res, next) {
 app.get("/api/v1/catalog/universities", requireDatabase, async (_req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, code, name FROM universities WHERE is_active = TRUE ORDER BY name"
+      "SELECT id, code, name FROM universities WHERE is_active = TRUE AND registration_enabled = TRUE ORDER BY name"
     );
     res.set("Cache-Control", "no-store");
     return res.json({ data: result.rows });
@@ -259,7 +302,7 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
        FROM universities u JOIN faculties f ON f.university_id=u.id
        JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
        WHERE u.code=$1 AND f.code=$2 AND o.code=$3 AND l.code=$4
-       AND u.is_active AND f.is_active AND o.is_active AND l.is_active`,
+       AND u.is_active AND u.registration_enabled = TRUE AND f.is_active AND o.is_active AND l.is_active`,
       [universityCode, facultyCode, optionCode, studyLevelCode]
     );
     if (!profile.rowCount) {
@@ -294,12 +337,17 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
     // Supabase Auth stores and verifies the real password. This legacy column receives
     // an unusable random hash so no duplicate usable password is stored by iFac.
     const passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"), 12);
+    const authUserId = signup.data?.user?.id;
+    if (typeof authUserId !== "string") {
+      await client.query("ROLLBACK");
+      return res.status(503).json({ error: "auth_identity_unavailable", message: "Supabase n’a pas retourné l’identifiant sécurisé du compte." });
+    }
     const adminEmail = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
     const role = adminEmail && normalizedEmail === adminEmail ? "admin" : "student";
     const createdUser = await client.query(
-      `INSERT INTO users (university_id, faculty_id, option_id, study_level_id, first_name, last_name, email, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,university_id,faculty_id,option_id,study_level_id,role`,
-      [profile.rows[0].university_id, profile.rows[0].faculty_id, profile.rows[0].option_id, profile.rows[0].study_level_id, firstName.trim(), lastName.trim(), normalizedEmail, passwordHash, role]
+      `INSERT INTO users (auth_user_id,university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,university_id,faculty_id,option_id,study_level_id,role`,
+      [authUserId,profile.rows[0].university_id,profile.rows[0].faculty_id,profile.rows[0].option_id,profile.rows[0].study_level_id,firstName.trim(),lastName.trim(),normalizedEmail,passwordHash,role]
     );
     await client.query("COMMIT");
     return res.status(201).json({ message: "Compte créé. Consultez votre boîte e-mail pour confirmer votre adresse avant de vous connecter." });
@@ -381,15 +429,33 @@ app.post("/api/v1/auth/password-reset/confirm", requireDatabase, async (req, res
   try {
     await client.query("BEGIN");
     const match = await client.query(
-      "SELECT user_id FROM email_tokens WHERE token_hash=$1 AND purpose='reset_password' AND used_at IS NULL AND expires_at>NOW() FOR UPDATE",
+      "SELECT t.user_id,u.auth_user_id FROM email_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1 AND t.purpose='reset_password' AND t.used_at IS NULL AND t.expires_at>NOW() FOR UPDATE OF t,u",
       [hashToken(token)]
     );
     if (!match.rowCount) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "invalid_or_expired_token" });
     }
-    const passwordHash = await bcrypt.hash(password,12);
     const userId = match.rows[0].user_id;
+    const authUserId = await resolveAuthUserId(client, userId, match.rows[0].auth_user_id);
+    let passwordHash;
+    if (authUserId) {
+      const authUpdate = await updateSupabaseUserPassword({
+        supabaseUrl: supabaseAuthUrl,
+        secretKey: storageKey,
+        userId: authUserId,
+        password
+      });
+      if (!authUpdate.ok) {
+        await client.query("ROLLBACK");
+        return res.status(503).json({ error: "supabase_password_update_failed", message: "Supabase Auth n’a pas accepté le changement. Le lien reste valable ; réessayez plus tard." });
+      }
+      // Keep the local legacy hash unusable; Supabase Auth remains the password authority.
+      passwordHash = await bcrypt.hash(randomBytes(48).toString("hex"),12);
+    } else {
+      // Accounts predating Supabase Auth continue to use the legacy password verifier.
+      passwordHash = await bcrypt.hash(password,12);
+    }
     await client.query("UPDATE users SET password_hash=$1,updated_at=NOW() WHERE id=$2", [passwordHash,userId]);
     await client.query("UPDATE email_tokens SET used_at=NOW() WHERE user_id=$1 AND purpose='reset_password' AND used_at IS NULL", [userId]);
     await client.query("UPDATE sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL", [userId]);
@@ -411,9 +477,10 @@ app.post("/api/v1/auth/login", requireDatabase, async (req, res) => {
     try {
       const auth = await supabaseAuth("/token?grant_type=password", { method: "POST", body: { email, password } });
       if (auth.response.ok && auth.data?.access_token) {
+        const authUserId = typeof auth.data?.user?.id === "string" ? auth.data.user.id : null;
         const result = await pool.query(
-          "UPDATE users SET email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE email=$1 AND is_active=TRUE RETURNING *",
-          [email]
+          "UPDATE users SET auth_user_id=COALESCE(auth_user_id,$2::uuid),email_verified_at=COALESCE(email_verified_at,NOW()),updated_at=NOW() WHERE lower(email)=lower($1) AND is_active=TRUE AND ($2::uuid IS NULL OR auth_user_id IS NULL OR auth_user_id=$2::uuid) RETURNING *",
+          [email,authUserId]
         );
         user = result.rows[0] || null;
       } else {
@@ -582,7 +649,7 @@ app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
     const file = await readPrivateObject(result.rows[0].file_key);
     res.set("Content-Type", result.rows[0].mime_type);
     res.set("Content-Length", String(file.length));
-    res.set("Content-Disposition", `attachment; filename="ifac-document-${id}.pdf"`);
+    res.set("Content-Disposition", `inline; filename="ifac-document-${id}.pdf"`);
     res.set("X-Content-Type-Options", "nosniff");
     res.set("Cache-Control", "private, no-store");
     return res.send(file);
@@ -723,7 +790,7 @@ app.post("/api/v1/admin/announcements/upload-token", requireAuth, requireAdmin, 
       return res.status(503).json({ error: "announcement_upload_sign_failed", message: "Impossible de préparer le téléversement de l’image. Réessayez." });
     }
     const storageHost = new URL(storageUrl).hostname.replace(".supabase.co", ".storage.supabase.co");
-    const uploadEndpoint = `${new URL(storageUrl).protocol}//${storageHost}/storage/v1/upload/resumable`;
+    const uploadEndpoint = `${new URL(storageUrl).protocol}//${storageHost}/storage/v1/upload/resumable/sign`;
     return res.json({ imageKey, token: signedData.token, uploadEndpoint, bucket: announcementStorageBucket, publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || "" });
   } catch (error) {
     console.error("Préparation du téléversement échouée:", error?.message);
@@ -900,6 +967,10 @@ app.post("/api/v1/admin/groups", requireAuth, requireAdmin, async (req, res) => 
     await client.query("BEGIN");
     const scope = await client.query(`SELECT 1 FROM faculties f LEFT JOIN options o ON o.id=$2 AND o.faculty_id=f.id LEFT JOIN study_levels l ON l.id=$3 AND l.option_id=o.id WHERE f.id=$1 AND f.university_id=$4 AND f.is_active=TRUE AND ($2::bigint IS NULL OR o.id IS NOT NULL) AND ($3::bigint IS NULL OR l.id IS NOT NULL)`, [ids[0],ids[1],ids[2],req.user.university_id]);
     if (!scope.rowCount) { await client.query("ROLLBACK"); return res.status(400).json({ error: "invalid_group_scope" }); }
+    // Serialize creation requests for the exact same university/group scope.
+    // This closes the check-then-insert race when two admins submit simultaneously.
+    const groupScopeKey = [req.user.university_id, groupType, ids[0], ids[1] ?? "null", ids[2] ?? "null"].join(":");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [groupScopeKey]);
     const duplicate = await client.query(
       `SELECT id FROM message_groups WHERE university_id=$1 AND group_type=$2
        AND faculty_id IS NOT DISTINCT FROM $3::bigint

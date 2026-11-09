@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ProfessorManagement from "./ProfessorManagement.jsx";
 import CourseManagement from "./CourseManagement.jsx";
 
@@ -32,7 +32,7 @@ function NavigationIcon({ name }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
 }
 
-export default function StudentShell({ token, user, onLogout, request }) {
+export default function StudentShell({ token, user, onLogout, request, onOpenGeneralAdmin }) {
   const [active, setActive] = useState("home");
   const [dark, setDark] = useState(false);
   const [items, setItems] = useState([]);
@@ -44,6 +44,9 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const [noteBody, setNoteBody] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [pdfViewer, setPdfViewer] = useState(null);
+  const [flyerUpload, setFlyerUpload] = useState({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null });
+  const flyerUploadAttempt = useRef(0);
   const [busy, setBusy] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [professorAssignments, setProfessorAssignments] = useState([]);
@@ -147,6 +150,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, [active, selectedGroup, selectedClassKey]);
+  useEffect(() => () => { if (pdfViewer?.url) URL.revokeObjectURL(pdfViewer.url); }, [pdfViewer?.url]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -210,6 +214,17 @@ export default function StudentShell({ token, user, onLogout, request }) {
     try { await request(`/notifications/${id}/read`, { token, method: "PATCH" }); setNotifications(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); setUnreadNotificationCount(n=>Math.max(0,n-1)); }
     catch (error) { setFeedback(error.message); }
   }
+  async function viewPdf(endpoint, title) {
+    try {
+      const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || data.error || "Ouverture du PDF impossible."); }
+      const blob = await response.blob();
+      if (blob.type && blob.type !== "application/pdf") throw new Error("Le fichier reçu n’est pas un PDF valide.");
+      setPdfViewer({ url: URL.createObjectURL(blob), title: title || "Lecture du document PDF" });
+    } catch (error) { setFeedback(error.message); }
+  }
+  function viewDocument(id, title) { return viewPdf(`/api/v1/documents/${id}/download`, title); }
+  function viewClassDocument(id, title) { return viewPdf(`/api/v1/class-documents/${id}/download`, title); }
   async function downloadClassDocument(id, name) {
     try {
       const response = await fetch(`/api/v1/class-documents/${id}/download`, { headers: { Authorization: `Bearer ${token}` } });
@@ -228,65 +243,105 @@ export default function StudentShell({ token, user, onLogout, request }) {
     try { await request("/admin/subjects", { token, method: "POST", body: JSON.stringify({ optionId: adminOptionId, studyLevelId: adminLevelId, name: subjectName }) }); setSubjectName(""); setFeedback("Matière créée."); await load(); }
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
+  async function uploadAnnouncementFlyer(image) {
+    const attempt = ++flyerUploadAttempt.current;
+    const fileSignature = `${image.name}:${image.size}:${image.lastModified}`;
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(image.type)) {
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: null });
+      setFeedback("Format refusé. Choisissez une image PNG, JPG ou WebP.");
+      return;
+    }
+    if (image.size < 1 || image.size > 8 * 1024 * 1024) {
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: null });
+      setFeedback("L’image doit peser 8 Mo maximum.");
+      return;
+    }
+    setFlyerUpload({ status: "uploading", progress: 0, fileSignature, imageKey: null, mimeType: image.type });
+    setFeedback("Préparation du transfert de l’image…");
+    try {
+      const signed = await request("/admin/announcements/upload-token", {
+        token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
+      });
+      const encodeMetadata = value => btoa(value);
+      const metadata = [
+        ["bucketName", signed.bucket],
+        ["objectName", signed.imageKey],
+        ["contentType", image.type],
+        ["cacheControl", "3600"]
+      ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
+      const created = await fetch(signed.uploadEndpoint, {
+        method: "POST",
+        headers: {
+          "Tus-Resumable": "1.0.0",
+          apikey: signed.publishableKey,
+          "Upload-Length": String(image.size),
+          "Upload-Metadata": metadata,
+          "x-signature": signed.token
+        }
+      });
+      if (!created.ok) {
+        const detail = await created.text().catch(() => "");
+        throw new Error(`Le stockage a refusé de préparer l’image (HTTP ${created.status}). ${detail.slice(0, 180)}`);
+      }
+      const location = created.headers.get("Location");
+      if (!location) throw new Error("Le stockage n’a pas confirmé le début du transfert.");
+      const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
+      const chunkSize = 6 * 1024 * 1024;
+      for (let offset = 0; offset < image.size;) {
+        const end = Math.min(offset + chunkSize, image.size);
+        const uploaded = await fetch(uploadUrl, {
+          method: "PATCH",
+          headers: {
+            "Tus-Resumable": "1.0.0",
+            apikey: signed.publishableKey,
+            "x-signature": signed.token,
+            "Upload-Offset": String(offset),
+            "Content-Type": "application/offset+octet-stream"
+          },
+          body: image.slice(offset, end)
+        });
+        if (!uploaded.ok) {
+          const detail = await uploaded.text().catch(() => "");
+          throw new Error(`Le transfert a échoué (HTTP ${uploaded.status}). ${detail.slice(0, 180)}`);
+        }
+        offset = end;
+        const progress = Math.round(offset / image.size * 100);
+        if (attempt === flyerUploadAttempt.current) {
+          setFlyerUpload({ status: "uploading", progress, fileSignature, imageKey: null, mimeType: image.type });
+          setFeedback(`Transfert de l’image en cours : ${progress} %`);
+        }
+      }
+      if (attempt !== flyerUploadAttempt.current) return;
+      setFlyerUpload({ status: "ready", progress: 100, fileSignature, imageKey: signed.imageKey, mimeType: image.type });
+      setFeedback("Image transférée avec succès. Vous pouvez maintenant publier l’annonce.");
+    } catch (error) {
+      if (attempt !== flyerUploadAttempt.current) return;
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: image.type });
+      setFeedback(error.message || "Le transfert de l’image a échoué. Réessayez.");
+    }
+  }
   async function createAnnouncement(e) {
     e.preventDefault();
     const formElement = e.currentTarget;
     const form = new FormData(formElement);
-    const image = formElement.elements.namedItem("image")?.files?.[0] || null;
+    const hasImage = Boolean(flyerUpload.fileSignature);
+    if (hasImage) {
+      if (flyerUpload.status !== "ready" || !flyerUpload.imageKey) {
+        setFeedback("Veuillez attendre la fin du transfert de l’image avant de publier l’annonce.");
+        return;
+      }
+    }
     setBusy(true); setFeedback("");
     try {
       const payload = { title: String(form.get("title") || "").trim(), body: String(form.get("body") || "").trim() };
-      if (image) {
-        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-        if (!allowedTypes.includes(image.type)) throw new Error("Format refusé. Choisissez une image PNG, JPG ou WebP.");
-        if (image.size < 1 || image.size > 8 * 1024 * 1024) throw new Error("L’image doit peser 8 Mo maximum.");
-        setFeedback("Préparation de l’image…");
-        const signed = await request("/admin/announcements/upload-token", {
-          token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
-        });
-        const encodeMetadata = value => btoa(value);
-        const metadata = [
-          ["bucketName", signed.bucket],
-          ["objectName", signed.imageKey],
-          ["contentType", image.type],
-          ["cacheControl", "3600"]
-        ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
-        const created = await fetch(signed.uploadEndpoint, {
-          method: "POST",
-          headers: {
-            "Tus-Resumable": "1.0.0",
-            apikey: signed.publishableKey,
-            "Upload-Length": String(image.size),
-            "Upload-Metadata": metadata,
-            "x-signature": signed.token
-          }
-        });
-        if (!created.ok) throw new Error("Le service de stockage a refusé l’image. Réessayez avec une image PNG, JPG ou WebP.");
-        const location = created.headers.get("Location");
-        if (!location) throw new Error("Le service de stockage n’a pas confirmé le transfert de l’image.");
-        const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
-        const chunkSize = 6 * 1024 * 1024;
-        for (let offset = 0; offset < image.size;) {
-          const end = Math.min(offset + chunkSize, image.size);
-          const chunk = image.slice(offset, end);
-          const uploaded = await fetch(uploadUrl, {
-            method: "PATCH",
-            headers: {
-              "Tus-Resumable": "1.0.0",
-              apikey: signed.publishableKey,
-              "Upload-Offset": String(offset),
-              "Content-Type": "application/offset+octet-stream"
-            },
-            body: chunk
-          });
-          if (!uploaded.ok) throw new Error("Le transfert de l’image a été interrompu. Vérifiez votre connexion et réessayez.");
-          offset = end;
-          setFeedback(`Envoi de l’image : ${Math.round(offset / image.size * 100)} %`);
-        }
-        payload.imageKey = signed.imageKey;
-        payload.imageMimeType = image.type;
+      if (hasImage) {
+        payload.imageKey = flyerUpload.imageKey;
+        payload.imageMimeType = flyerUpload.mimeType;
       }
       await request("/admin/announcements", { token, method: "POST", body: JSON.stringify(payload) });
+      flyerUploadAttempt.current += 1;
+      setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null });
       setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load();
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
@@ -378,7 +433,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
   const badgeText = count => count >= 100 ? "99+" : String(count);
   const serviceCount = id => id === "class" ? serviceCounts.class : id === "notifications" ? serviceCounts.notifications : id === "classDocs" ? serviceCounts.classDocs : badgeCount(id);
   return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
-    <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span><button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
+    <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><span className="preview-pill">{user.firstName} {user.lastName}</span>{onOpenGeneralAdmin && <button className="subtle-button" onClick={onOpenGeneralAdmin}>Console générale</button>}<button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
         {active === "home" && <nav className="mobile-dashboard" aria-label="Services universitaires">
@@ -453,8 +508,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
                 <div className="profile-tool-heading"><span className="profile-tool-icon">INFO</span><div><h3>Communication</h3><p>Publier une annonce générale.</p></div></div>
                 <label className="field">Titre de l’annonce<input value={announcementTitle} onChange={e => setAnnouncementTitle(e.target.value)} name="title" maxLength="220" required placeholder="Titre clair et concis" /></label>
                 <label className="field">Message<textarea value={announcementBody} onChange={e => setAnnouncementBody(e.target.value)} name="body" maxLength="20000" rows="4" required placeholder="Rédigez votre annonce…" /></label>
-                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
-                <button className="theme-button" disabled={busy}>Publier l’annonce</button>
+                {canUploadAnnouncementFlyer && <label className="field">Flyer / image de l’annonce<input name="image" type="file" accept="image/png,image/jpeg,image/webp" disabled={flyerUpload.status === "uploading" || busy} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) uploadAnnouncementFlyer(file); else { flyerUploadAttempt.current += 1; setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null }); } }} /></label>}{canUploadAnnouncementFlyer && flyerUpload.status === "uploading" && <p className="profile-helper" role="status">Transfert de l’image : {flyerUpload.progress} %. Le bouton de publication restera bloqué jusqu’à la fin.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "ready" && <p className="profile-helper" role="status">Image prête. Vous pouvez publier l’annonce.</p>}{canUploadAnnouncementFlyer && flyerUpload.status === "error" && <p className="profile-helper" role="alert">Le transfert a échoué. Sélectionnez à nouveau l’image pour réessayer.</p>}<p className="profile-helper">{canUploadAnnouncementFlyer ? "PNG, JPG ou WebP · 8 Mo maximum. Réservé au compte principal iFac." : "L’ajout de flyers est réservé au compte principal iFac."}</p>
+                <button className="theme-button" disabled={busy || flyerUpload.status === "uploading" || (Boolean(flyerUpload.fileSignature) && flyerUpload.status !== "ready")}>{flyerUpload.status === "uploading" ? `Transfert ${flyerUpload.progress} %…` : "Publier l’annonce"}</button>
               </form>
 
 
@@ -485,7 +540,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
             <label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label>
             <button className="theme-button" disabled={busy || (user.role === "professor" && !professorAssignments.some(a=>String(a.course_id)===String(classDocCourse)))}>Publier le document</button>
           </form>}
-          <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe ou mes cours</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section>
+          <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe ou mes cours</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => viewClassDocument(item.id,item.title)}>Lire le PDF</button><button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section>
         </>}
         {active === "groupAdmin" && user.role === "admin" && <div className="profile-tools-grid">              <form className="student-card note-form profile-tool-card" onSubmit={createGroup}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">GROUPE</span><div><h3>Groupes de messagerie</h3><p>Créer un groupe selon le parcours.</p></div></div>
@@ -500,14 +555,15 @@ export default function StudentShell({ token, user, onLogout, request }) {
         {active === "adminMessages" && user.role === "admin" && <section className="student-card student-data-list"><h2>Boîte de réception des délégués</h2>{delegateMessages.length === 0 ? <p>Aucun message reçu des délégués.</p> : delegateMessages.map(m => <article className="student-data-item" key={m.id}><strong>{m.subject}</strong><p>{m.body}</p><small>{m.first_name} {m.last_name} · {m.email} · {m.faculty_name || "Faculté"} · {m.option_name || "Option"} · {m.study_level_label || "Niveau"}</small><small>{new Date(m.created_at).toLocaleString()} · {m.read_at ? "Lu" : "Non lu"}</small>{!m.read_at && <button className="theme-button" onClick={() => markDelegateMessageRead(m.id)}>Marquer comme lu</button>}<button className="theme-button" onClick={() => editDelegateMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteDelegateMessage(m.id)}>Supprimer</button></article>)}</section>}
         {active === "adminMessages" && user.role === "admin" && <section className="student-card student-data-list"><h2>Messages des groupes</h2>{adminGroupMessages.length===0?<p>Aucun message de groupe.</p>:adminGroupMessages.map(m=><article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name} · Groupe {m.group_id}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small><div className="admin-review-actions"><button className="theme-button" onClick={()=>editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={()=>deleteGroupMessage(m.id)}>Supprimer</button></div></article>)}</section>}
         {active === "notifications" && <section className="student-card student-data-list"><h2>Mes notifications</h2>{notifications.length === 0 ? <p>Aucune notification pour le moment.</p> : notifications.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>Un document a été approuvé pour le cours : {item.course}</p><small>{new Date(item.created_at).toLocaleString()} · {item.read_at ? "Lue" : "Non lue"}</small>{!item.read_at && <button className="theme-button" onClick={() => markNotificationRead(item.id)}>Marquer comme lue</button>}</article>)}</section>}
-        {active === "classAdmin" && user.role === "admin" && <><section className="student-card note-form"><h2>Classes de l’université</h2><label className="field">Sélectionner une classe<select value={selectedClassKey} onChange={e => setSelectedClassKey(e.target.value)}><option value="">Choisir une classe</option>{classList.map(c => { const key = [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":"); return <option key={key} value={key}>{c.faculty_name} · {c.option_name} · {c.study_level_label}</option>; })}</select></label>{classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey) && <p>Étudiants : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).student_count} · Délégués : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).delegate_count} / 3</p>}</section><section className="student-card student-data-list"><h2>Étudiants et délégués</h2>{classStudents.length === 0 ? <p>Aucun étudiant trouvé pour cette classe.</p> : classStudents.map(student => <article className="student-data-item" key={student.id}><strong>{student.first_name} {student.last_name}</strong><p>{student.email} · {student.role}</p>{student.role === "delegate" ? <button className="theme-button" onClick={() => removeDelegate(student.id)} disabled={busy}>Retirer le rôle</button> : <button className="theme-button" onClick={() => assignDelegate(student.id)} disabled={busy || (classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey)?.delegate_count || 0) >= 3}>Désigner délégué</button>}</article>)}</section><section className="student-card student-data-list"><h2>Gestion des documents de classe</h2>{pendingClassDocuments.length === 0 ? <p>Aucun document publié pour le moment.</p> : pendingClassDocuments.map(doc => <article className="student-data-item" key={doc.id}><strong>{doc.title}</strong><p>{doc.course} · {doc.uploader_first_name} {doc.uploader_last_name}</p><small>{doc.faculty_name} · {doc.option_name} · {doc.study_level_label} · Statut : {doc.status === "pending" ? "À examiner" : doc.status === "approved" ? "Publié" : "Refusé"}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => downloadClassDocument(doc.id,doc.file_name)}>Consulter le PDF</button><button className="theme-button" onClick={() => editClassDocument(doc)} disabled={busy}>Modifier</button>{doc.status === "pending" && <><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"approved")} disabled={busy}>Publier</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"rejected")} disabled={busy}>Refuser</button></>}<button className="theme-button" onClick={() => deleteClassDocument(doc.id)} disabled={busy}>Supprimer</button></div></article>)}</section></>}
+        {active === "classAdmin" && user.role === "admin" && <><section className="student-card note-form"><h2>Classes de l’université</h2><label className="field">Sélectionner une classe<select value={selectedClassKey} onChange={e => setSelectedClassKey(e.target.value)}><option value="">Choisir une classe</option>{classList.map(c => { const key = [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":"); return <option key={key} value={key}>{c.faculty_name} · {c.option_name} · {c.study_level_label}</option>; })}</select></label>{classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey) && <p>Étudiants : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).student_count} · Délégués : {classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey).delegate_count} / 3</p>}</section><section className="student-card student-data-list"><h2>Étudiants et délégués</h2>{classStudents.length === 0 ? <p>Aucun étudiant trouvé pour cette classe.</p> : classStudents.map(student => <article className="student-data-item" key={student.id}><strong>{student.first_name} {student.last_name}</strong><p>{student.email} · {student.role}</p>{student.role === "delegate" ? <button className="theme-button" onClick={() => removeDelegate(student.id)} disabled={busy}>Retirer le rôle</button> : <button className="theme-button" onClick={() => assignDelegate(student.id)} disabled={busy || (classList.find(c => [c.university_id,c.faculty_id,c.option_id,c.study_level_id].join(":") === selectedClassKey)?.delegate_count || 0) >= 3}>Désigner délégué</button>}</article>)}</section><section className="student-card student-data-list"><h2>Gestion des documents de classe</h2>{pendingClassDocuments.length === 0 ? <p>Aucun document publié pour le moment.</p> : pendingClassDocuments.map(doc => <article className="student-data-item" key={doc.id}><strong>{doc.title}</strong><p>{doc.course} · {doc.uploader_first_name} {doc.uploader_last_name}</p><small>{doc.faculty_name} · {doc.option_name} · {doc.study_level_label} · Statut : {doc.status === "pending" ? "À examiner" : doc.status === "approved" ? "Publié" : "Refusé"}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => viewClassDocument(doc.id,doc.title)}>Consulter le PDF</button><button className="theme-button" onClick={() => editClassDocument(doc)} disabled={busy}>Modifier</button>{doc.status === "pending" && <><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"approved")} disabled={busy}>Publier</button><button className="theme-button" onClick={() => reviewClassDocument(doc.id,"rejected")} disabled={busy}>Refuser</button></>}<button className="theme-button" onClick={() => deleteClassDocument(doc.id)} disabled={busy}>Supprimer</button></div></article>)}</section></>}
         {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
         {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>{g.faculty_name || "Faculté"}{g.option_name ? " · "+g.option_name : ""}{g.study_level_label ? " · "+g.study_level_label : ""}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small>{user.role === "admin" && <div className="admin-review-actions"><button className="theme-button" onClick={() => editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteGroupMessage(m.id)}>Supprimer</button></div>}</article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
         {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
-        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button><button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
     <nav className="student-mobile-nav" aria-label="Navigation principale">{primaryDestinations.map(x => <button key={x.id} type="button" aria-current={active === x.id ? "page" : undefined} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}>{x.id === "profile" && profileImage ? <img className="mobile-nav-avatar" src={profileImage} alt="" /> : <span className="mobile-nav-symbol"><NavigationIcon name={x.id} /></span>}<span>{x.short}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}</nav>
+    {pdfViewer && <div className="pdf-reader-overlay" role="dialog" aria-modal="true" aria-label="Lecteur PDF"><section className="pdf-reader-panel"><header className="pdf-reader-header"><div><strong>{pdfViewer.title}</strong><small>Lecteur PDF intégré à iFacuniversite</small></div><button type="button" className="theme-button" onClick={() => setPdfViewer(null)}>Fermer</button></header><iframe className="pdf-reader-frame" src={pdfViewer.url} title={pdfViewer.title} /></section></div>}
   </main>;
 }

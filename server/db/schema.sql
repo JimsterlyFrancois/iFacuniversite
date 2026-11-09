@@ -7,13 +7,15 @@ CREATE TABLE universities (
   code VARCHAR(32) NOT NULL UNIQUE,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
+  registration_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE faculties (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  university_id BIGINT NOT NULL REFERENCES universities(id),
+  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
+  university_id BIGINT REFERENCES universities(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -25,7 +27,7 @@ CREATE TABLE faculties (
 
 CREATE TABLE options (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  faculty_id BIGINT NOT NULL REFERENCES faculties(id),
+  faculty_id BIGINT REFERENCES faculties(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -37,7 +39,7 @@ CREATE TABLE options (
 
 CREATE TABLE study_levels (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  option_id BIGINT NOT NULL REFERENCES options(id),
+  option_id BIGINT REFERENCES options(id),
   code VARCHAR(16) NOT NULL,
   label VARCHAR(80) NOT NULL,
   sort_order SMALLINT NOT NULL,
@@ -48,10 +50,11 @@ CREATE TABLE study_levels (
 
 CREATE TABLE users (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   university_id BIGINT NOT NULL REFERENCES universities(id),
   faculty_id BIGINT NOT NULL REFERENCES faculties(id),
   option_id BIGINT NOT NULL REFERENCES options(id),
-  study_level_id BIGINT NOT NULL REFERENCES study_levels(id),
+  study_level_id BIGINT REFERENCES study_levels(id),
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100) NOT NULL,
   email VARCHAR(254) NOT NULL,
@@ -554,8 +557,83 @@ CREATE INDEX IF NOT EXISTS documents_storage_bucket_scope_idx
   ON public.documents(storage_bucket, publication_scope, university_id, faculty_id, option_id, study_level_id)
   WHERE is_active = TRUE;
 
--- Restrict direct execution of the automatic RLS event trigger.
--- Keep the automatic RLS event trigger, but prevent direct invocation by API roles.
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable()
-  FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.rls_auto_enable() TO postgres;
+
+
+-- SaaS administration and manual billing foundation (also in Supabase migration).
+-- iFac Université: SaaS administration and manual billing foundation.
+-- Apply this migration before deploying the general administrator workspace.
+
+CREATE TABLE IF NOT EXISTS public.saas_plans (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  code VARCHAR(40) NOT NULL UNIQUE,
+  name VARCHAR(120) NOT NULL,
+  description TEXT,
+  amount_cents BIGINT NOT NULL DEFAULT 0 CHECK (amount_cents >= 0),
+  currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+  billing_interval VARCHAR(16) NOT NULL DEFAULT 'monthly'
+    CHECK (billing_interval IN ('monthly','yearly','one_time')),
+  limits JSONB NOT NULL DEFAULT '{}'::jsonb,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.university_subscriptions (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  university_id BIGINT NOT NULL REFERENCES public.universities(id) ON DELETE RESTRICT,
+  plan_id BIGINT NOT NULL REFERENCES public.saas_plans(id) ON DELETE RESTRICT,
+  status VARCHAR(16) NOT NULL DEFAULT 'trialing'
+    CHECK (status IN ('trialing','active','past_due','suspended','canceled')),
+  starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ends_at TIMESTAMPTZ,
+  grace_until TIMESTAMPTZ,
+  external_customer_id VARCHAR(180),
+  notes TEXT,
+  created_by BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (ends_at IS NULL OR ends_at > starts_at)
+);
+CREATE INDEX IF NOT EXISTS university_subscriptions_university_status_idx
+  ON public.university_subscriptions(university_id,status,created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS university_subscriptions_one_current_idx
+  ON public.university_subscriptions(university_id)
+  WHERE status IN ('trialing','active','past_due','suspended');
+
+CREATE TABLE IF NOT EXISTS public.billing_records (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  subscription_id BIGINT REFERENCES public.university_subscriptions(id) ON DELETE SET NULL,
+  university_id BIGINT NOT NULL REFERENCES public.universities(id) ON DELETE RESTRICT,
+  invoice_number VARCHAR(48) NOT NULL UNIQUE,
+  amount_cents BIGINT NOT NULL CHECK (amount_cents >= 0),
+  currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+  status VARCHAR(16) NOT NULL DEFAULT 'issued'
+    CHECK (status IN ('draft','issued','paid','overdue','void')),
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  due_at TIMESTAMPTZ,
+  paid_at TIMESTAMPTZ,
+  payment_reference VARCHAR(180),
+  notes TEXT,
+  created_by BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (due_at IS NULL OR due_at >= issued_at)
+);
+CREATE INDEX IF NOT EXISTS billing_records_university_status_idx
+  ON public.billing_records(university_id,status,issued_at DESC);
+
+INSERT INTO public.saas_plans(code,name,description,amount_cents,currency,billing_interval,limits)
+VALUES
+ ('starter','Starter','Offre de démarrage à configurer',0,'USD','monthly',
+  '{"universities":1,"students":250,"storage_gb":2,"support":"standard"}'::jsonb),
+ ('campus','Campus','Offre campus à configurer',0,'USD','monthly',
+  '{"universities":1,"students":1500,"storage_gb":20,"support":"priority"}'::jsonb),
+ ('institution','Institution','Offre institutionnelle à configurer',0,'USD','yearly',
+  '{"universities":5,"students":10000,"storage_gb":100,"support":"priority"}'::jsonb)
+ON CONFLICT (code) DO NOTHING;
+
+ALTER TABLE public.saas_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.university_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.billing_records ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.saas_plans, public.university_subscriptions, public.billing_records
+  FROM anon, authenticated;
