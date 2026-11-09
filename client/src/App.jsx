@@ -18,6 +18,7 @@ function Field({ label, children }) { return <label className="field"><span>{lab
 
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem("ifac_token") || "");
+  const [adminView, setAdminView] = useState("general");
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
@@ -153,7 +154,9 @@ export default function App() {
   if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
   if (token && user) {
-    if (user.role === "admin" || user.role === "admin_general") return <GeneralAdminShell token={token} user={user} onLogout={logout} request={request} />;
+    if (user.role === "admin" || user.role === "admin_general") return adminView === "general"
+      ? <GeneralAdminShell token={token} user={user} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
+      : <StudentShell token={token} user={user} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
     if (user.role === "university_admin") return <UniversityAdminShell token={token} user={user} onLogout={logout} request={request} />;
     if (user.role === "faculty_manager") return <FacultyManagerShell token={token} user={user} onLogout={logout} request={request} />;
     if (user.role === "program_manager") return <ProgramManagerShell token={token} user={user} onLogout={logout} request={request} />;
