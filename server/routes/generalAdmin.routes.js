@@ -64,7 +64,7 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
   router.get("/general-admin/universities", ...guard, async (_req, res) => {
     try {
       const result = await pool.query(`
-        SELECT u.id,u.code,u.name,u.is_active,u.created_at,
+        SELECT u.id,u.code,u.name,u.is_active,u.registration_enabled,u.created_at,
           (SELECT COUNT(*)::int FROM faculties f WHERE f.university_id=u.id) faculties,
           (SELECT COUNT(*)::int FROM users x WHERE x.university_id=u.id AND x.is_active=TRUE) users,
           (SELECT COUNT(*)::int FROM role_assignments ra WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='active') admins,
@@ -81,11 +81,11 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     if (!/^[A-Z0-9_-]{2,32}$/.test(code) || name.length < 2) return res.status(400).json({ error: "invalid_university", message: "Indiquez un code unique (2 à 32 caractères) et le nom de l’université." });
     try {
       const result = await pool.query(
-        "INSERT INTO universities(code,name,is_active) VALUES($1,$2,TRUE) RETURNING id,code,name,is_active,created_at",
+        "INSERT INTO universities(code,name,is_active,registration_enabled) VALUES($1,$2,TRUE,FALSE) RETURNING id,code,name,is_active,registration_enabled,created_at",
         [code,name]
       );
       await audit(req, "university.created", "university", result.rows[0].id, result.rows[0].id, { code, name });
-      return res.status(201).json({ university: result.rows[0], message: "Université créée. Ajoutez ensuite ses facultés et nommez son administrateur." });
+      return res.status(201).json({ university: result.rows[0], message: "Université créée en mode configuration. Nommez son responsable ; il pourra créer les facultés, options et niveaux avant l’ouverture des inscriptions." });
     } catch (error) {
       if (error.code === "23505") return res.status(409).json({ error: "university_code_exists", message: "Ce code d’université existe déjà." });
       return res.status(503).json({ error: "university_create_failed" });
