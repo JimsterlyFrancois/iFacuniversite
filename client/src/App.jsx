@@ -134,7 +134,7 @@ export default function App() {
 
   async function logout() {
     try { await request("/auth/logout", { method: "POST", token }); } catch {}
-    sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); setMode("login"); setFeedback("Vous êtes déconnecté.");
+    sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); setMode("login"); setAdminView("general"); setFeedback("Vous êtes déconnecté.");
   }
 
   const verifyToken = new URLSearchParams(window.location.search).get("token");
