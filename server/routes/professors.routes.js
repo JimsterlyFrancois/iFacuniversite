@@ -75,15 +75,17 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
         console.error("Activation professeur Supabase:",auth.status,detail);
         return res.status(503).json({error:"professor_activation_unavailable",message:"Le compte n’a pas pu être créé. Vérifiez le service e-mail."});
       }
+      const authUserId = data.user?.id || (await pool.query("SELECT id FROM auth.users WHERE lower(email)=lower($1) LIMIT 1",[email])).rows[0]?.id;
+      if (!authUserId) return res.status(503).json({error:"professor_auth_identity_unavailable",message:"L’identifiant du compte Supabase est indisponible. Contactez l’administration."});
       const a=assignments.rows[0];
       const hash=await bcrypt.hash(randomBytes(48).toString("hex"),12);
       const client=await pool.connect();
       try {
         await client.query("BEGIN");
         const created=await client.query(`
-          INSERT INTO users(university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,'professor') RETURNING id
-        `,[a.university_id,a.faculty_id,a.option_id,a.study_level_id,invite.rows[0].first_name,invite.rows[0].last_name,email,hash]);
+          INSERT INTO users(auth_user_id,university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'professor') RETURNING id
+        `,[authUserId,a.university_id,a.faculty_id,a.option_id,a.study_level_id,invite.rows[0].first_name,invite.rows[0].last_name,email,hash]);
         await client.query("UPDATE professor_invites SET user_id=$1,activated_at=NOW() WHERE id=$2",[created.rows[0].id,invite.rows[0].id]);
         const courseAssignment=await client.query("SELECT 1 FROM professor_assignments WHERE invite_id=$1 AND is_active=TRUE AND course_id IS NOT NULL LIMIT 1",[invite.rows[0].id]);
         await client.query(
@@ -135,6 +137,8 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
         return res.status(503).json({error:"professor_registration_unavailable",message:"Le compte n’a pas pu être créé. Vérifiez le service de confirmation e-mail."});
       }
 
+      const authUserId=data.user?.id || (await pool.query("SELECT id FROM auth.users WHERE lower(email)=lower($1) LIMIT 1",[email])).rows[0]?.id;
+      if(!authUserId)return res.status(503).json({error:"professor_auth_identity_unavailable",message:"L’identifiant du compte Supabase est indisponible. Contactez l’administration."});
       const passwordHash=await bcrypt.hash(randomBytes(48).toString("hex"),12);
       const client=await pool.connect();
       try{
@@ -145,9 +149,9 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
           return res.status(409).json({error:"professor_account_already_linked",message:"Cette adresse est déjà reliée à un compte professeur."});
         }
         const created=await client.query(
-          `INSERT INTO users(university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
-           VALUES(NULL,NULL,NULL,NULL,$1,$2,$3,$4,'professor') RETURNING id`,
-          [firstName,lastName,email,passwordHash]
+          `INSERT INTO users(auth_user_id,university_id,faculty_id,option_id,study_level_id,first_name,last_name,email,password_hash,role)
+           VALUES($1,NULL,NULL,NULL,NULL,$2,$3,$4,$5,'professor') RETURNING id`,
+          [authUserId,firstName,lastName,email,passwordHash]
         );
         const userId=created.rows[0].id;
         let inviteId;
