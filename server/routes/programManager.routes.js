@@ -5,21 +5,24 @@ const positiveId = value => {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 };
 
-export function createProgramManagerRouter({ pool, requireAuth }) {
+export function createProgramManagerRouter({ pool, requireAuth, readPrivateObject }) {
   const router = express.Router();
 
   async function requireProgramManager(req, res, next) {
     try {
       const result = await pool.query(
         `SELECT ra.university_id,ra.faculty_id,ra.option_id,ra.study_level_id,
-                u.name AS university_name,f.name AS faculty_name,o.name AS option_name
+                u.name AS university_name,f.name AS faculty_name,o.name AS option_name,
+                l.label AS study_level_label
          FROM role_assignments ra
          JOIN universities u ON u.id=ra.university_id
-         JOIN faculties f ON f.id=ra.faculty_id
-         JOIN options o ON o.id=ra.option_id
+         JOIN faculties f ON f.id=ra.faculty_id AND f.university_id=u.id
+         JOIN options o ON o.id=ra.option_id AND o.faculty_id=f.id
+         LEFT JOIN study_levels l ON l.id=ra.study_level_id AND l.option_id=o.id
          WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
            AND u.is_active=TRUE AND f.is_active=TRUE AND o.is_active=TRUE
-         ORDER BY u.name,f.name,o.name`,
+           AND (ra.study_level_id IS NULL OR l.id IS NOT NULL)
+         ORDER BY u.name,f.name,o.name,l.sort_order`,
         [req.user.id]
       );
       if (!result.rowCount) return res.status(403).json({ error: "program_manager_required", message: "Votre compte ne possède pas de nomination active comme responsable de programme." });
@@ -29,13 +32,6 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
       return res.status(503).json({ error: "program_scope_unavailable" });
     }
   }
-
-  const inScope = (alias = "s") => `EXISTS (
-    SELECT 1 FROM role_assignments scope
-    WHERE scope.user_id=$1 AND scope.role='program_manager' AND scope.status='active'
-      AND scope.university_id=$2 AND scope.faculty_id=$3 AND scope.option_id=${alias}.option_id
-      AND (scope.study_level_id IS NULL OR scope.study_level_id=${alias}.study_level_id)
-  )`;
 
   router.get("/program-manager/overview", requireAuth, requireProgramManager, async (req, res) => {
     try {
@@ -58,9 +54,10 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
             AND ra.university_id=pa.university_id AND ra.faculty_id=pa.faculty_id AND ra.option_id=pa.option_id
             AND (ra.study_level_id IS NULL OR ra.study_level_id=pa.study_level_id))`, [req.user.id]),
         pool.query(`SELECT COUNT(*)::int AS total FROM documents d
-          WHERE d.is_active=TRUE AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
-            AND ra.university_id=d.university_id AND ra.faculty_id=d.faculty_id AND ra.option_id=d.option_id
-            AND (ra.study_level_id IS NULL OR ra.study_level_id=d.study_level_id))`, [req.user.id])
+          WHERE d.is_active=TRUE AND d.storage_bucket='class-documents'
+            AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager' AND ra.status='active'
+              AND ra.university_id=d.university_id AND ra.faculty_id=d.faculty_id AND ra.option_id=d.option_id
+              AND (ra.study_level_id IS NULL OR ra.study_level_id=d.study_level_id))`, [req.user.id])
       ]);
       return res.json({
         data: {
@@ -113,14 +110,20 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
     if (!subjectId || !name || name.length > 180 || description.length > 3000)
       return res.status(400).json({ error: "invalid_course", message: "Choisissez une matière et indiquez le nom du cours." });
     try {
-      const subject = await pool.query(`SELECT s.id FROM subjects s WHERE s.id=$1 AND s.is_active=TRUE
-        AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$2 AND ra.role='program_manager'
-          AND ra.status='active' AND ra.option_id=s.option_id
-          AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id))`, [subjectId, req.user.id]);
+      const subject = await pool.query(`SELECT s.id FROM subjects s
+        JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
+        WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.is_active=TRUE
+          AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$2 AND ra.role='program_manager'
+            AND ra.status='active' AND ra.university_id=f.university_id AND ra.faculty_id=f.id
+            AND ra.option_id=s.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=s.study_level_id))`, [subjectId, req.user.id]);
       if (!subject.rowCount) return res.status(403).json({ error: "subject_outside_program_scope" });
       const created = await pool.query(
         "INSERT INTO courses(subject_id,name,description,created_by) VALUES($1,$2,$3,$4) RETURNING id,name,description,subject_id",
         [subjectId, name, description || null, req.user.id]
+      );
+      await pool.query(
+        "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,option_id,study_level_id,metadata) VALUES($1,'program.course_created','course',$2,$3,$4,$5::jsonb)",
+        [req.user.id,created.rows[0].id,subject.rows[0].option_id,subject.rows[0].study_level_id,JSON.stringify({ subjectId })]
       );
       return res.status(201).json({ course: created.rows[0], message: "Cours créé dans votre programme." });
     } catch (error) {
@@ -173,19 +176,20 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
         await client.query("ROLLBACK");
         return res.status(403).json({ error: "course_outside_program_scope", message: "Ce cours ne relève pas de votre programme." });
       }
-      const existingUser = await client.query("SELECT id FROM users WHERE email=$1", [email]);
-      if (existingUser.rowCount) {
+      let invite = await client.query("SELECT id,is_active,user_id,first_name,last_name FROM professor_invites WHERE email=$1 FOR UPDATE", [email]);
+      const existingUser = await client.query("SELECT id,role FROM users WHERE email=$1", [email]);
+      if (existingUser.rowCount && (!invite.rowCount || Number(invite.rows[0].user_id) !== Number(existingUser.rows[0].id) || existingUser.rows[0].role !== "professor")) {
         await client.query("ROLLBACK");
-        return res.status(409).json({ error: "email_already_used", message: "Cette adresse possède déjà un compte iFac. Demandez à l’administration de vérifier son affectation." });
+        return res.status(409).json({ error: "email_already_used", message: "Cette adresse possède déjà un compte qui n’est pas relié à cette fiche professeur." });
       }
-      let invite = await client.query("SELECT id,is_active FROM professor_invites WHERE email=$1 FOR UPDATE", [email]);
       if (invite.rowCount && !invite.rows[0].is_active) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "professor_invite_inactive" });
       }
       let inviteId;
-      if (invite.rowCount) inviteId = invite.rows[0].id;
-      else {
+      if (invite.rowCount) {
+        inviteId = invite.rows[0].id;
+      } else {
         const created = await client.query(
           "INSERT INTO professor_invites(email,first_name,last_name,created_by) VALUES($1,$2,$3,$4) RETURNING id",
           [email, firstName, lastName, req.user.id]
@@ -196,8 +200,15 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
         "INSERT INTO professor_assignments(invite_id,university_id,faculty_id,option_id,study_level_id,course_id,assigned_by) VALUES($1,$2,$3,$4,$5,$6,$7)",
         [inviteId, course.rows[0].university_id, course.rows[0].faculty_id, course.rows[0].option_id, course.rows[0].study_level_id, courseId, req.user.id]
       );
+      if (existingUser.rowCount) {
+        await client.query("UPDATE role_assignments SET status='active',revoked_at=NULL,updated_at=NOW() WHERE user_id=$1 AND role='professor'", [existingUser.rows[0].id]);
+      }
+      await client.query(
+        "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata) VALUES($1,'professor.course_assigned','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)",
+        [req.user.id,inviteId,course.rows[0].university_id,course.rows[0].faculty_id,course.rows[0].option_id,course.rows[0].study_level_id,JSON.stringify({ courseId })]
+      );
       await client.query("COMMIT");
-      return res.status(201).json({ message: invite.rowCount ? "Cours ajouté au professeur déjà déclaré." : "Professeur déclaré. Il peut activer son compte après confirmation de son e-mail." });
+      return res.status(201).json({ message: existingUser.rowCount ? "Cours ajouté au compte professeur existant." : invite.rowCount ? "Cours ajouté au professeur déjà déclaré." : "Professeur déclaré. Il peut activer son compte après confirmation de son e-mail." });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       if (error?.code === "23505") return res.status(409).json({ error: "assignment_exists", message: "Ce professeur possède déjà cette affectation." });
@@ -221,6 +232,40 @@ export function createProgramManagerRouter({ pool, requireAuth }) {
       return res.json({ data: result.rows });
     } catch {
       return res.status(503).json({ error: "program_documents_unavailable" });
+    }
+  });
+
+
+  router.get("/program-manager/documents/:id/download", requireAuth, requireProgramManager, async (req, res) => {
+    const documentId = positiveId(req.params.id);
+    if (!documentId) return res.status(400).json({ error: "invalid_document_id" });
+    try {
+      const result = await pool.query(`SELECT d.id,d.file_key,d.file_name,d.mime_type,d.storage_bucket
+        FROM documents d
+        JOIN options o ON o.id=d.option_id JOIN faculties f ON f.id=o.faculty_id
+        WHERE d.id=$1 AND d.is_active=TRUE AND d.status='approved'
+          AND d.storage_bucket='class-documents'
+          AND d.university_id=f.university_id AND d.faculty_id=f.id
+          AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$2
+            AND ra.role='program_manager' AND ra.status='active'
+            AND ra.university_id=d.university_id AND ra.faculty_id=d.faculty_id
+            AND ra.option_id=d.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=d.study_level_id))`,
+        [documentId,req.user.id]
+      );
+      if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
+      if (typeof readPrivateObject !== "function") return res.status(503).json({ error: "document_storage_unavailable" });
+      const row=result.rows[0];
+      const file=await readPrivateObject(row.file_key,row.storage_bucket);
+      const safeName=(row.file_name || ("ifac-document-"+row.id+".pdf")).replace(/[\\r\\n"]/g,"_");
+      res.set("Content-Type",row.mime_type || "application/pdf");
+      res.set("Content-Length",String(file.length));
+      res.set("Content-Disposition","attachment; filename=\"ifac-document-"+row.id+".pdf\"; filename*=UTF-8''"+encodeURIComponent(safeName));
+      res.set("X-Content-Type-Options","nosniff");
+      res.set("Cache-Control","private, no-store");
+      return res.send(file);
+    } catch (error) {
+      console.error("Téléchargement programme échoué:",error?.message);
+      return res.status(503).json({ error: "program_document_download_failed" });
     }
   });
 
