@@ -90,7 +90,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
   const page = {
     home: ["Vue d’ensemble", "Suivez les activités du programme universitaire dont vous avez la responsabilité."],
     courses: ["Cours du programme", "Consultez les cours existants et ajoutez ceux qui relèvent de votre programme."],
-    professors: ["Gestion des professeurs", "Déclarez un professeur et associez-le à un cours de votre programme."],
+    professors: ["Gestion des professeurs", "Examinez les demandes des professeurs et validez leur accès en leur attribuant un cours de votre programme."],
     documents: ["Ressources pédagogiques", "Consultez les documents publiés dans votre périmètre de responsabilité."]
   }[active];
 
@@ -234,7 +234,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
             </section>
           </>}
           {active === "professors" && <>
-            <section className="program-card"><h2>Déclarer un professeur</h2>
+            <section className="program-card"><h2>Déclarer ou valider un professeur</h2><p className="program-muted">Un professeur inscrit via l’espace professeur apparaît ici avec sa demande en attente. Attribuez-lui au moins un cours de votre programme pour activer son accès pédagogique.</p>
               {!courses.length ? <div className="program-empty">Créez ou faites créer un cours avant de pouvoir affecter un professeur.</div> : <form className="program-form" onSubmit={createProfessor}>
                 <label className="program-field">Prénom<input required maxLength="100" value={professorForm.firstName} onChange={event => setProfessorForm(v => ({ ...v, firstName: event.target.value }))} /></label>
                 <label className="program-field">Nom<input required maxLength="100" value={professorForm.lastName} onChange={event => setProfessorForm(v => ({ ...v, lastName: event.target.value }))} /></label>
@@ -244,7 +244,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
               </form>}
             </section>
             <section className="program-card"><h2>Professeurs et affectations</h2>
-              {professors.length ? <div className="program-list">{professors.map(professor => <article className="program-item" key={professor.id}><div><strong>{professor.first_name} {professor.last_name}</strong><div className="program-muted">{professor.email} · {professor.activated_at ? "Compte activé" : "En attente d’activation"}</div>{(professor.assignments || []).map((assignment,index) => <div className="program-muted" key={assignment.assignment_id || index}>{assignment.course_name} · {assignment.option_name} · {assignment.level_label} · {assignment.active ? "Affectation active" : "Suspendue"}</div>)}</div><span className="program-pill">{professor.is_active ? "Actif" : "Suspendu"}</span></article>)}</div> : <div className="program-empty">Aucun professeur n’est encore déclaré dans votre programme.</div>}
+              {professors.length ? <div className="program-list">{professors.map(professor => <article className="program-item" key={professor.id}><div><strong>{professor.first_name} {professor.last_name}</strong><div className="program-muted">{professor.email} · {professor.activated_at ? "Inscrit sur iFac" : "Invitation envoyée"} · {professor.role_status === "active" ? "Accès pédagogique actif" : professor.role_status === "pending" ? "En attente de validation" : "Accès retiré"}</div>{(professor.assignments || []).map((assignment,index) => <div className="program-muted" key={assignment.assignment_id || index}>{assignment.course_name || "Demande d’affectation"} · {assignment.option_name} · {assignment.level_label} · {assignment.active ? "Affectation active" : "Suspendue"}</div>)}</div><span className="program-pill">{professor.is_active ? "Actif" : "Suspendu"}</span></article>)}</div> : <div className="program-empty">Aucun professeur n’est encore déclaré dans votre programme.</div>}
             </section>
           </>}
           {active === "documents" && <section className="program-card"><h2>Documents pédagogiques du programme</h2>
