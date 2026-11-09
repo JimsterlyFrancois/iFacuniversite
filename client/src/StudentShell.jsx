@@ -214,6 +214,17 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
     try { await request(`/notifications/${id}/read`, { token, method: "PATCH" }); setNotifications(rows => rows.map(row => row.id === id ? { ...row, read_at: new Date().toISOString() } : row)); setUnreadNotificationCount(n=>Math.max(0,n-1)); }
     catch (error) { setFeedback(error.message); }
   }
+  async function viewPdf(endpoint, title) {
+    try {
+      const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || data.error || "Ouverture du PDF impossible."); }
+      const blob = await response.blob();
+      if (blob.type && blob.type !== "application/pdf") throw new Error("Le fichier reçu n’est pas un PDF valide.");
+      setPdfViewer({ url: URL.createObjectURL(blob), title: title || "Lecture du document PDF" });
+    } catch (error) { setFeedback(error.message); }
+  }
+  function viewDocument(id, title) { return viewPdf(`/api/v1/documents/${id}/download`, title); }
+  function viewClassDocument(id, title) { return viewPdf(`/api/v1/class-documents/${id}/download`, title); }
   async function downloadClassDocument(id, name) {
     try {
       const response = await fetch(`/api/v1/class-documents/${id}/download`, { headers: { Authorization: `Bearer ${token}` } });
@@ -232,65 +243,105 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
     try { await request("/admin/subjects", { token, method: "POST", body: JSON.stringify({ optionId: adminOptionId, studyLevelId: adminLevelId, name: subjectName }) }); setSubjectName(""); setFeedback("Matière créée."); await load(); }
     catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
+  async function uploadAnnouncementFlyer(image) {
+    const attempt = ++flyerUploadAttempt.current;
+    const fileSignature = `${image.name}:${image.size}:${image.lastModified}`;
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(image.type)) {
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: null });
+      setFeedback("Format refusé. Choisissez une image PNG, JPG ou WebP.");
+      return;
+    }
+    if (image.size < 1 || image.size > 8 * 1024 * 1024) {
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: null });
+      setFeedback("L’image doit peser 8 Mo maximum.");
+      return;
+    }
+    setFlyerUpload({ status: "uploading", progress: 0, fileSignature, imageKey: null, mimeType: image.type });
+    setFeedback("Préparation du transfert de l’image…");
+    try {
+      const signed = await request("/admin/announcements/upload-token", {
+        token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
+      });
+      const encodeMetadata = value => btoa(value);
+      const metadata = [
+        ["bucketName", signed.bucket],
+        ["objectName", signed.imageKey],
+        ["contentType", image.type],
+        ["cacheControl", "3600"]
+      ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
+      const created = await fetch(signed.uploadEndpoint, {
+        method: "POST",
+        headers: {
+          "Tus-Resumable": "1.0.0",
+          apikey: signed.publishableKey,
+          "Upload-Length": String(image.size),
+          "Upload-Metadata": metadata,
+          "x-signature": signed.token
+        }
+      });
+      if (!created.ok) {
+        const detail = await created.text().catch(() => "");
+        throw new Error(`Le stockage a refusé de préparer l’image (HTTP ${created.status}). ${detail.slice(0, 180)}`);
+      }
+      const location = created.headers.get("Location");
+      if (!location) throw new Error("Le stockage n’a pas confirmé le début du transfert.");
+      const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
+      const chunkSize = 2 * 1024 * 1024;
+      for (let offset = 0; offset < image.size;) {
+        const end = Math.min(offset + chunkSize, image.size);
+        const uploaded = await fetch(uploadUrl, {
+          method: "PATCH",
+          headers: {
+            "Tus-Resumable": "1.0.0",
+            apikey: signed.publishableKey,
+            "x-signature": signed.token,
+            "Upload-Offset": String(offset),
+            "Content-Type": "application/offset+octet-stream"
+          },
+          body: image.slice(offset, end)
+        });
+        if (!uploaded.ok) {
+          const detail = await uploaded.text().catch(() => "");
+          throw new Error(`Le transfert a échoué (HTTP ${uploaded.status}). ${detail.slice(0, 180)}`);
+        }
+        offset = end;
+        const progress = Math.round(offset / image.size * 100);
+        if (attempt === flyerUploadAttempt.current) {
+          setFlyerUpload({ status: "uploading", progress, fileSignature, imageKey: null, mimeType: image.type });
+          setFeedback(`Transfert de l’image en cours : ${progress} %`);
+        }
+      }
+      if (attempt !== flyerUploadAttempt.current) return;
+      setFlyerUpload({ status: "ready", progress: 100, fileSignature, imageKey: signed.imageKey, mimeType: image.type });
+      setFeedback("Image transférée avec succès. Vous pouvez maintenant publier l’annonce.");
+    } catch (error) {
+      if (attempt !== flyerUploadAttempt.current) return;
+      setFlyerUpload({ status: "error", progress: 0, fileSignature, imageKey: null, mimeType: image.type });
+      setFeedback(error.message || "Le transfert de l’image a échoué. Réessayez.");
+    }
+  }
   async function createAnnouncement(e) {
     e.preventDefault();
     const formElement = e.currentTarget;
     const form = new FormData(formElement);
-    const image = formElement.elements.namedItem("image")?.files?.[0] || null;
+    const hasImage = Boolean(flyerUpload.fileSignature);
+    if (hasImage) {
+      if (flyerUpload.status !== "ready" || !flyerUpload.imageKey) {
+        setFeedback("Veuillez attendre la fin du transfert de l’image avant de publier l’annonce.");
+        return;
+      }
+    }
     setBusy(true); setFeedback("");
     try {
       const payload = { title: String(form.get("title") || "").trim(), body: String(form.get("body") || "").trim() };
-      if (image) {
-        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-        if (!allowedTypes.includes(image.type)) throw new Error("Format refusé. Choisissez une image PNG, JPG ou WebP.");
-        if (image.size < 1 || image.size > 8 * 1024 * 1024) throw new Error("L’image doit peser 8 Mo maximum.");
-        setFeedback("Préparation de l’image…");
-        const signed = await request("/admin/announcements/upload-token", {
-          token, method: "POST", body: JSON.stringify({ contentType: image.type, fileSize: image.size })
-        });
-        const encodeMetadata = value => btoa(value);
-        const metadata = [
-          ["bucketName", signed.bucket],
-          ["objectName", signed.imageKey],
-          ["contentType", image.type],
-          ["cacheControl", "3600"]
-        ].map(([key, value]) => `${key} ${encodeMetadata(value)}`).join(",");
-        const created = await fetch(signed.uploadEndpoint, {
-          method: "POST",
-          headers: {
-            "Tus-Resumable": "1.0.0",
-            apikey: signed.publishableKey,
-            "Upload-Length": String(image.size),
-            "Upload-Metadata": metadata,
-            "x-signature": signed.token
-          }
-        });
-        if (!created.ok) throw new Error("Le service de stockage a refusé l’image. Réessayez avec une image PNG, JPG ou WebP.");
-        const location = created.headers.get("Location");
-        if (!location) throw new Error("Le service de stockage n’a pas confirmé le transfert de l’image.");
-        const uploadUrl = new URL(location, signed.uploadEndpoint).toString();
-        const chunkSize = 6 * 1024 * 1024;
-        for (let offset = 0; offset < image.size;) {
-          const end = Math.min(offset + chunkSize, image.size);
-          const chunk = image.slice(offset, end);
-          const uploaded = await fetch(uploadUrl, {
-            method: "PATCH",
-            headers: {
-              "Tus-Resumable": "1.0.0",
-              apikey: signed.publishableKey,
-              "Upload-Offset": String(offset),
-              "Content-Type": "application/offset+octet-stream"
-            },
-            body: chunk
-          });
-          if (!uploaded.ok) throw new Error("Le transfert de l’image a été interrompu. Vérifiez votre connexion et réessayez.");
-          offset = end;
-          setFeedback(`Envoi de l’image : ${Math.round(offset / image.size * 100)} %`);
-        }
-        payload.imageKey = signed.imageKey;
-        payload.imageMimeType = image.type;
+      if (hasImage) {
+        payload.imageKey = flyerUpload.imageKey;
+        payload.imageMimeType = flyerUpload.mimeType;
       }
       await request("/admin/announcements", { token, method: "POST", body: JSON.stringify(payload) });
+      flyerUploadAttempt.current += 1;
+      setFlyerUpload({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null });
       setAnnouncementTitle(""); setAnnouncementBody(""); formElement.reset(); setFeedback("Annonce publiée."); await load();
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
