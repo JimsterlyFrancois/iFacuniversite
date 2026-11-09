@@ -148,20 +148,28 @@ export function createFacultyManagerRouter({ pool, requireAuth }) {
       }
       const user=await client.query("SELECT id,is_active FROM users WHERE email=$1",[email]);
       if(!user.rowCount || !user.rows[0].is_active){await client.query("ROLLBACK");return res.status(404).json({error:"account_not_found",message:"Aucun compte iFac actif ne correspond à cet e-mail. La personne doit d’abord créer son compte."});}
-      const overlap=await client.query(`SELECT id FROM role_assignments
-        WHERE user_id=$1 AND role='program_manager' AND status='active'
+      const overlap=await client.query(`SELECT id,status,study_level_id FROM role_assignments
+        WHERE user_id=$1 AND role='program_manager' AND status IN ('active','pending')
           AND university_id=$2 AND faculty_id=$3 AND option_id=$4
           AND (study_level_id IS NULL OR $5::bigint IS NULL OR study_level_id=$5)
-        LIMIT 1`,[user.rows[0].id,option.rows[0].university_id,option.rows[0].faculty_id,optionId,studyLevelId]);
-      if(overlap.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"program_manager_already_assigned",message:"Cette personne possède déjà une nomination active couvrant ce programme ou ce niveau."});}
-      const revoked=await client.query(`SELECT id FROM role_assignments
+        ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END,id DESC
+        LIMIT 1 FOR UPDATE`,[user.rows[0].id,option.rows[0].university_id,option.rows[0].faculty_id,optionId,studyLevelId]);
+      if(overlap.rowCount && (overlap.rows[0].status==='active' || String(overlap.rows[0].study_level_id??'')!==String(studyLevelId??''))){
+        await client.query("ROLLBACK");
+        return res.status(409).json({error:"program_manager_already_assigned",message:"Cette personne possède déjà une nomination active ou en attente qui couvre ce programme ou ce niveau."});
+      }
+      const revoked=overlap.rowCount?null:await client.query(`SELECT id FROM role_assignments
         WHERE user_id=$1 AND role='program_manager' AND status='revoked'
           AND university_id=$2 AND faculty_id=$3 AND option_id=$4
           AND study_level_id IS NOT DISTINCT FROM $5
         ORDER BY id DESC LIMIT 1 FOR UPDATE`,
         [user.rows[0].id,option.rows[0].university_id,option.rows[0].faculty_id,optionId,studyLevelId]);
       let assignment;
-      if(revoked.rowCount){
+      if(overlap.rowCount){
+        assignment=await client.query(`UPDATE role_assignments SET status='active',assigned_by=$1,
+          approved_by=$1,revoked_at=NULL,updated_at=NOW() WHERE id=$2 RETURNING id,status`,
+          [req.user.id,overlap.rows[0].id]);
+      }else if(revoked?.rowCount){
         assignment=await client.query(`UPDATE role_assignments SET status='active',assigned_by=$1,
           approved_by=$1,revoked_at=NULL,updated_at=NOW() WHERE id=$2 RETURNING id,status`,
           [req.user.id,revoked.rows[0].id]);
@@ -208,7 +216,7 @@ export function createFacultyManagerRouter({ pool, requireAuth }) {
     try{
       const result=await pool.query(`SELECT DISTINCT i.id,i.email,i.first_name,i.last_name,
           i.activated_at,i.is_active,COUNT(DISTINCT pa.course_id)::int AS courses
-        FROM professor_invites i JOIN professor_assignments pa ON pa.invite_id=i.id
+        FROM professor_invites i JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
         WHERE EXISTS (SELECT 1 FROM role_assignments fm WHERE fm.user_id=$1
           AND fm.role='faculty_manager' AND fm.status='active'
           AND fm.university_id=pa.university_id AND fm.faculty_id=pa.faculty_id)
