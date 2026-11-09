@@ -1,7 +1,7 @@
 # Audit technique iFac Université — PR #28
 
 Dernière révision : 9 novembre 2026  
-Branche auditée : \`integration/saas-admin-workspaces-clean\`  
+Branche auditée : `integration/saas-admin-workspaces-clean`  
 Périmètre : API Express, permissions et affectations, espaces React, migrations PostgreSQL/Supabase, tests CI et configuration Vercel.
 
 ## Résumé exécutif
@@ -13,7 +13,7 @@ L'audit a identifié des blocages fonctionnels qui empêchaient l'onboarding com
 | Priorité | Constat | Correction dans la branche | État |
 |---|---|---|---|
 | P1 | Le Responsable d'université ne pouvait pas créer les facultés, options et niveaux. | Nouvelles routes API et écrans de gestion avec création, modification et désactivation. | Implémenté, tests API simulés |
-| P1 | Une université nouvellement créée était immédiatement proposée aux inscriptions alors que son catalogue pouvait être vide. | Colonne \`registration_enabled\`, nouvelle université créée en mode configuration, contrôle dans le catalogue public et à l'inscription. | Implémenté, migration en attente d'application |
+| P1 | Une université nouvellement créée était immédiatement proposée aux inscriptions alors que son catalogue pouvait être vide. | Colonne `registration_enabled`, nouvelle université créée en mode configuration, contrôle dans le catalogue public et à l'inscription. | Implémenté, migration en attente d'application |
 | P1 | Un responsable pouvait désactiver le dernier élément du catalogue sans refermer les inscriptions. | Vérification du catalogue après désactivation ; fermeture automatique si le minimum n'est plus disponible. | Implémenté |
 | P2 | Un compte possédant plusieurs rôles ne recevait qu'un seul espace de travail. | Le profil authentifié expose les affectations actives ; sélecteur d'espace dans l'application. | Implémenté |
 | P1 | Le Responsable de programme ne pouvait pas créer de matières, ce qui bloquait ensuite la création des cours dans un programme nouvellement configuré. | Routes de création, modification et désactivation des matières, avec contrôle du périmètre ; formulaire dans son espace. | Implémenté, tests API simulés |
@@ -34,12 +34,13 @@ L'audit a identifié des blocages fonctionnels qui empêchaient l'onboarding com
 
 Les tests de routes utilisent un pool PostgreSQL simulé et vérifient notamment :
 
-- l'impossibilité de forger un \`universityId\` dans le corps de la requête ;
+- l'impossibilité de forger un `universityId` dans le corps de la requête ;
 - l'obligation de choisir une affectation lorsque plusieurs universités sont administrées ;
 - le refus de créer une option dans une faculté extérieure au périmètre ;
 - le refus d'ouvrir les inscriptions avec un catalogue incomplet ;
 - la création d'une matière dans le programme autorisé ;
 - le refus de créer une matière dans un autre programme.
+- le refus de nommer un Responsable de programme dans une faculté extérieure au périmètre.
 
 Les contrôles CI sur la révision récente ont confirmé : syntaxe de toutes les routes, tests automatisés, build frontend et audit npm sans vulnérabilité signalée. Ces tests ne remplacent pas les essais sur une base Supabase de préproduction avec des comptes réels.
 
@@ -61,12 +62,14 @@ Les contrôles CI sur la révision récente ont confirmé : syntaxe de toutes le
 
 ## Vérification de la base Supabase de production
 
-Projet contrôlé en lecture seule : \`iFac universitaire\` (\`vrwxmsohomeqjqjpgzwn\`), état \`ACTIVE_HEALTHY\`, PostgreSQL 17.11.0.003.
+Projet contrôlé en lecture seule : `iFac universitaire` (`vrwxmsohomeqjqjpgzwn`), état `ACTIVE_HEALTHY`, PostgreSQL 17.11.0.003.
 
-- La base contient actuellement 5 migrations appliquées, jusqu'à \`20261108213315_secure_rls_event_trigger\`.
-- La colonne \`universities.registration_enabled\` n'existe pas encore en production. La migration \`20261109100000_university_catalog_admin.sql\` est donc indispensable avant l'activation de la nouvelle gestion du catalogue.
+- La base contient actuellement 5 migrations appliquées, jusqu'à `20261108213315_secure_rls_event_trigger`.
+- Le catalogue existant contient 1 université, 4 facultés, 12 options et 48 niveaux d'études.
+- La colonne `universities.registration_enabled` n'existe pas encore en production. La migration `20261109100000_university_catalog_admin.sql` est donc indispensable avant l'activation de la nouvelle gestion du catalogue.
 - Les 22 tables du schéma public observées ont RLS activé et aucune policy. Cela bloque l'accès direct par les rôles Data API ; l'application doit continuer à passer par son backend de confiance. Ne pas ajouter de policies publiques génériques.
 - L'advisor Supabase signale que la protection des mots de passe compromis est désactivée. À activer dans les paramètres Auth du projet.
 - L'advisor performance signale 38 clés étrangères sans index couvrant et 15 index non utilisés. Ce sont des alertes d'optimisation, pas des preuves d'erreur fonctionnelle ; ne pas supprimer ou ajouter ces index sans examiner les requêtes et la charge réelle.
+- Les tables publiques contrôlées ont RLS activé sans policy ; cela doit rester intentionnel tant que le backend est le seul chemin d'accès aux données. Ne pas ajouter de policy permissive sans matrice de permissions et tests.
 
 Aucune migration n'a été appliquée à la base de production pendant cet audit.
