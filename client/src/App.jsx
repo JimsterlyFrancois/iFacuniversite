@@ -167,6 +167,7 @@ export default function App() {
     const roles = rawRoles.filter(role => !(role === "admin" && rawRoles.includes("admin_general")));
     const activeRole = roles.includes(workspaceRole) ? workspaceRole : user.role;
     const workspaceUser = { ...user, role: activeRole };
+    const studentAdminUser = { ...user, role: user.baseRole === "admin" ? "admin" : (user.baseRole || activeRole) };
     const labels = {
       admin: "Administrateur général", admin_general: "Administrateur général",
       university_admin: "Responsable d’université", faculty_manager: "Responsable de faculté",
@@ -177,7 +178,7 @@ export default function App() {
     if (activeRole === "admin" || activeRole === "admin_general") {
       workspace = adminView === "general"
         ? <GeneralAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
-        : <StudentShell token={token} user={workspaceUser} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
+        : <StudentShell token={token} user={studentAdminUser} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
     } else if (activeRole === "university_admin") workspace = <UniversityAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "program_manager") workspace = <ProgramManagerShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
