@@ -110,7 +110,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
     if (!subjectId || !name || name.length > 180 || description.length > 3000)
       return res.status(400).json({ error: "invalid_course", message: "Choisissez une matière et indiquez le nom du cours." });
     try {
-      const subject = await pool.query(`SELECT s.id FROM subjects s
+      const subject = await pool.query(`SELECT s.id,s.option_id,s.study_level_id FROM subjects s
         JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
         WHERE s.id=$1 AND s.is_active=TRUE AND o.is_active=TRUE AND f.is_active=TRUE
           AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$2 AND ra.role='program_manager'
