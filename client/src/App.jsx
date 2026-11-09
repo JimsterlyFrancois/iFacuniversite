@@ -163,7 +163,8 @@ export default function App() {
   if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
   if (token && user) {
-    const roles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
+    const rawRoles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
+    const roles = rawRoles.filter(role => !(role === "admin" && rawRoles.includes("admin_general")));
     const activeRole = roles.includes(workspaceRole) ? workspaceRole : user.role;
     const labels = {
       admin: "Administrateur général", admin_general: "Administrateur général",
