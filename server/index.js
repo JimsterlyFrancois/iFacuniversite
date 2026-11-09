@@ -15,6 +15,7 @@ import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { createProfessorsRouter } from "./routes/professors.routes.js";
+import { createRoleRegistrationRouter } from "./routes/roleRegistration.routes.js";
 import { createProgramManagerRouter } from "./routes/programManager.routes.js";
 import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
 import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
@@ -121,9 +122,10 @@ const publicUser = (u) => ({
   optionName: u.option_name || "", studyLevelLabel: u.study_level_label || "",
   workspaces: (() => {
     const assignments = Array.isArray(u.workspaces) ? u.workspaces : [];
-    const base = ["student","delegate","professor","admin"].includes(u.role) ? [{ role: u.role, base: true }] : [];
+    const base = ["student","delegate","admin"].includes(u.role) ? [{ role: u.role, base: true }] : [];
     return [...assignments, ...base.filter(item => !assignments.some(workspace => workspace.role === item.role))];
-  })()
+  })(),
+  roleApplications: Array.isArray(u.role_applications) ? u.role_applications : []
 });
 async function getPublicUser(user) {
   const result = await pool.query(
@@ -141,7 +143,37 @@ async function getPublicUser(user) {
              LEFT JOIN faculties af ON af.id=a.faculty_id
              LEFT JOIN options ao ON ao.id=a.option_id
              LEFT JOIN study_levels al ON al.id=a.study_level_id
-             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces
+             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'assignmentId',ap.id,'role',ap.role,'status',ap.status,
+                'universityId',COALESCE(ap.university_id,pscope.university_id),
+                'facultyId',COALESCE(ap.faculty_id,pscope.faculty_id),
+                'optionId',COALESCE(ap.option_id,pscope.option_id),
+                'studyLevelId',COALESCE(ap.study_level_id,pscope.study_level_id),
+                'universityName',COALESCE(au.name,pu.name),
+                'facultyName',COALESCE(af.name,pf.name),
+                'optionName',COALESCE(ao.name,po.name),
+                'studyLevelLabel',COALESCE(al.label,pl.label)
+              ) ORDER BY ap.created_at DESC,ap.id DESC)
+              FROM role_assignments ap
+              LEFT JOIN LATERAL (
+                SELECT pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
+                FROM professor_invites pi
+                JOIN professor_assignments pa ON pa.invite_id=pi.id
+                WHERE pi.user_id=ap.user_id
+                ORDER BY pa.created_at DESC,pa.id DESC LIMIT 1
+              ) pscope ON ap.role='professor'
+              LEFT JOIN universities au ON au.id=ap.university_id
+              LEFT JOIN faculties af ON af.id=ap.faculty_id
+              LEFT JOIN options ao ON ao.id=ap.option_id
+              LEFT JOIN study_levels al ON al.id=ap.study_level_id
+              LEFT JOIN universities pu ON pu.id=pscope.university_id
+              LEFT JOIN faculties pf ON pf.id=pscope.faculty_id
+              LEFT JOIN options po ON po.id=pscope.option_id
+              LEFT JOIN study_levels pl ON pl.id=pscope.study_level_id
+              WHERE ap.user_id=u.id AND ap.status IN ('pending','revoked')
+            ),'[]'::json) AS role_applications
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id
      LEFT JOIN faculties f ON f.id=u.faculty_id
@@ -189,6 +221,7 @@ app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
+app.use("/api/v1", createRoleRegistrationRouter({ pool }));
 app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));

@@ -345,7 +345,7 @@ ALTER TABLE public.professor_assignments
   DROP CONSTRAINT IF EXISTS professor_assignments_invite_id_study_level_id_key;
 
 CREATE UNIQUE INDEX IF NOT EXISTS professor_assignments_legacy_scope_uidx
-  ON public.professor_assignments(invite_id, study_level_id)
+  ON public.professor_assignments(invite_id, university_id, faculty_id, option_id, study_level_id)
   WHERE course_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS professor_assignments_course_uidx
   ON public.professor_assignments(invite_id, course_id)

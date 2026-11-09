@@ -215,18 +215,22 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
   router.get("/program-manager/professors", requireAuth, requireProgramManager, async (req, res) => {
     try {
       const result = await pool.query(`SELECT i.id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,
+          COALESCE(pra.status,'pending') AS role_status,
           COALESCE(json_agg(json_build_object('assignment_id',pa.id,'course_id',c.id,'course_name',c.name,
-            'option_name',o.name,'level_label',l.label,'active',pa.is_active)) FILTER (WHERE pa.id IS NOT NULL),'[]') AS assignments
+            'option_name',o.name,'level_label',l.label,'active',pa.is_active))
+            FILTER (WHERE pa.id IS NOT NULL),'[]') AS assignments
         FROM professor_invites i
-        JOIN professor_assignments pa ON pa.invite_id=i.id
-        JOIN courses c ON c.id=pa.course_id
-        JOIN subjects s ON s.id=c.subject_id
-        JOIN options o ON o.id=pa.option_id
-        JOIN study_levels l ON l.id=pa.study_level_id
-        WHERE EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager'
-          AND ra.status='active' AND ra.university_id=pa.university_id AND ra.faculty_id=pa.faculty_id
-          AND ra.option_id=pa.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=pa.study_level_id))
-        GROUP BY i.id ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]);
+        JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
+          AND EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager'
+            AND ra.status='active' AND ra.university_id=pa.university_id AND ra.faculty_id=pa.faculty_id
+            AND ra.option_id=pa.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=pa.study_level_id))
+        LEFT JOIN courses c ON c.id=pa.course_id
+        LEFT JOIN subjects s ON s.id=c.subject_id
+        LEFT JOIN options o ON o.id=pa.option_id
+        LEFT JOIN study_levels l ON l.id=pa.study_level_id
+        LEFT JOIN role_assignments pra ON pra.user_id=i.user_id AND pra.role='professor'
+        WHERE i.is_active=TRUE
+        GROUP BY i.id,pra.status ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]);
       return res.json({ data: result.rows });
     } catch {
       return res.status(503).json({ error: "program_professors_unavailable" });
