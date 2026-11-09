@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ProfessorManagement from "./ProfessorManagement.jsx";
 import CourseManagement from "./CourseManagement.jsx";
 
@@ -44,6 +44,9 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   const [noteBody, setNoteBody] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [pdfViewer, setPdfViewer] = useState(null);
+  const [flyerUpload, setFlyerUpload] = useState({ status: "empty", progress: 0, fileSignature: null, imageKey: null, mimeType: null });
+  const flyerUploadAttempt = useRef(0);
   const [busy, setBusy] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [professorAssignments, setProfessorAssignments] = useState([]);
@@ -147,6 +150,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, [active, selectedGroup, selectedClassKey]);
+  useEffect(() => () => { if (pdfViewer?.url) URL.revokeObjectURL(pdfViewer.url); }, [pdfViewer?.url]);
   useEffect(() => {
     let alive = true;
     (async () => {
