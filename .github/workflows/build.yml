@@ -24,6 +24,8 @@ jobs:
       - name: Check server syntax
         run: |
           node --check server/index.js
-          node --check server/routes/classDocuments.routes.js
+          for file in server/routes/*.js; do node --check "$file"; done
+      - name: Run automated tests
+        run: npm test
       - name: Build frontend
         run: npm run build
