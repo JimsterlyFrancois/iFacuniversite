@@ -58,6 +58,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
   const [downloadingId, setDownloadingId] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [subjectId, setSubjectId] = useState("");
+  const [subjectForm, setSubjectForm] = useState({ optionId: "", studyLevelId: "", name: "" });
   const [courseName, setCourseName] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
   const [professorForm, setProfessorForm] = useState({ firstName: "", lastName: "", email: "", courseId: "" });
@@ -85,6 +86,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
   useEffect(() => { load(); }, [load]);
 
   const courses = useMemo(() => catalog.courses || [], [catalog]);
+  const levels = useMemo(() => catalog.levels || [], [catalog]);
   const page = {
     home: ["Vue d’ensemble", "Suivez les activités du programme universitaire dont vous avez la responsabilité."],
     courses: ["Cours du programme", "Consultez les cours existants et ajoutez ceux qui relèvent de votre programme."],
@@ -111,6 +113,32 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
       URL.revokeObjectURL(url);
     } catch (error) { setFeedback(error.message); }
     finally { setDownloadingId(null); }
+  }
+
+  async function createSubject(event) {
+    event.preventDefault();
+    setBusy(true); setFeedback("");
+    try {
+      const result = await request("/program-manager/subjects", {
+        token, method: "POST",
+        body: JSON.stringify({ optionId: Number(subjectForm.optionId), studyLevelId: Number(subjectForm.studyLevelId), name: subjectForm.name })
+      });
+      setSubjectForm({ optionId: "", studyLevelId: "", name: "" });
+      setFeedback(result.message || "Matière créée.");
+      await load();
+    } catch (error) { setFeedback(error.message); }
+    finally { setBusy(false); }
+  }
+
+  async function deactivateSubject(subject) {
+    if (!window.confirm("Désactiver la matière « " + subject.name + " » ? Les cours et documents existants seront conservés.")) return;
+    setBusy(true); setFeedback("");
+    try {
+      const result = await request("/program-manager/subjects/" + subject.id, { token, method: "DELETE" });
+      setFeedback(result.message || "Matière désactivée.");
+      await load();
+    } catch (error) { setFeedback(error.message); }
+    finally { setBusy(false); }
   }
 
   async function createCourse(event) {
@@ -183,8 +211,18 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
             </div></section>
           </>}
           {active === "courses" && <>
+            <section className="program-card"><h2>Créer une matière</h2>
+              {!levels.length ? <div className="program-empty">Aucun niveau actif n’est disponible dans votre programme. Contactez le responsable de faculté pour vérifier le catalogue académique.</div> : <form className="program-form" onSubmit={createSubject}>
+                <label className="program-field full">Option et niveau<select required value={subjectForm.studyLevelId} onChange={event => { const level = levels.find(item => String(item.study_level_id) === event.target.value); setSubjectForm(v => ({ ...v, studyLevelId: event.target.value, optionId: String(level?.option_id || "") })); }}><option value="">Choisir un niveau</option>{levels.map(level => <option key={level.study_level_id} value={level.study_level_id}>{level.option_name} · {level.level_label}</option>)}</select></label>
+                <label className="program-field full">Nom de la matière<input required maxLength="180" value={subjectForm.name} onChange={event => setSubjectForm(v => ({ ...v, name: event.target.value }))} placeholder="Ex. : Introduction à la psychopédagogie" /></label>
+                <div className="program-field full"><button className="program-button" disabled={busy || !subjectForm.studyLevelId}>Créer la matière</button></div>
+              </form>}
+            </section>
+            <section className="program-card"><h2>Matières de votre programme</h2>
+              {catalog.subjects?.length ? <div className="program-list">{catalog.subjects.map(subject => <article className="program-item" key={subject.id}><div><strong>{subject.name}</strong><div className="program-muted">{subject.option_name} · {subject.level_label}</div></div><button className="program-button secondary" type="button" disabled={busy} onClick={() => deactivateSubject(subject)}>Désactiver</button></article>)}</div> : <div className="program-empty">Aucune matière active. Créez-en une pour commencer à ajouter des cours.</div>}
+            </section>
             <section className="program-card"><h2>Créer un cours</h2>
-              {!catalog.subjects?.length ? <div className="program-empty">Aucune matière active n’est encore disponible dans votre programme. La matière doit être créée par l’administration avant de pouvoir y ajouter un cours.</div> : <form className="program-form" onSubmit={createCourse}>
+              {!catalog.subjects?.length ? <div className="program-empty">Créez d’abord une matière dans votre programme.</div> : <form className="program-form" onSubmit={createCourse}>
                 <label className="program-field full">Matière<select required value={subjectId} onChange={event => setSubjectId(event.target.value)}><option value="">Choisir une matière</option>{catalog.subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.option_name} · {subject.level_label} · {subject.name}</option>)}</select></label>
                 <label className="program-field full">Nom du cours<input required maxLength="180" value={courseName} onChange={event => setCourseName(event.target.value)} placeholder="Ex. : Introduction à la psychopédagogie" /></label>
                 <label className="program-field full">Description (facultative)<textarea maxLength="3000" value={courseDescription} onChange={event => setCourseDescription(event.target.value)} /></label>
