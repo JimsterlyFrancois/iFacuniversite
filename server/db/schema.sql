@@ -15,7 +15,7 @@ CREATE TABLE universities (
 CREATE TABLE faculties (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
-  university_id BIGINT NOT NULL REFERENCES universities(id),
+  university_id BIGINT REFERENCES universities(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -27,7 +27,7 @@ CREATE TABLE faculties (
 
 CREATE TABLE options (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  faculty_id BIGINT NOT NULL REFERENCES faculties(id),
+  faculty_id BIGINT REFERENCES faculties(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -39,7 +39,7 @@ CREATE TABLE options (
 
 CREATE TABLE study_levels (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  option_id BIGINT NOT NULL REFERENCES options(id),
+  option_id BIGINT REFERENCES options(id),
   code VARCHAR(16) NOT NULL,
   label VARCHAR(80) NOT NULL,
   sort_order SMALLINT NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE users (
   university_id BIGINT NOT NULL REFERENCES universities(id),
   faculty_id BIGINT NOT NULL REFERENCES faculties(id),
   option_id BIGINT NOT NULL REFERENCES options(id),
-  study_level_id BIGINT NOT NULL REFERENCES study_levels(id),
+  study_level_id BIGINT REFERENCES study_levels(id),
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100) NOT NULL,
   email VARCHAR(254) NOT NULL,
