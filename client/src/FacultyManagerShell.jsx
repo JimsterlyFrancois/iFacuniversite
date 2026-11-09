@@ -59,6 +59,7 @@ export default function FacultyManagerShell({token,user,onLogout,request}) {
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [feedback,setFeedback]=useState("");
+  const [downloadingId,setDownloadingId]=useState(null);
   const [form,setForm]=useState({email:"",optionId:"",studyLevelId:""});
 
   const load=useCallback(async()=>{
@@ -90,6 +91,18 @@ export default function FacultyManagerShell({token,user,onLogout,request}) {
     professors:["Professeurs","Consultez les professeurs affectés aux programmes de votre faculté."],
     documents:["Documents pédagogiques","Consultez les ressources pédagogiques publiées dans votre faculté."]
   }[active];
+
+  async function downloadDocument(doc){
+    setDownloadingId(doc.id);setFeedback("");
+    try{
+      const response=await fetch(`/api/v1/faculty-manager/documents/${doc.id}/download`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.message||"Téléchargement impossible pour ce document.");}
+      const blob=await response.blob(),url=URL.createObjectURL(blob),anchor=document.createElement("a");
+      anchor.href=url;anchor.download=doc.file_name||`document-ifac-${doc.id}`;
+      document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url);
+    }catch(error){setFeedback(error.message);}
+    finally{setDownloadingId(null);}
+  }
 
   async function appoint(event){
     event.preventDefault();setBusy(true);setFeedback("");
@@ -177,7 +190,7 @@ export default function FacultyManagerShell({token,user,onLogout,request}) {
             {professors.length?<div className="faculty-list">{professors.map(p=><article className="faculty-item" key={p.id}><div><strong>{p.first_name} {p.last_name}</strong><div className="faculty-muted">{p.email} · {p.courses} cours · {p.activated_at?"Compte activé":"Activation en attente"}</div></div><span className="faculty-pill">{p.is_active?"Actif":"Suspendu"}</span></article>)}</div>:<div className="faculty-empty">Aucun professeur déclaré dans cette faculté.</div>}
           </section>}
           {active==="documents"&&<section className="faculty-card"><h2>Documents pédagogiques de la faculté</h2>
-            {documents.length?<div className="faculty-list">{documents.map(d=><article className="faculty-item" key={d.id}><div><strong>{d.title}</strong><div className="faculty-muted">{d.course||"Cours"} · {d.option_name||"Programme"} · {d.level_label||"Niveau non précisé"}</div></div><span className="faculty-pill">{d.status==="approved"?"Publié":d.status==="pending"?"En attente":"Refusé"}</span></article>)}</div>:<div className="faculty-empty">Aucun document pédagogique disponible.</div>}
+            {documents.length?<div className="faculty-list">{documents.map(d=><article className="faculty-item" key={d.id}><div><strong>{d.title}</strong><div className="faculty-muted">{d.course||"Cours"} · {d.option_name||"Programme"} · {d.level_label||"Niveau non précisé"}</div></div><div className="faculty-actions"><span className="faculty-pill">{d.status==="approved"?"Publié":d.status==="pending"?"En attente":"Refusé"}</span>{d.status==="approved"&&<button className="faculty-button secondary" type="button" disabled={downloadingId===d.id} onClick={()=>downloadDocument(d)}>{downloadingId===d.id?"Téléchargement…":"Télécharger"}</button>}</div></article>)}</div>:<div className="faculty-empty">Aucun document pédagogique disponible.</div>}
           </section>}
         </>}
       </section>
