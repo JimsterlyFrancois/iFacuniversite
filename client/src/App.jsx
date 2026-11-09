@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import StudentShell from "./StudentShell.jsx";
+import ProfessorShell from "./ProfessorShell.jsx";
 
 const API = "/api/v1";
 async function request(path, { token, ...options } = {}) {
@@ -147,7 +148,9 @@ export default function App() {
 
   if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
-  if (token && user) return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
+  if (token && user) return user.role === "professor"
+    ? <ProfessorShell token={token} user={user} onLogout={logout} request={request} />
+    : <StudentShell token={token} user={user} onLogout={logout} request={request} />;
 
   return <main className="page-shell">
     <header className="topbar"><a className="brand" href="/"><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><button type="button" className="top-login-button" onClick={() => { setMode("login"); setFeedback(""); document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Connexion <span aria-hidden="true">→</span></button></header>
