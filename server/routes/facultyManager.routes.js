@@ -5,7 +5,7 @@ const positiveId = value => {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 };
 
-export function createFacultyManagerRouter({ pool, requireAuth }) {
+export function createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }) {
   const router = express.Router();
 
   async function requireFacultyManager(req, res, next) {
@@ -238,6 +238,36 @@ export function createFacultyManagerRouter({ pool, requireAuth }) {
         ORDER BY d.created_at DESC LIMIT 500`,[req.user.id]);
       return res.json({data:result.rows});
     }catch{return res.status(503).json({error:"faculty_documents_unavailable"});}
+  });
+
+
+  router.get("/faculty-manager/documents/:id/download",requireAuth,requireFacultyManager,async(req,res)=>{
+    const documentId=positiveId(req.params.id);
+    if(!documentId)return res.status(400).json({error:"invalid_document_id"});
+    try{
+      const result=await pool.query(`SELECT d.id,d.file_key,d.file_name,d.mime_type,d.storage_bucket
+        FROM documents d JOIN options o ON o.id=d.option_id JOIN faculties f ON f.id=o.faculty_id
+        WHERE d.id=$1 AND d.is_active=TRUE AND d.status='approved'
+          AND d.storage_bucket='class-documents'
+          AND d.university_id=f.university_id AND d.faculty_id=f.id
+          AND EXISTS (SELECT 1 FROM role_assignments fm WHERE fm.user_id=$2
+            AND fm.role='faculty_manager' AND fm.status='active'
+            AND fm.university_id=d.university_id AND fm.faculty_id=d.faculty_id)`,
+        [documentId,req.user.id]);
+      if(!result.rowCount)return res.status(404).json({error:"document_not_found"});
+      if(typeof readPrivateObject!=="function")return res.status(503).json({error:"document_storage_unavailable"});
+      const row=result.rows[0],file=await readPrivateObject(row.file_key,row.storage_bucket);
+      const safeName=(row.file_name||("ifac-document-"+row.id+".pdf")).replace(/[\\r\\n"]/g,"_");
+      res.set("Content-Type",row.mime_type||"application/pdf");
+      res.set("Content-Length",String(file.length));
+      res.set("Content-Disposition","attachment; filename=\"ifac-document-"+row.id+".pdf\"; filename*=UTF-8''"+encodeURIComponent(safeName));
+      res.set("X-Content-Type-Options","nosniff");
+      res.set("Cache-Control","private, no-store");
+      return res.send(file);
+    }catch(error){
+      console.error("Téléchargement faculté échoué:",error?.message);
+      return res.status(503).json({error:"faculty_document_download_failed"});
+    }
   });
 
   return router;
