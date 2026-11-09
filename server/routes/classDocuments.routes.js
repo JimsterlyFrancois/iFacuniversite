@@ -97,31 +97,103 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
         typeof description !== "string" || description.trim().length > 3000) {
       return res.status(400).json({ error: "invalid_document_metadata" });
     }
-    const { university_id, faculty_id, option_id, study_level_id } = req.user;
-    if (![university_id,faculty_id,option_id,study_level_id].every(value => positiveId(value))) return res.status(400).json({ error: "incomplete_academic_profile" });
 
-    const fileKey = university_id + "/" + faculty_id + "/" + option_id + "/" + study_level_id + "/" + randomUUID() + ".pdf";
+    let universityId=positiveId(req.user.university_id);
+    let facultyId=positiveId(req.user.faculty_id);
+    let optionId=positiveId(req.user.option_id);
+    let studyLevelId=positiveId(req.user.study_level_id);
+    let publisherRole=null;
+    let courseId=null;
+    let subjectId=null;
+    let courseLabel=course.trim();
+
     try {
-      const subject = await pool.query(
-        "SELECT id FROM subjects WHERE option_id=$1 AND study_level_id=$2 AND is_active=TRUE AND lower(name)=lower($3) LIMIT 1",
-        [option_id,study_level_id,course.trim()]
-      );
+      if (req.user.role === "professor") {
+        const requestedCourseId=positiveId(req.body?.courseId);
+        if(!requestedCourseId)return res.status(400).json({error:"course_id_required"});
+        const assignedCourse = await pool.query(
+          `SELECT c.id AS course_id,c.name AS course_name,s.id AS subject_id,
+             pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
+           FROM professor_invites i
+           JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
+           JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
+           JOIN courses c ON c.id=pa.course_id AND c.is_active=TRUE
+           JOIN subjects s ON s.id=c.subject_id AND s.is_active=TRUE
+           WHERE i.user_id=$1 AND i.is_active=TRUE
+             AND pa.university_id IS NOT NULL AND c.id=$2
+           LIMIT 1`,
+          [req.user.id,requestedCourseId]
+        );
+        if (!assignedCourse.rowCount) {
+          return res.status(403).json({ error: "course_assignment_required", message: "Vous ne pouvez publier que dans un cours qui vous a été attribué." });
+        }
+        const assigned=assignedCourse.rows[0];
+        universityId=Number(assigned.university_id);
+        facultyId=Number(assigned.faculty_id);
+        optionId=Number(assigned.option_id);
+        studyLevelId=Number(assigned.study_level_id);
+        courseId=assigned.course_id;
+        courseLabel=assigned.course_name;
+        subjectId=assigned.subject_id;
+        publisherRole="professor";
+      } else {
+        if (![universityId,facultyId,optionId,studyLevelId].every(Boolean)) {
+          return res.status(400).json({ error: "incomplete_academic_profile" });
+        }
+        if (req.user.role === "delegate") {
+          publisherRole = "delegate";
+        } else {
+          const assignment = await pool.query(
+            `SELECT role FROM role_assignments
+             WHERE user_id=$1 AND status='active'
+               AND (
+                 role='admin_general'
+                 OR (role='university_admin' AND university_id=$2)
+                 OR (role='faculty_manager' AND university_id=$2 AND faculty_id=$3)
+                 OR (role='program_manager' AND university_id=$2 AND faculty_id=$3
+                     AND option_id=$4 AND (study_level_id IS NULL OR study_level_id=$5))
+               )
+             ORDER BY CASE role
+               WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+               WHEN 'faculty_manager' THEN 3 ELSE 4 END
+             LIMIT 1`,
+            [req.user.id,universityId,facultyId,optionId,studyLevelId]
+          );
+          if (!assignment.rowCount) return res.status(403).json({ error: "publication_not_authorized", message: "Votre compte ne possède pas de droit de publication dans ce parcours." });
+          publisherRole=assignment.rows[0].role;
+        }
+      }
+
+      if (!subjectId) {
+        const subject = await pool.query(
+          "SELECT id FROM subjects WHERE option_id=$1 AND study_level_id=$2 AND is_active=TRUE AND lower(name)=lower($3) LIMIT 1",
+          [optionId, studyLevelId, course.trim()]
+        );
+        subjectId = subject.rows[0]?.id || null;
+      }
+      if (!subjectId) {
+        return res.status(400).json({ error: "subject_not_found", message: "La matière doit exister dans le programme avant la publication." });
+      }
+
+      const fileKey = universityId + "/" + facultyId + "/" + optionId + "/" + studyLevelId + "/" + randomUUID() + ".pdf";
       await storePrivateObject(fileKey, req.file.buffer, "application/pdf", CLASS_BUCKET);
       try {
+        const authorName = [req.user.first_name, req.user.last_name].filter(Boolean).join(" ");
         const result = await pool.query(
-          "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status) " +
-          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,$14) " +
-          "RETURNING id,title,course,professor,description,file_name,status,created_at",
-          [subject.rows[0]?.id || null,title.trim(),fileKey,req.file.size,req.user.id,university_id,faculty_id,option_id,study_level_id,course.trim(),professor.trim() || null,description.trim() || null,req.file.originalname.slice(0,255),req.user.role === "delegate" ? "approved" : "pending"]
+          "INSERT INTO documents (subject_id,title,file_key,mime_type,file_size_bytes,uploaded_by,is_active,university_id,faculty_id,option_id,study_level_id,course,professor,description,file_name,status,course_id,publication_scope,published_by_role,storage_bucket) " +
+          "VALUES ($1,$2,$3,'application/pdf',$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,'approved',$14,$15,$16,'class-documents') " +
+          "RETURNING id,title,course,professor,description,file_name,status,publication_scope,created_at",
+          [subjectId,title.trim(),fileKey,req.file.size,req.user.id,universityId,facultyId,optionId,studyLevelId,courseLabel,professor.trim() || (publisherRole === "professor" ? authorName : null),description.trim() || null,req.file.originalname.slice(0,255),courseId,courseId ? "course" : "class",publisherRole]
         );
-        if (req.user.role === "delegate") {
-          await pool.query(
-            "INSERT INTO notifications (user_id,document_id) SELECT u.id,$1 FROM users u WHERE u.is_active=TRUE AND u.university_id=$2 AND u.faculty_id=$3 AND u.option_id=$4 AND u.study_level_id=$5 AND u.id<>$6 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=u.id AND n.document_id=$1)",
-            [result.rows[0].id,university_id,faculty_id,option_id,study_level_id,req.user.id]
-          );
-        }
-        const direct = req.user.role === "delegate";
-        return res.status(201).json({ document: result.rows[0], message: direct ? "Document publié directement dans la bibliothèque de votre classe." : "Document reçu. Il sera visible dans la classe après validation." });
+        const notified = await pool.query(
+          "INSERT INTO notifications (user_id,document_id) SELECT u.id,$1 FROM users u WHERE u.is_active=TRUE AND u.university_id=$2 AND u.faculty_id=$3 AND u.option_id=$4 AND u.study_level_id=$5 AND u.id<>$6 AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id=u.id AND n.document_id=$1)",
+          [result.rows[0].id,universityId,facultyId,optionId,studyLevelId,req.user.id]
+        );
+        await pool.query(
+          "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata) VALUES($1,'document.published','document',$2,$3,$4,$5,$6,$7::jsonb)",
+          [req.user.id,result.rows[0].id,universityId,facultyId,optionId,studyLevelId,JSON.stringify({ publisherRole, publicationScope: courseId ? "course" : "class" })]
+        );
+        return res.status(201).json({ document: result.rows[0], notificationsCreated: notified.rowCount, message: "Document publié dans le périmètre autorisé." });
       } catch (error) {
         await deletePrivateObject(fileKey, CLASS_BUCKET).catch(() => {});
         throw error;
@@ -134,10 +206,24 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
 
   router.get("/class-documents", requireAuth, async (req, res) => {
     try {
-      const result = await pool.query(
-        "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE ORDER BY created_at DESC LIMIT 300",
-        [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
-      );
+      let result;
+      if (req.user.role === "professor") {
+        result = await pool.query(
+          `SELECT DISTINCT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.mime_type,d.file_size_bytes,d.created_at
+           FROM documents d
+           JOIN professor_invites i ON i.user_id=$1 AND i.is_active=TRUE
+           JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
+           JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE AND pa.course_id=d.course_id
+           WHERE d.status='approved' AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND d.course_id IS NOT NULL
+           ORDER BY d.created_at DESC LIMIT 300`,
+          [req.user.id]
+        );
+      } else {
+        result = await pool.query(
+          "SELECT id,title,course,professor,description,file_name,mime_type,file_size_bytes,created_at FROM documents WHERE university_id=$1 AND faculty_id=$2 AND option_id=$3 AND study_level_id=$4 AND status='approved' AND is_active=TRUE AND storage_bucket='class-documents' ORDER BY created_at DESC LIMIT 300",
+          [req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id]
+        );
+      }
       return res.json({ data: result.rows });
     } catch (error) {
       console.error("Documents de classe indisponibles:", error?.message);
@@ -152,7 +238,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       const result = await pool.query(
         "SELECT d.id,d.title,d.course,d.professor,d.description,d.file_name,d.status,d.rejection_reason,d.created_at,d.file_size_bytes,u.first_name AS uploader_first_name,u.last_name AS uploader_last_name,f.name AS faculty_name,o.name AS option_name,l.label AS study_level_label " +
         "FROM documents d LEFT JOIN users u ON u.id=d.uploaded_by LEFT JOIN faculties f ON f.id=d.faculty_id LEFT JOIN options o ON o.id=d.option_id LEFT JOIN study_levels l ON l.id=d.study_level_id " +
-        "WHERE d.university_id=$1 AND d.is_active=TRUE AND ($2='all' OR d.status=$2) ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 500",
+        "WHERE d.university_id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND ($2='all' OR d.status=$2) ORDER BY CASE d.status WHEN 'pending' THEN 0 ELSE 1 END,d.created_at DESC LIMIT 500",
         [req.user.university_id,status]
       );
       return res.json({ data: result.rows });
@@ -166,14 +252,14 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const id=positiveId(req.params.id), title=typeof req.body?.title==="string"?req.body.title.trim():"", course=typeof req.body?.course==="string"?req.body.course.trim():"", professor=typeof req.body?.professor==="string"?req.body.professor.trim():"", description=typeof req.body?.description==="string"?req.body.description.trim():"";
     if(!id||!title||title.length>220||!course||course.length>180||professor.length>180||description.length>3000) return res.status(400).json({error:"invalid_class_document_update"});
     try {
-      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND university_id=$6 AND is_active=TRUE RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.user.university_id]);
+      const result=await pool.query("UPDATE documents SET title=$1,course=$2,professor=$3,description=$4,updated_at=NOW() WHERE id=$5 AND university_id=$6 AND is_active=TRUE AND storage_bucket='class-documents' RETURNING id,title,course,professor,description,status", [title,course,professor||null,description||null,id,req.user.university_id]);
       return result.rowCount?res.json({document:result.rows[0]}):res.status(404).json({error:"class_document_not_found"});
     } catch { return res.status(503).json({error:"class_document_update_failed"}); }
   });
   router.delete("/admin/class-documents/:id", requireAuth, requireAdmin, async (req,res) => {
     const id=positiveId(req.params.id); if(!id) return res.status(400).json({error:"invalid_document_id"});
     try {
-      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND university_id=$2 AND is_active=TRUE RETURNING file_key", [id,req.user.university_id]);
+      const found=await pool.query("UPDATE documents SET is_active=FALSE,updated_at=NOW() WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND storage_bucket='class-documents' RETURNING file_key", [id,req.user.university_id]);
       if(!found.rowCount) return res.status(404).json({error:"class_document_not_found"});
       await deletePrivateObject(found.rows[0].file_key,CLASS_BUCKET).catch(error=>console.error("Suppression PDF classe:",error?.message));
       return res.status(204).end();
@@ -188,7 +274,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const found = await client.query("SELECT * FROM documents WHERE id=$1 AND university_id=$2 AND is_active=TRUE FOR UPDATE", [documentId,req.user.university_id]);
+      const found = await client.query("SELECT * FROM documents WHERE id=$1 AND university_id=$2 AND is_active=TRUE AND storage_bucket='class-documents' FOR UPDATE", [documentId,req.user.university_id]);
       if (!found.rowCount) {
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "class_document_not_found" });
@@ -225,10 +311,22 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const documentId = positiveId(req.params.id);
     if (!documentId) return res.status(400).json({ error: "invalid_document_id" });
     const isAdmin = req.user.role === "admin";
+    const isProfessor = req.user.role === "professor";
     try {
       const result = await pool.query(
-        "SELECT id,file_key,file_name,mime_type FROM documents WHERE id=$1 AND is_active=TRUE AND ((status='approved' AND university_id=$2 AND faculty_id=$3 AND option_id=$4 AND study_level_id=$5) OR ($6=TRUE AND university_id=$7))",
-        [documentId,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,isAdmin,req.user.university_id]
+        `SELECT d.id,d.file_key,d.file_name,d.mime_type
+         FROM documents d
+         WHERE d.id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND (
+           (d.status='approved' AND d.university_id=$2 AND d.faculty_id=$3 AND d.option_id=$4 AND d.study_level_id=$5)
+           OR ($6=TRUE AND d.university_id=$7)
+           OR ($8=TRUE AND d.course_id IS NOT NULL AND EXISTS (
+             SELECT 1 FROM professor_invites i
+             JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='active'
+             JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
+             WHERE i.user_id=$9 AND i.is_active=TRUE AND pa.course_id=d.course_id
+           ))
+         )`,
+        [documentId,req.user.university_id,req.user.faculty_id,req.user.option_id,req.user.study_level_id,isAdmin,req.user.university_id,isProfessor,req.user.id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
       const row = result.rows[0];

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProfessorManagement from "./ProfessorManagement.jsx";
+import CourseManagement from "./CourseManagement.jsx";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
@@ -7,6 +8,7 @@ const destinations = [
   { id: "notifications", label: "Notifications", short: "Alertes" },
   { id: "classAdmin", label: "Gestion des classes", short: "Gestion", adminOnly: true },
   { id: "professors", label: "Gestion des professeurs", short: "Profs", adminOnly: true },
+  { id: "courses", label: "Gestion des cours", short: "Cours", adminOnly: true },
   { id: "adminMessages", label: "Messages des délégués", short: "Délégués", adminOnly: true },
   { id: "groupAdmin", label: "Groupes de messagerie", short: "Groupes", adminOnly: true },
   { id: "messages", label: "Messagerie", short: "Messages" },
@@ -102,7 +104,13 @@ export default function StudentShell({ token, user, onLogout, request }) {
         setItems(decorated);
       }
       if (active === "notes") { const r = await request("/notes", { token }); setItems(r.data || []); }
-      if (active === "classDocs") { const r = await request("/class-documents", { token }); setClassDocuments(r.data || []); }
+      if (active === "classDocs") {
+        const requests = [request("/class-documents", { token })];
+        if (user.role === "professor") requests.push(request("/professor/assignments", { token }));
+        const [documentsResult, assignmentsResult] = await Promise.all(requests);
+        setClassDocuments(documentsResult.data || []);
+        if (assignmentsResult) setProfessorAssignments(assignmentsResult.data || []);
+      }
       if (active === "notifications") { const r = await request("/notifications", { token }); setNotifications(r.data || []); setUnreadNotificationCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); }
       if (active === "adminMessages" && user.role === "admin") { const [r,allMessages] = await Promise.all([request("/admin/delegate-messages", { token }),request("/admin/messages", { token })]); setDelegateMessages(r.data || []); setAdminGroupMessages(allMessages.data || []); setUnreadDelegateCount(r.unreadCount ?? (r.data || []).filter(x => !x.read_at).length); }
       if (active === "groupAdmin" && user.role === "admin") { const [catalog,groupResult] = await Promise.all([request("/admin/catalog", { token }),request("/admin/groups", { token })]); setAdminCatalog(catalog.data || { faculties: [], options: [], levels: [] }); setAdminGroups(groupResult.data || []); }
@@ -362,7 +370,7 @@ export default function StudentShell({ token, user, onLogout, request }) {
     } catch (e) { setFeedback(e.message); }
   }
 
-  const headings = { home: ["Accueil", "Retrouvez ici tous les services de votre espace universitaire."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Consultez les supports de cours validés pour votre classe."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], professors: ["Gestion des professeurs", "Déclarez les adresses e-mail et gérez les affectations universitaires."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."] };
+  const headings = { home: ["Accueil", "Retrouvez ici tous les services de votre espace universitaire."], class: ["Annonces", "Informations publiées pour votre parcours."], classDocs: ["Documents de classe", "Consultez les supports de cours validés pour votre classe."], notifications: ["Notifications", "Les nouvelles ressources approuvées pour votre classe."], classAdmin: ["Gestion des classes", "Désignez les délégués et contrôlez les documents partagés."], professors: ["Gestion des professeurs", "Déclarez les adresses e-mail et gérez les affectations universitaires."], adminMessages: ["Messages des délégués", "Consultez les communications directes envoyées par les responsables de classe."], groupAdmin: ["Groupes de messagerie", "Créez les espaces de discussion de toutes les facultés, options et classes."], messages: ["Messagerie", "Messages des groupes auxquels votre compte appartient."], notes: ["Mes notes privées", "Ces notes ne sont accessibles qu’à votre compte."], profile: ["Mon profil", "Informations du compte et état des services."], courses: ["Gestion des cours", "Créez les cours à partir des matières et des niveaux existants."] };
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
   const homeDestinations = visibleDestinations.filter(x => !["messages", "home", "notes", "profile"].includes(x.id));
   const profileImage = user.avatarUrl || user.avatar_url || user.profileImageUrl || user.profile_image_url || "";
@@ -384,7 +392,8 @@ export default function StudentShell({ token, user, onLogout, request }) {
             </button>)}
           </div>
         </nav>}
-        {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
+        {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}
+        {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
             <div className="profile-avatar" aria-hidden="true">{profileImage ? <img src={profileImage} alt="" /> : (user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
             <div className="profile-identity">
@@ -462,7 +471,22 @@ export default function StudentShell({ token, user, onLogout, request }) {
           </form>
         </div>}
         {active === "class" && user.role === "admin" && <section className="student-card student-data-list"><h2>Gérer les annonces</h2>{adminAnnouncements.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>{item.has_image ? "Visuel joint" : "Sans visuel"}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => editAnnouncement(item)}>Modifier</button><button className="theme-button" onClick={() => deleteAnnouncement(item.id)}>Supprimer</button></div></article>)}</section>}
-        {active === "classDocs" && <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section>}
+        {active === "classDocs" && <>
+          {(user.role === "delegate" || user.role === "professor") && <form className="student-card note-form" onSubmit={uploadClassDocument}>
+            <h2>Publier une ressource pédagogique</h2>
+            <p>{user.role === "professor" ? "La publication est limitée aux cours qui vous ont été attribués." : "Votre document sera partagé avec les étudiants de votre classe."}</p>
+            <label className="field">Titre du document<input name="title" required maxLength="220" value={classDocTitle} onChange={e=>setClassDocTitle(e.target.value)} placeholder="Titre du document" /></label>
+            {user.role === "professor" ? <>
+              <label className="field">Cours attribué<select name="courseId" required value={classDocCourse} onChange={e=>setClassDocCourse(e.target.value)}><option value="">Choisir un cours</option>{professorAssignments.filter(a=>a.course_id).map(a=><option key={a.course_id} value={a.course_id}>{a.course_name} · {a.option_name} · {a.level_label}</option>)}</select></label>
+              <input type="hidden" name="course" value={professorAssignments.find(a=>String(a.course_id)===String(classDocCourse))?.course_name || ""} />
+            </> : <label className="field">Matière<input name="course" required maxLength="180" value={classDocCourse} onChange={e=>setClassDocCourse(e.target.value)} placeholder="Nom exact de la matière" /></label>}
+            <label className="field">Nom du professeur (facultatif)<input name="professor" maxLength="180" value={classDocProfessor} onChange={e=>setClassDocProfessor(e.target.value)} /></label>
+            <label className="field">Description (facultative)<textarea name="description" maxLength="3000" rows="3" value={classDocDescription} onChange={e=>setClassDocDescription(e.target.value)} /></label>
+            <label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label>
+            <button className="theme-button" disabled={busy || (user.role === "professor" && !professorAssignments.some(a=>String(a.course_id)===String(classDocCourse)))}>Publier le document</button>
+          </form>}
+          <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe ou mes cours</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section>
+        </>}
         {active === "groupAdmin" && user.role === "admin" && <div className="profile-tools-grid">              <form className="student-card note-form profile-tool-card" onSubmit={createGroup}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">GROUPE</span><div><h3>Groupes de messagerie</h3><p>Créer un groupe selon le parcours.</p></div></div>
                 <label className="field">Portée du groupe<select value={groupType} onChange={e => setGroupType(e.target.value)}><option value="faculty">Toute ma faculté</option><option value="option">Mon option</option><option value="class">Mon niveau / ma classe</option></select></label>
