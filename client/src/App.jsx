@@ -166,6 +166,7 @@ export default function App() {
     const rawRoles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
     const roles = rawRoles.filter(role => !(role === "admin" && rawRoles.includes("admin_general")));
     const activeRole = roles.includes(workspaceRole) ? workspaceRole : user.role;
+    const workspaceUser = { ...user, role: activeRole };
     const labels = {
       admin: "Administrateur général", admin_general: "Administrateur général",
       university_admin: "Responsable d’université", faculty_manager: "Responsable de faculté",
@@ -175,13 +176,13 @@ export default function App() {
     let workspace;
     if (activeRole === "admin" || activeRole === "admin_general") {
       workspace = adminView === "general"
-        ? <GeneralAdminShell token={token} user={user} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
-        : <StudentShell token={token} user={user} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
-    } else if (activeRole === "university_admin") workspace = <UniversityAdminShell token={token} user={user} onLogout={logout} request={request} />;
-    else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell token={token} user={user} onLogout={logout} request={request} />;
-    else if (activeRole === "program_manager") workspace = <ProgramManagerShell token={token} user={user} onLogout={logout} request={request} />;
-    else if (activeRole === "professor") workspace = <ProfessorShell token={token} user={user} onLogout={logout} request={request} />;
-    else workspace = <StudentShell token={token} user={user} onLogout={logout} request={request} />;
+        ? <GeneralAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
+        : <StudentShell token={token} user={workspaceUser} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
+    } else if (activeRole === "university_admin") workspace = <UniversityAdminShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
+    else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
+    else if (activeRole === "program_manager") workspace = <ProgramManagerShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
+    else if (activeRole === "professor") workspace = <ProfessorShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
+    else workspace = <StudentShell token={token} user={workspaceUser} onLogout={logout} request={request} />;
     return <div className="ifac-workspace-root">
       {roles.length > 1 && <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,padding:"8px 16px",background:"#171717",color:"#fff",fontSize:12}}>
         <label htmlFor="ifac-workspace-select">Changer d’espace</label>
