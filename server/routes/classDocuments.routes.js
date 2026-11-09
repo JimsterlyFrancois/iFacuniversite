@@ -334,7 +334,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       const safeName = (row.file_name || ("ifac-document-" + row.id + ".pdf")).replace(/[\r\n"]/g,"_");
       res.set("Content-Type",row.mime_type || "application/pdf");
       res.set("Content-Length",String(file.length));
-      res.set("Content-Disposition","attachment; filename=\"ifac-document-" + row.id + ".pdf\"; filename*=UTF-8''" + encodeURIComponent(safeName));
+      res.set("Content-Disposition","inline; filename=\"ifac-document-" + row.id + ".pdf\"; filename*=UTF-8''" + encodeURIComponent(safeName));
       res.set("X-Content-Type-Options","nosniff");
       res.set("Cache-Control","private, no-store");
       return res.send(file);
