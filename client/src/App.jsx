@@ -19,6 +19,7 @@ function Field({ label, children }) { return <label className="field"><span>{lab
 export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem("ifac_token") || "");
   const [adminView, setAdminView] = useState("general");
+  const [workspaceRole, setWorkspaceRole] = useState("");
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("login");
   const [feedback, setFeedback] = useState("");
@@ -92,6 +93,13 @@ export default function App() {
   useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
 
   useEffect(() => {
+    if (!user) { setWorkspaceRole(""); return; }
+    const roles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
+    const preferred = user.role === "admin" && roles.includes("admin_general") ? "admin_general" : user.role;
+    setWorkspaceRole(roles.includes(preferred) ? preferred : (roles[0] || preferred));
+  }, [user]);
+
+  useEffect(() => {
     if (!identityScreen) return undefined;
     const timer = window.setTimeout(() => {
       setIdentityScreen(false);
@@ -154,14 +162,33 @@ export default function App() {
   if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
   if (token && user) {
-    if (user.role === "admin" || user.role === "admin_general") return adminView === "general"
-      ? <GeneralAdminShell token={token} user={user} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
-      : <StudentShell token={token} user={user} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
-    if (user.role === "university_admin") return <UniversityAdminShell token={token} user={user} onLogout={logout} request={request} />;
-    if (user.role === "faculty_manager") return <FacultyManagerShell token={token} user={user} onLogout={logout} request={request} />;
-    if (user.role === "program_manager") return <ProgramManagerShell token={token} user={user} onLogout={logout} request={request} />;
-    if (user.role === "professor") return <ProfessorShell token={token} user={user} onLogout={logout} request={request} />;
-    return <StudentShell token={token} user={user} onLogout={logout} request={request} />;
+    const roles = [...new Set([...(user.workspaces || []).map(item => item.role), user.baseRole].filter(Boolean))];
+    const activeRole = roles.includes(workspaceRole) ? workspaceRole : user.role;
+    const labels = {
+      admin: "Administrateur général", admin_general: "Administrateur général",
+      university_admin: "Responsable d’université", faculty_manager: "Responsable de faculté",
+      program_manager: "Responsable de programme", professor: "Professeur",
+      student: "Étudiant", delegate: "Délégué"
+    };
+    let workspace;
+    if (activeRole === "admin" || activeRole === "admin_general") {
+      workspace = adminView === "general"
+        ? <GeneralAdminShell token={token} user={user} onLogout={logout} request={request} onOpenAcademicAdmin={() => setAdminView("academic")} />
+        : <StudentShell token={token} user={user} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
+    } else if (activeRole === "university_admin") workspace = <UniversityAdminShell token={token} user={user} onLogout={logout} request={request} />;
+    else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell token={token} user={user} onLogout={logout} request={request} />;
+    else if (activeRole === "program_manager") workspace = <ProgramManagerShell token={token} user={user} onLogout={logout} request={request} />;
+    else if (activeRole === "professor") workspace = <ProfessorShell token={token} user={user} onLogout={logout} request={request} />;
+    else workspace = <StudentShell token={token} user={user} onLogout={logout} request={request} />;
+    return <div className="ifac-workspace-root">
+      {roles.length > 1 && <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,padding:"8px 16px",background:"#171717",color:"#fff",fontSize:12}}>
+        <label htmlFor="ifac-workspace-select">Changer d’espace</label>
+        <select id="ifac-workspace-select" value={activeRole} onChange={event => {setWorkspaceRole(event.target.value);setAdminView("general");}} style={{maxWidth:260,padding:"7px 10px",borderRadius:7,border:"1px solid #777",background:"#fff",color:"#171717"}}>
+          {roles.map(role => <option key={role} value={role}>{labels[role] || role}</option>)}
+        </select>
+      </div>}
+      {workspace}
+    </div>;
   }
 
   return <main className="page-shell">
