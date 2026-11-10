@@ -231,7 +231,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
             AND pm.status='active' AND pm.university_id=pa.university_id AND pm.faculty_id=pa.faculty_id
             AND pm.option_id=pa.option_id AND (pm.study_level_id IS NULL OR pm.study_level_id=pa.study_level_id)
         )
-        GROUP BY i.id ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]);
+        GROUP BY i.id,u.email_verified_at ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]);
       return res.json({ data: result.rows });
     } catch {
       return res.status(503).json({ error: "program_professors_unavailable" });
