@@ -254,7 +254,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const application = await client.query(\`
+      const application = await client.query(`
         SELECT i.id,i.user_id,pa.id AS assignment_id,pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
         FROM professor_invites i
         JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
@@ -268,7 +268,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
           )
         ORDER BY pa.created_at DESC,pa.id DESC
         LIMIT 1 FOR UPDATE OF i,pa,ra
-      \`, [inviteId,req.user.id]);
+      `, [inviteId,req.user.id]);
 
       if (!application.rowCount) {
         await client.query("ROLLBACK");
@@ -282,27 +282,27 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
       if (decision === "reject") {
         await client.query("UPDATE professor_assignments SET is_active=FALSE WHERE id=$1", [item.assignment_id]);
         await client.query(
-          \`UPDATE role_assignments SET status='revoked',approved_by=$1,revoked_at=NOW(),updated_at=NOW()
-           WHERE user_id=$2 AND role='professor' AND status='pending'\`,
+          `UPDATE role_assignments SET status='revoked',approved_by=$1,revoked_at=NOW(),updated_at=NOW()
+           WHERE user_id=$2 AND role='professor' AND status='pending'`,
           [req.user.id,item.user_id]
         );
         await client.query(
-          \`INSERT INTO admin_audit_logs(
+          `INSERT INTO admin_audit_logs(
              actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata
-           ) VALUES($1,'professor.application.rejected','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)\`,
+           ) VALUES($1,'professor.application.rejected','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)`,
           [req.user.id,inviteId,item.university_id,item.faculty_id,item.option_id,item.study_level_id,JSON.stringify({userId:item.user_id})]
         );
         await client.query("COMMIT");
         return res.json({ message: "Demande de professeur refusée." });
       }
 
-      const course = await client.query(\`
+      const course = await client.query(`
         SELECT c.id FROM courses c JOIN subjects s ON s.id=c.subject_id
         JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
         WHERE c.id=$1 AND c.is_active=TRUE AND s.is_active=TRUE
           AND f.is_active=TRUE AND o.is_active=TRUE
           AND f.university_id=$2 AND f.id=$3 AND s.option_id=$4 AND s.study_level_id=$5
-      \`, [courseId,item.university_id,item.faculty_id,item.option_id,item.study_level_id]);
+      `, [courseId,item.university_id,item.faculty_id,item.option_id,item.study_level_id]);
 
       if (!course.rowCount) {
         await client.query("ROLLBACK");
@@ -317,9 +317,9 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
         [courseId,req.user.id,item.assignment_id]
       );
       const activated = await client.query(
-        \`UPDATE role_assignments SET status='active',assigned_by=COALESCE(assigned_by,$1),
+        `UPDATE role_assignments SET status='active',assigned_by=COALESCE(assigned_by,$1),
            approved_by=$1,revoked_at=NULL,updated_at=NOW()
-         WHERE user_id=$2 AND role='professor' AND status='pending' RETURNING id\`,
+         WHERE user_id=$2 AND role='professor' AND status='pending' RETURNING id`,
         [req.user.id,item.user_id]
       );
       if (!activated.rowCount) {
@@ -327,9 +327,9 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
         return res.status(409).json({ error: "professor_application_already_processed" });
       }
       await client.query(
-        \`INSERT INTO admin_audit_logs(
+        `INSERT INTO admin_audit_logs(
            actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata
-         ) VALUES($1,'professor.application.approved','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)\`,
+         ) VALUES($1,'professor.application.approved','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)`,
         [req.user.id,inviteId,item.university_id,item.faculty_id,item.option_id,item.study_level_id,JSON.stringify({userId:item.user_id,courseId})]
       );
       await client.query("COMMIT");
@@ -391,7 +391,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
         [inviteId, course.rows[0].university_id, course.rows[0].faculty_id, course.rows[0].option_id, course.rows[0].study_level_id, courseId, req.user.id]
       );
       if (existingUser.rowCount) {
-        await client.query("UPDATE role_assignments SET status='active',revoked_at=NULL,updated_at=NOW() WHERE user_id=$1 AND role='professor'", [existingUser.rows[0].id]);
+        await client.query("UPDATE role_assignments SET status='active',assigned_by=COALESCE(assigned_by,$2),approved_by=$2,revoked_at=NULL,updated_at=NOW() WHERE user_id=$1 AND role='professor'", [existingUser.rows[0].id,req.user.id]);
       }
       await client.query(
         "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata) VALUES($1,'professor.course_assigned','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)",

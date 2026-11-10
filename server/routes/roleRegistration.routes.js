@@ -34,15 +34,15 @@ async function validateScope(pool, scope) {
     return result.rowCount > 0;
   }
   if (scope.role === "faculty_manager") {
-    const result = await pool.query(\`SELECT f.id FROM faculties f JOIN universities u ON u.id=f.university_id
-      WHERE u.id=$1 AND f.id=$2 AND u.is_active=TRUE AND f.is_active=TRUE\`, [scope.universityId, scope.facultyId]);
+    const result = await pool.query(`SELECT f.id FROM faculties f JOIN universities u ON u.id=f.university_id
+      WHERE u.id=$1 AND f.id=$2 AND u.is_active=TRUE AND f.is_active=TRUE`, [scope.universityId, scope.facultyId]);
     return result.rowCount > 0;
   }
-  const result = await pool.query(\`SELECT o.id FROM options o
+  const result = await pool.query(`SELECT o.id FROM options o
     JOIN faculties f ON f.id=o.faculty_id JOIN universities u ON u.id=f.university_id
     LEFT JOIN study_levels l ON l.option_id=o.id AND l.id=$4
     WHERE u.id=$1 AND f.id=$2 AND o.id=$3 AND u.is_active=TRUE AND f.is_active=TRUE AND o.is_active=TRUE
-      AND ($4::bigint IS NULL OR (l.id IS NOT NULL AND l.is_active=TRUE))\`,
+      AND ($4::bigint IS NULL OR (l.id IS NOT NULL AND l.is_active=TRUE))`,
     [scope.universityId,scope.facultyId,scope.optionId,scope.studyLevelId]);
   return result.rowCount > 0;
 }
@@ -101,22 +101,22 @@ export function createRoleRegistrationRouter({ pool }) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const created = await client.query(\`INSERT INTO users(
+        const created = await client.query(`INSERT INTO users(
           auth_user_id,university_id,faculty_id,option_id,study_level_id,
           first_name,last_name,email,password_hash,role
-        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'applicant') RETURNING id\`, [
+        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'applicant') RETURNING id`, [
           authUserId,scope.universityId,scope.facultyId,scope.optionId,scope.studyLevelId,
           firstName,lastName,email,passwordHash
         ]);
         const userId = created.rows[0].id;
         let assignmentId;
         if (scope.role === "professor") {
-          const invite = await client.query(\`INSERT INTO professor_invites(
+          const invite = await client.query(`INSERT INTO professor_invites(
             email,first_name,last_name,user_id,activated_at,is_active
-          ) VALUES($1,$2,$3,$4,NOW(),TRUE) RETURNING id\`, [email,firstName,lastName,userId]);
-          await client.query(\`INSERT INTO professor_assignments(
+          ) VALUES($1,$2,$3,$4,NOW(),TRUE) RETURNING id`, [email,firstName,lastName,userId]);
+          await client.query(`INSERT INTO professor_assignments(
             invite_id,university_id,faculty_id,option_id,study_level_id,course_id,is_active,assigned_by
-          ) VALUES($1,$2,$3,$4,$5,NULL,TRUE,NULL)\`, [
+          ) VALUES($1,$2,$3,$4,$5,NULL,TRUE,NULL)`, [
             invite.rows[0].id,scope.universityId,scope.facultyId,scope.optionId,scope.studyLevelId
           ]);
           const roleAssignment = await client.query(
@@ -125,16 +125,16 @@ export function createRoleRegistrationRouter({ pool }) {
           );
           assignmentId = roleAssignment.rows[0].id;
         } else {
-          const roleAssignment = await client.query(\`INSERT INTO role_assignments(
+          const roleAssignment = await client.query(`INSERT INTO role_assignments(
             user_id,role,university_id,faculty_id,option_id,study_level_id,status
-          ) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id\`, [
+          ) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id`, [
             userId,scope.role,scope.universityId,scope.facultyId,scope.optionId,scope.studyLevelId
           ]);
           assignmentId = roleAssignment.rows[0].id;
         }
-        await client.query(\`INSERT INTO admin_audit_logs(
+        await client.query(`INSERT INTO admin_audit_logs(
           actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata
-        ) VALUES($1,'role_application.submitted','role_assignment',$2,$3,$4,$5,$6,$7::jsonb)\`, [
+        ) VALUES($1,'role_application.submitted','role_assignment',$2,$3,$4,$5,$6,$7::jsonb)`, [
           userId,assignmentId,scope.universityId,scope.facultyId,scope.optionId,scope.studyLevelId,
           JSON.stringify({ role: scope.role })
         ]);
