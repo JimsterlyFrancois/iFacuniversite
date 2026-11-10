@@ -41,7 +41,7 @@ test("an active professor can submit a separate course request in another univer
      calls.push({sql,params});
      if(sql.includes("SELECT id FROM professor_invites WHERE user_id=$1"))return {rows:[{id:77}],rowCount:1};
      if(sql.includes("SELECT c.id FROM courses c"))return {rows:[{id:901}],rowCount:1};
-     if(sql.includes("SELECT id FROM professor_assignments WHERE invite_id=$1 AND requested_course_id=$2"))return {rows:[],rowCount:0};
+     if(sql.includes("SELECT id FROM professor_assignments WHERE invite_id=$1 AND ((requested_course_id=$2"))return {rows:[],rowCount:0};
      if(sql.includes("INSERT INTO professor_assignments"))return {rows:[{id:501}],rowCount:1};
      return {rows:[],rowCount:1};
     },
@@ -99,7 +99,7 @@ test("professor cannot submit the same requested course twice while it is pendin
      calls.push({sql,params});
      if(sql.includes("SELECT id FROM professor_invites WHERE user_id=$1"))return {rows:[{id:77}],rowCount:1};
      if(sql.includes("SELECT c.id FROM courses c"))return {rows:[{id:901}],rowCount:1};
-     if(sql.includes("SELECT id FROM professor_assignments WHERE invite_id=$1 AND requested_course_id=$2"))return {rows:[{id:500}],rowCount:1};
+     if(sql.includes("SELECT id FROM professor_assignments WHERE invite_id=$1 AND ((requested_course_id=$2"))return {rows:[{id:500}],rowCount:1};
      return {rows:[],rowCount:1};
     },
     release(){}
