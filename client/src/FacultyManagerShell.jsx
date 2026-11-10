@@ -79,7 +79,7 @@ export default function FacultyManagerShell({token,user,onLogout,request,theme =
     if(results[3].status==="fulfilled")setProfessors(results[3].value.data||[]);
     if(results[4].status==="fulfilled")setDocuments(results[4].value.data||[]);
     const failed=results.find(x=>x.status==="rejected");
-    if(failed)setFeedback(failed.reason?.message||"Certaines informations n’ont pas pu être chargées.");
+    if(failed&&!silent)setFeedback(failed.reason?.message||"Certaines informations n’ont pas pu être chargées.");
     if (!silent) setLoading(false);
   },[request,token]);
 
