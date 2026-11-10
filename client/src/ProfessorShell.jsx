@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
+import useAutoRefresh from "./useAutoRefresh.js";
 
 const tabs = [
   { id: "home", label: "Vue d’ensemble", icon: "⌂" },
@@ -77,6 +78,7 @@ export default function ProfessorShell({ token, user, onLogout, request, theme =
   }, [request, token]);
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   const courses = useMemo(() => {
     const seen = new Set();
