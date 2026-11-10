@@ -196,6 +196,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
       </a>
       <div className="program-actions">
         <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
+        <span className="program-badge">{scopes[0]?.university_name || user.universityName || "Université non renseignée"}</span>
         <span className="program-user">{user.firstName} {user.lastName}</span>
         <button className="program-button secondary" type="button" onClick={onLogout}>Déconnexion</button>
       </div>
