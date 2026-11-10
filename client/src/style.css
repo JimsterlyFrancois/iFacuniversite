@@ -1078,3 +1078,28 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
     transform: none !important;
   }
 }
+
+
+/* Panneau de connexion : illustration campus seule, sans texte ni bouton superposé. */
+.visual-panel {
+  display: block;
+  min-height: 680px;
+  padding: 0;
+  background: #172321;
+}
+.visual-panel .campus-image {
+  object-position: center;
+  animation: image-enter .8s ease-out both;
+}
+@media (min-width: 1400px) {
+  .visual-panel { min-height: 730px; }
+}
+@media (max-width: 950px) {
+  .visual-panel { min-height: 310px; }
+}
+@media (max-width: 600px) {
+  .visual-panel { min-height: 215px; }
+}
+@media (max-width: 360px) {
+  .visual-panel { min-height: 205px; }
+}
