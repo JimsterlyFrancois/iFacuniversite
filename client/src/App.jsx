@@ -160,6 +160,19 @@ export default function App() {
     sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); setMode("login"); setAdminView("general"); setFeedback("Vous êtes déconnecté.");
   }
 
+  async function refreshRoleStatus() {
+    setBusy(true);
+    try {
+      const result = await request("/auth/me", { token });
+      setUser(result.user);
+      setFeedback("");
+    } catch (error) {
+      setFeedback(error.message || "Impossible d’actualiser le statut de votre demande.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const verifyToken = new URLSearchParams(window.location.search).get("token");
   const authAccessToken = new URLSearchParams(window.location.hash.slice(1)).get("access_token");
   useEffect(() => {
@@ -179,8 +192,10 @@ export default function App() {
   if (token && user) {
     const rawRoles = [...new Set([...(user.workspaces || []).map(item => item.role), ...(user.baseRole === "applicant" ? [] : [user.baseRole])].filter(Boolean))];
     if (user.baseRole === "applicant" && rawRoles.length === 0) {
+      const applications = user.roleApplications || [];
+      const hasPendingApplications = applications.some(item => item.status === "pending");
       const roleLabels = { professor: "Professeur", university_admin: "Responsable d’université", faculty_manager: "Responsable de faculté", program_manager: "Responsable de programme" };
-      return <main className="identity-splash"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">VÉRIFICATION UNIVERSITAIRE</p><h1>Demande <span>en cours</span></h1><p className="identity-splash-caption">Votre compte est créé. L’accès à votre espace sera ouvert après validation de votre demande par l’autorité compétente.</p><div style={{maxWidth:440,margin:"20px auto",padding:16,border:"1px solid #5b4a16",borderRadius:10,textAlign:"left",background:"#181818"}}>{(user.roleApplications || []).map(item => <p key={item.assignmentId} style={{margin:"8px 0",fontSize:12,color:"#f1f1f1"}}><strong>{roleLabels[item.role] || item.role}</strong> — {item.status === "pending" ? "En attente de validation" : "Demande refusée ou accès retiré"}<br/><span style={{color:"#b9b9b9"}}>{[item.universityName,item.facultyName,item.optionName,item.studyLevelLabel].filter(Boolean).join(" · ")}</span></p>)}{!(user.roleApplications || []).length && <p style={{fontSize:12,color:"#ddd"}}>Votre demande a été enregistrée. Confirmez votre adresse e-mail et contactez l’administration si le statut ne change pas.</p>}</div><button className="submit-button" type="button" onClick={logout}>Retour à la connexion</button></div></main>;
+      return <main className="identity-splash"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">VÉRIFICATION UNIVERSITAIRE</p><h1>{hasPendingApplications ? <>Demande <span>en cours</span></> : <>Demande <span>terminée</span></>}</h1><p className="identity-splash-caption">{hasPendingApplications ? "Votre compte est créé. L’accès à votre espace sera ouvert après validation de votre demande par l’autorité compétente." : "Votre demande a été refusée ou votre accès a été retiré. Contactez l’administration de votre université pour demander une révision."}</p><div style={{maxWidth:440,margin:"20px auto",padding:16,border:"1px solid #5b4a16",borderRadius:10,textAlign:"left",background:"#181818"}}>{applications.length ? applications.map(item => <p key={item.assignmentId} style={{margin:"8px 0",fontSize:12,color:"#f1f1f1"}}><strong>{roleLabels[item.role] || item.role}</strong> — {item.status === "pending" ? "En attente de validation" : "Demande refusée ou accès retiré"}<br/><span style={{color:"#b9b9b9"}}>{[item.universityName,item.facultyName,item.optionName,item.studyLevelLabel].filter(Boolean).join(" · ")}</span></p>) : <p style={{fontSize:12,color:"#ddd"}}>Aucune demande en attente n’est associée à ce compte. Contactez l’administration iFac.</p>}</div><button className="submit-button" type="button" disabled={busy} onClick={refreshRoleStatus}>{busy ? "Actualisation…" : "Actualiser mon statut"}</button><button className="submit-button" type="button" onClick={logout}>Retour à la connexion</button>{feedback && <p className="form-feedback" role="status">{feedback}</p>}</div></main>;
     }
     const roles = rawRoles.filter(role => !(role === "admin" && rawRoles.includes("admin_general")));
     const activeRole = roles.includes(workspaceRole) ? workspaceRole : user.role;
