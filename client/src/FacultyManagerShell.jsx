@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 const nav = [
   ["overview","Vue d’ensemble","⌂"],
@@ -47,7 +48,7 @@ const css = `
 @media(max-width:520px){.faculty-top{padding:0 14px;height:60px}.faculty-layout{min-height:calc(100vh - 60px)}.faculty-side{top:60px}.faculty-user{display:none}.faculty-heading h1{font-size:23px}.faculty-grid{gap:9px}.faculty-card{padding:14px}.faculty-stat-value{font-size:23px}.faculty-form{grid-template-columns:1fr}.faculty-field.full{grid-column:auto}.faculty-item{align-items:flex-start;flex-direction:column}}
 `;
 
-export default function FacultyManagerShell({token,user,onLogout,request}) {
+export default function FacultyManagerShell({token,user,onLogout,request,theme = "light",onToggleTheme}) {
   const [active,setActive]=useState("overview");
   const [overview,setOverview]=useState({});
   const [scopes,setScopes]=useState([]);
@@ -135,7 +136,7 @@ export default function FacultyManagerShell({token,user,onLogout,request}) {
       <a className="faculty-brand" href="#faculte" onClick={event=>{event.preventDefault();setActive("overview");}}>
         <img src="/ifac-logo.svg" alt=""/><span>iFac <span>universite</span></span>
       </a>
-      <div className="faculty-actions"><span className="faculty-user">{user.firstName} {user.lastName}</span>
+      <div className="faculty-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="faculty-user">{user.firstName} {user.lastName}</span>
         <button className="faculty-button secondary" type="button" onClick={onLogout}>Déconnexion</button></div>
     </header>
     <div className="faculty-layout">

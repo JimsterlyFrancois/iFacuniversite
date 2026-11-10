@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 const tabs = [
   { id: "home", label: "Vue d’ensemble", icon: "⌂" },
@@ -41,7 +42,7 @@ function dateLabel(value) {
   return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(date);
 }
 
-export default function ProfessorShell({ token, user, onLogout, request }) {
+export default function ProfessorShell({ token, user, onLogout, request, theme = "light", onToggleTheme }) {
   const [active, setActive] = useState("home");
   const [assignments, setAssignments] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -170,6 +171,7 @@ export default function ProfessorShell({ token, user, onLogout, request }) {
         <img src="/ifac-logo.svg" alt="" /><span>iFac <span>universite</span></span>
       </a>
       <div className="professor-top-actions">
+        <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
         <span className="professor-user-chip">{user.firstName} {user.lastName}</span>
         <button className="professor-button secondary" type="button" onClick={onLogout}>Déconnexion</button>
       </div>

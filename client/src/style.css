@@ -832,3 +832,81 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Multi-course professor registration */
 .registration-requests{display:flex;flex-direction:column;gap:12px;width:100%}.registration-request-card{display:flex;flex-direction:column;gap:12px;padding:15px;border:1px solid #39393f;border-radius:10px;background:#18181b}.request-card-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#f0f0f0;font-size:12px}.request-remove-button{border:0;background:transparent;color:#e7bd4a;font-size:11px;font-weight:700;cursor:pointer}.add-request-button{min-height:42px;border:1px dashed #8c6b16;border-radius:8px;background:#201e18;color:#f2c64b;font-size:12px;font-weight:800;cursor:pointer}.request-help,.request-catalog-error{margin:0;color:#a5a5ad;font-size:11px;line-height:1.55}.request-catalog-error{color:#e4b65a}
+
+
+/* Shared iFac dark theme */
+.ifac-theme-toggle{min-height:36px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 11px;border:1px solid #28645f;border-radius:9px;background:#12302e;color:#e0fffa;font:inherit;font-size:11px;font-weight:750;white-space:nowrap;cursor:pointer}
+.ifac-theme-toggle:hover{background:#164640}.ifac-theme-toggle-icon{font-size:16px;line-height:1}
+@media(max-width:520px){.ifac-theme-toggle{width:36px;min-width:36px;padding:0}.ifac-theme-toggle>span:last-child{display:none}}
+html[data-ifac-theme="dark"]{color-scheme:dark;background:#0b1111}
+html[data-ifac-theme="dark"] body,html[data-ifac-theme="dark"] #root,html[data-ifac-theme="dark"] .ifac-workspace-root{background:#0b1111;color:#e9f1ef}
+html[data-ifac-theme="dark"] .ifac-theme-toggle{border-color:#39605b;background:#1a302d;color:#e5fffa}
+
+/* General administrator */
+html[data-ifac-theme="dark"] .ga{background:#0b1111!important;color:#edf4f2!important}
+html[data-ifac-theme="dark"] .ga header,html[data-ifac-theme="dark"] .ga .ga-side{background:#111c1a!important;border-color:#293b38!important}
+html[data-ifac-theme="dark"] .ga .ga-brand,html[data-ifac-theme="dark"] .ga .ga-brand em,html[data-ifac-theme="dark"] .ga .ga-main h1,html[data-ifac-theme="dark"] .ga .ga-card h2,html[data-ifac-theme="dark"] .ga .ga-row strong{color:#edf4f2!important}
+html[data-ifac-theme="dark"] .ga .ga-card,html[data-ifac-theme="dark"] .ga .ga-row,html[data-ifac-theme="dark"] .ga .ga-empty{background:#121e1c!important;border-color:#2b403c!important;color:#e5efec!important}
+html[data-ifac-theme="dark"] .ga .ga-field,html[data-ifac-theme="dark"] .ga .ga-field input,html[data-ifac-theme="dark"] .ga .ga-field select,html[data-ifac-theme="dark"] .ga .ga-field textarea,html[data-ifac-theme="dark"] .ga .ga-toolbar input,html[data-ifac-theme="dark"] .ga .ga-toolbar select,html[data-ifac-theme="dark"] .ga .ga-row input,html[data-ifac-theme="dark"] .ga .ga-row select{background:#182724!important;color:#e9f1ef!important;border-color:#39514c!important}
+html[data-ifac-theme="dark"] .ga .ga-side button{color:#b8c8c4!important}html[data-ifac-theme="dark"] .ga .ga-side button.active{background:#203d38!important;color:#75e4d5!important}
+html[data-ifac-theme="dark"] .ga .ga-muted,html[data-ifac-theme="dark"] .ga .ga-label,html[data-ifac-theme="dark"] .ga .ga-meta{color:#9aada8!important}
+html[data-ifac-theme="dark"] .ga .ga-pill{background:#263a36!important;color:#d5e5e1!important}html[data-ifac-theme="dark"] .ga .ga-btn.alt{background:#293b37!important;color:#e2efeb!important}
+html[data-ifac-theme="dark"] .ga .ga-btn.red{background:#512a2a!important;color:#ffdede!important}
+html[data-ifac-theme="dark"] .ga .ga-note,html[data-ifac-theme="dark"] .ga .ga-feedback{background:#302812!important;color:#f5df96!important;border-color:#705c20!important}
+html[data-ifac-theme="dark"] .ga .ga-table td,html[data-ifac-theme="dark"] .ga .ga-table th{border-color:#2b403c!important;color:#d8e3e0!important}
+
+/* University administration */
+html[data-ifac-theme="dark"] .ua-app{background:#0b1111!important;color:#edf4f2!important}
+html[data-ifac-theme="dark"] .ua-top,html[data-ifac-theme="dark"] .ua-side{background:#111c1a!important;border-color:#293b38!important}
+html[data-ifac-theme="dark"] .ua-card,html[data-ifac-theme="dark"] .ua-item{background:#121e1c!important;border-color:#2b403c!important;color:#e5efec!important}
+html[data-ifac-theme="dark"] .ua-brand,html[data-ifac-theme="dark"] .ua-brand em,html[data-ifac-theme="dark"] .ua-card h2,html[data-ifac-theme="dark"] .ua-item strong{color:#edf4f2!important}
+html[data-ifac-theme="dark"] .ua-user,html[data-ifac-theme="dark"] .ua-field input,html[data-ifac-theme="dark"] .ua-field select,html[data-ifac-theme="dark"] .ua-field textarea{background:#182724!important;color:#e9f1ef!important;border-color:#39514c!important}
+html[data-ifac-theme="dark"] .ua-nav{color:#b8c8c4!important}html[data-ifac-theme="dark"] .ua-nav.active{background:#203d38!important;color:#75e4d5!important}
+html[data-ifac-theme="dark"] .ua-heading p,html[data-ifac-theme="dark"] .ua-muted,html[data-ifac-theme="dark"] .ua-stat-label{color:#9aada8!important}
+html[data-ifac-theme="dark"] .ua-pill{background:#263a36!important;color:#d5e5e1!important}html[data-ifac-theme="dark"] .ua-btn.secondary{background:#293b37!important;color:#e2efeb!important}
+html[data-ifac-theme="dark"] .ua-feedback{background:#302812!important;color:#f5df96!important}html[data-ifac-theme="dark"] .ua-scope{background:#292314!important;color:#f0d995!important;border-color:#5b4c25!important}
+html[data-ifac-theme="dark"] .ua-empty{color:#9aada8!important;border-color:#39514c!important}
+
+/* Faculty administration */
+html[data-ifac-theme="dark"] .faculty-app{background:#0b1111!important;color:#edf4f2!important}
+html[data-ifac-theme="dark"] .faculty-top,html[data-ifac-theme="dark"] .faculty-side{background:#111c1a!important;border-color:#293b38!important}
+html[data-ifac-theme="dark"] .faculty-card,html[data-ifac-theme="dark"] .faculty-item{background:#121e1c!important;border-color:#2b403c!important;color:#e5efec!important}
+html[data-ifac-theme="dark"] .faculty-brand,html[data-ifac-theme="dark"] .faculty-brand span span,html[data-ifac-theme="dark"] .faculty-card h2,html[data-ifac-theme="dark"] .faculty-item strong{color:#edf4f2!important}
+html[data-ifac-theme="dark"] .faculty-user,html[data-ifac-theme="dark"] .faculty-field input,html[data-ifac-theme="dark"] .faculty-field select{background:#182724!important;color:#e9f1ef!important;border-color:#39514c!important}
+html[data-ifac-theme="dark"] .faculty-nav{color:#b8c8c4!important}html[data-ifac-theme="dark"] .faculty-nav.active{background:#203d38!important;color:#75e4d5!important}
+html[data-ifac-theme="dark"] .faculty-heading p,html[data-ifac-theme="dark"] .faculty-muted,html[data-ifac-theme="dark"] .faculty-stat-label{color:#9aada8!important}
+html[data-ifac-theme="dark"] .faculty-pill{background:#263a36!important;color:#d5e5e1!important}html[data-ifac-theme="dark"] .faculty-button.secondary{background:#293b37!important;color:#e2efeb!important}
+html[data-ifac-theme="dark"] .faculty-feedback{background:#302812!important;color:#f5df96!important}html[data-ifac-theme="dark"] .faculty-scope{background:#292314!important;color:#f0d995!important;border-color:#5b4c25!important}
+html[data-ifac-theme="dark"] .faculty-empty{color:#9aada8!important;border-color:#39514c!important}
+
+/* Professor space */
+html[data-ifac-theme="dark"] .professor-app{background:#0b1111!important;color:#edf4f2!important}
+html[data-ifac-theme="dark"] .professor-topbar,html[data-ifac-theme="dark"] .professor-sidebar{background:#111c1a!important;border-color:#293b38!important}
+html[data-ifac-theme="dark"] .professor-card,html[data-ifac-theme="dark"] .professor-list-item,html[data-ifac-theme="dark"] .professor-request-card{background:#121e1c!important;border-color:#2b403c!important;color:#e5efec!important}
+html[data-ifac-theme="dark"] .professor-brand,html[data-ifac-theme="dark"] .professor-brand span span,html[data-ifac-theme="dark"] .professor-card h2,html[data-ifac-theme="dark"] .professor-list-item strong{color:#edf4f2!important}
+html[data-ifac-theme="dark"] .professor-user-chip,html[data-ifac-theme="dark"] .professor-field input,html[data-ifac-theme="dark"] .professor-field select,html[data-ifac-theme="dark"] .professor-field textarea{background:#182724!important;color:#e9f1ef!important;border-color:#39514c!important}
+html[data-ifac-theme="dark"] .professor-nav-button{color:#b8c8c4!important}html[data-ifac-theme="dark"] .professor-nav-button.active{background:#203d38!important;color:#75e4d5!important}
+html[data-ifac-theme="dark"] .professor-heading p,html[data-ifac-theme="dark"] .professor-muted,html[data-ifac-theme="dark"] .professor-stat-label{color:#9aada8!important}
+html[data-ifac-theme="dark"] .professor-pill{background:#263a36!important;color:#d5e5e1!important}html[data-ifac-theme="dark"] .professor-button.secondary{background:#293b37!important;color:#e2efeb!important}
+html[data-ifac-theme="dark"] .professor-feedback,html[data-ifac-theme="dark"] .professor-status{background:#302812!important;color:#f5df96!important}
+html[data-ifac-theme="dark"] .professor-empty{color:#9aada8!important;border-color:#39514c!important}html[data-ifac-theme="dark"] .professor-request-card .request-card-heading{color:#e4eeeb!important}
+
+/* Program manager space */
+html[data-ifac-theme="dark"] .program-app{background:#0b1111!important;color:#edf4f2!important}
+html[data-ifac-theme="dark"] .program-topbar,html[data-ifac-theme="dark"] .program-sidebar{background:#111c1a!important;border-color:#293b38!important}
+html[data-ifac-theme="dark"] .program-card,html[data-ifac-theme="dark"] .program-item{background:#121e1c!important;border-color:#2b403c!important;color:#e5efec!important}
+html[data-ifac-theme="dark"] .program-brand,html[data-ifac-theme="dark"] .program-brand span span,html[data-ifac-theme="dark"] .program-card h2,html[data-ifac-theme="dark"] .program-item strong{color:#edf4f2!important}
+html[data-ifac-theme="dark"] .program-user,html[data-ifac-theme="dark"] .program-field input,html[data-ifac-theme="dark"] .program-field select,html[data-ifac-theme="dark"] .program-field textarea{background:#182724!important;color:#e9f1ef!important;border-color:#39514c!important}
+html[data-ifac-theme="dark"] .program-nav{color:#b8c8c4!important}html[data-ifac-theme="dark"] .program-nav.active{background:#203d38!important;color:#75e4d5!important}
+html[data-ifac-theme="dark"] .program-heading p,html[data-ifac-theme="dark"] .program-muted,html[data-ifac-theme="dark"] .program-stat-label{color:#9aada8!important}
+html[data-ifac-theme="dark"] .program-pill{background:#263a36!important;color:#d5e5e1!important}html[data-ifac-theme="dark"] .program-button.secondary{background:#293b37!important;color:#e2efeb!important}
+html[data-ifac-theme="dark"] .program-feedback,html[data-ifac-theme="dark"] .program-scope{background:#302812!important;color:#f5df96!important;border-color:#705c20!important}
+html[data-ifac-theme="dark"] .program-empty{color:#9aada8!important;border-color:#39514c!important}
+
+/* Student workspace */
+html[data-ifac-theme="dark"] .student-dark{background:#0b1111!important;color:#edf4f2!important}
+html[data-ifac-theme="dark"] .student-dark .student-card,html[data-ifac-theme="dark"] .student-dark .student-sidebar{background-color:#121e1c}
+html[data-ifac-theme="dark"] .student-dark input,html[data-ifac-theme="dark"] .student-dark select,html[data-ifac-theme="dark"] .student-dark textarea{background:#182724;color:#e9f1ef;border-color:#39514c}
+html[data-ifac-theme="dark"] .student-dark input::placeholder,html[data-ifac-theme="dark"] .student-dark textarea::placeholder{color:#9aada8}
+html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"] .student-dark table th{border-color:#2b403c}
+
