@@ -1103,3 +1103,22 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 @media (max-width: 360px) {
   .visual-panel { min-height: 205px; }
 }
+
+
+/* Rotation douce sur l'axe vertical, comme une pièce qui tourne. */
+.identity-logo-stage {
+  perspective: 900px;
+}
+.identity-logo-stage .identity-splash-logo {
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+  animation: ifac-logo-coin-turn 6.5s cubic-bezier(.42, 0, .24, 1) infinite;
+}
+@keyframes ifac-logo-coin-turn {
+  0%, 12% { transform: rotateY(0deg) scale(1); }
+  42% { transform: rotateY(180deg) scale(.985); }
+  72%, 100% { transform: rotateY(360deg) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .identity-logo-stage .identity-splash-logo { animation: none; transform: none; }
+}
