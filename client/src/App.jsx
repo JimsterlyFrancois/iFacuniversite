@@ -98,6 +98,7 @@ export default function App() {
         inFlight = false;
       }
     };
+    refresh();
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
@@ -153,6 +154,7 @@ export default function App() {
         inFlight = false;
       }
     };
+    refreshStatus();
     const timer = window.setInterval(refreshStatus, 15000);
     window.addEventListener("focus", refreshStatus);
     document.addEventListener("visibilitychange", refreshStatus);
