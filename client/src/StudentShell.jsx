@@ -454,7 +454,8 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
           </div>
         </nav>}
         {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}
-        {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
+        {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}
+        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
             <div className="profile-avatar" aria-hidden="true">{profileImage ? <img src={profileImage} alt="" /> : (user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
             <div className="profile-identity">
