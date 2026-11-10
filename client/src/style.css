@@ -988,3 +988,93 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 @media (max-width: 520px) {
   .identity-logo-stage { width: clamp(138px, 42vw, 180px); }
 }
+
+
+/* Micro-interactions sobres pour les espaces de direction et de gestion. */
+@keyframes ifac-manager-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ga-main,
+  .ua-main,
+  .faculty-main,
+  .program-main {
+    animation: ifac-manager-enter .28s ease-out both;
+  }
+  .ga-main > *,
+  .ua-main > *,
+  .faculty-main > *,
+  .program-main > * {
+    animation: ifac-manager-enter .24s ease-out both;
+  }
+  .ga-card,
+  .ua-card,
+  .faculty-card,
+  .program-card {
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .ga-card:hover,
+  .ua-card:hover,
+  .faculty-card:hover,
+  .program-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 20px #0000000b;
+    border-color: #e8d7a8;
+  }
+  .ga button,
+  .ua-app button,
+  .faculty-app button,
+  .program-app button,
+  .ga a,
+  .ua-app a,
+  .faculty-app a,
+  .program-app a {
+    transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+  }
+  .ga button:active,
+  .ua-app button:active,
+  .faculty-app button:active,
+  .program-app button:active {
+    transform: scale(.985);
+  }
+  .ga-nav,
+  .ua-nav,
+  .faculty-nav,
+  .program-nav {
+    transition: color .16s ease, background-color .16s ease, padding-left .16s ease;
+  }
+  .ga-nav:hover,
+  .ua-nav:hover,
+  .faculty-nav:hover,
+  .program-nav:hover {
+    padding-left: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ga-main,
+  .ua-main,
+  .faculty-main,
+  .program-main,
+  .ga-main > *,
+  .ua-main > *,
+  .faculty-main > *,
+  .program-main > * {
+    animation: none !important;
+  }
+  .ga-card,
+  .ua-card,
+  .faculty-card,
+  .program-card,
+  .ga button,
+  .ua-app button,
+  .faculty-app button,
+  .program-app button,
+  .ga a,
+  .ua-app a,
+  .faculty-app a,
+  .program-app a {
+    transition: none !important;
+    transform: none !important;
+  }
+}
