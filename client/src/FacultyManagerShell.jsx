@@ -138,7 +138,7 @@ export default function FacultyManagerShell({token,user,onLogout,request,theme =
       <a className="faculty-brand" href="#faculte" onClick={event=>{event.preventDefault();setActive("overview");}}>
         <img src="/ifac-logo.svg" alt=""/><span>iFac <span>universite</span></span>
       </a>
-      <div className="faculty-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="faculty-user">{user.firstName} {user.lastName}</span>
+      <div className="faculty-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="faculty-badge">{scopes[0]?.university_name || user.universityName || "Université non renseignée"}</span><span className="faculty-user">{user.firstName} {user.lastName}</span>
         <button className="faculty-button secondary" type="button" onClick={onLogout}>Déconnexion</button></div>
     </header>
     <div className="faculty-layout">
