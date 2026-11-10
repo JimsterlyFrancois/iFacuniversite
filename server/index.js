@@ -15,6 +15,7 @@ import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
 import { createProfessorsRouter } from "./routes/professors.routes.js";
+import { createRoleRegistrationRouter } from "./routes/roleRegistration.routes.js";
 import { createProgramManagerRouter } from "./routes/programManager.routes.js";
 import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
 import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
@@ -123,7 +124,8 @@ const publicUser = (u) => ({
     const assignments = Array.isArray(u.workspaces) ? u.workspaces : [];
     const base = ["student","delegate","professor","admin"].includes(u.role) ? [{ role: u.role, base: true }] : [];
     return [...assignments, ...base.filter(item => !assignments.some(workspace => workspace.role === item.role))];
-  })()
+  })(),
+  roleApplications: Array.isArray(u.role_applications) ? u.role_applications : []
 });
 async function getPublicUser(user) {
   const result = await pool.query(
@@ -141,7 +143,37 @@ async function getPublicUser(user) {
              LEFT JOIN faculties af ON af.id=a.faculty_id
              LEFT JOIN options ao ON ao.id=a.option_id
              LEFT JOIN study_levels al ON al.id=a.study_level_id
-             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces
+             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'assignmentId',a.id,'role',a.role,'status',a.status,
+                'universityId',COALESCE(a.university_id,pa.university_id,u.university_id),
+                'facultyId',COALESCE(a.faculty_id,pa.faculty_id,u.faculty_id),
+                'optionId',COALESCE(a.option_id,pa.option_id,u.option_id),
+                'studyLevelId',COALESCE(a.study_level_id,pa.study_level_id,u.study_level_id),
+                'universityName',COALESCE(au.name,pu.name,un.name),
+                'facultyName',COALESCE(af.name,pf.name,f.name),
+                'optionName',COALESCE(ao.name,po.name,o.name),
+                'studyLevelLabel',COALESCE(al.label,pl.label,l.label)
+              ) ORDER BY a.created_at DESC,a.id DESC)
+              FROM role_assignments a
+              LEFT JOIN professor_invites pi ON a.role='professor' AND pi.user_id=a.user_id
+              LEFT JOIN LATERAL (
+                SELECT pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
+                FROM professor_assignments pa
+                WHERE pa.invite_id=pi.id AND pa.is_active=TRUE
+                ORDER BY pa.created_at DESC,pa.id DESC LIMIT 1
+              ) pa ON TRUE
+              LEFT JOIN universities au ON au.id=a.university_id
+              LEFT JOIN faculties af ON af.id=a.faculty_id
+              LEFT JOIN options ao ON ao.id=a.option_id
+              LEFT JOIN study_levels al ON al.id=a.study_level_id
+              LEFT JOIN universities pu ON pu.id=pa.university_id
+              LEFT JOIN faculties pf ON pf.id=pa.faculty_id
+              LEFT JOIN options po ON po.id=pa.option_id
+              LEFT JOIN study_levels pl ON pl.id=pa.study_level_id
+              WHERE a.user_id=u.id AND a.status IN ('pending','revoked')
+            ),'[]'::json) AS role_applications
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id
      LEFT JOIN faculties f ON f.id=u.faculty_id
@@ -188,6 +220,7 @@ const requireAdmin = requireGeneralAdmin;
 app.use("/api/v1", createClassDocumentsRouter({
   pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
 }));
+app.use("/api/v1", createRoleRegistrationRouter({ pool }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
 app.use("/api/v1", createProgramManagerRouter({ pool, requireAuth, readPrivateObject }));
 app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateObject }));

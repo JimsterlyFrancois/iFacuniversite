@@ -60,7 +60,7 @@ CREATE TABLE users (
   email VARCHAR(254) NOT NULL,
   password_hash TEXT NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'student'
-    CHECK (role IN ('student', 'delegate', 'professor', 'admin')),
+    CHECK (role IN ('student', 'delegate', 'professor', 'admin', 'applicant')),
   email_verified_at TIMESTAMPTZ,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   disabled_at TIMESTAMPTZ,

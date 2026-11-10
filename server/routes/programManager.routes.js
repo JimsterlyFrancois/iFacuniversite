@@ -214,22 +214,132 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
 
   router.get("/program-manager/professors", requireAuth, requireProgramManager, async (req, res) => {
     try {
-      const result = await pool.query(`SELECT i.id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,
-          COALESCE(json_agg(json_build_object('assignment_id',pa.id,'course_id',c.id,'course_name',c.name,
+      const result = await pool.query(`SELECT i.id,i.user_id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,
+          COALESCE(MAX(ra.status)::text,CASE WHEN i.user_id IS NULL THEN 'invited' ELSE 'pending' END) AS role_status,
+          COALESCE(json_agg(json_build_object('assignment_id',pa.id,'course_id',pa.course_id,'course_name',c.name,
+            'option_id',pa.option_id,'study_level_id',pa.study_level_id,
             'option_name',o.name,'level_label',l.label,'active',pa.is_active)) FILTER (WHERE pa.id IS NOT NULL),'[]') AS assignments
         FROM professor_invites i
         JOIN professor_assignments pa ON pa.invite_id=i.id
-        JOIN courses c ON c.id=pa.course_id
-        JOIN subjects s ON s.id=c.subject_id
+        LEFT JOIN courses c ON c.id=pa.course_id
         JOIN options o ON o.id=pa.option_id
         JOIN study_levels l ON l.id=pa.study_level_id
-        WHERE EXISTS (SELECT 1 FROM role_assignments ra WHERE ra.user_id=$1 AND ra.role='program_manager'
-          AND ra.status='active' AND ra.university_id=pa.university_id AND ra.faculty_id=pa.faculty_id
-          AND ra.option_id=pa.option_id AND (ra.study_level_id IS NULL OR ra.study_level_id=pa.study_level_id))
+        LEFT JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor'
+        WHERE pa.is_active=TRUE AND EXISTS (
+          SELECT 1 FROM role_assignments pm WHERE pm.user_id=$1 AND pm.role='program_manager'
+            AND pm.status='active' AND pm.university_id=pa.university_id AND pm.faculty_id=pa.faculty_id
+            AND pm.option_id=pa.option_id AND (pm.study_level_id IS NULL OR pm.study_level_id=pa.study_level_id)
+        )
         GROUP BY i.id ORDER BY i.created_at DESC LIMIT 300`, [req.user.id]);
       return res.json({ data: result.rows });
     } catch {
       return res.status(503).json({ error: "program_professors_unavailable" });
+    }
+  });
+
+  router.patch("/program-manager/professors/:id/decision", requireAuth, requireProgramManager, async (req, res) => {
+    const inviteId = positiveId(req.params.id);
+    const decision = req.body?.decision;
+    const courseId = positiveId(req.body?.courseId);
+    if (!inviteId || !["approve","reject"].includes(decision)) {
+      return res.status(400).json({ error: "invalid_professor_decision" });
+    }
+    if (decision === "approve" && !courseId) {
+      return res.status(400).json({
+        error: "course_required",
+        message: "Choisissez un cours du programme pour confirmer l’affectation pédagogique."
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const application = await client.query(\`
+        SELECT i.id,i.user_id,pa.id AS assignment_id,pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
+        FROM professor_invites i
+        JOIN professor_assignments pa ON pa.invite_id=i.id AND pa.is_active=TRUE
+        JOIN role_assignments ra ON ra.user_id=i.user_id AND ra.role='professor' AND ra.status='pending'
+        WHERE i.id=$1 AND i.user_id IS NOT NULL AND i.is_active=TRUE
+          AND EXISTS (
+            SELECT 1 FROM role_assignments pm WHERE pm.user_id=$2 AND pm.role='program_manager'
+              AND pm.status='active' AND pm.university_id=pa.university_id
+              AND pm.faculty_id=pa.faculty_id AND pm.option_id=pa.option_id
+              AND (pm.study_level_id IS NULL OR pm.study_level_id=pa.study_level_id)
+          )
+        ORDER BY pa.created_at DESC,pa.id DESC
+        LIMIT 1 FOR UPDATE OF i,pa,ra
+      \`, [inviteId,req.user.id]);
+
+      if (!application.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          error: "professor_application_not_found",
+          message: "Cette demande n’existe pas ou ne relève pas de votre programme."
+        });
+      }
+      const item = application.rows[0];
+
+      if (decision === "reject") {
+        await client.query("UPDATE professor_assignments SET is_active=FALSE WHERE id=$1", [item.assignment_id]);
+        await client.query(
+          \`UPDATE role_assignments SET status='revoked',approved_by=$1,revoked_at=NOW(),updated_at=NOW()
+           WHERE user_id=$2 AND role='professor' AND status='pending'\`,
+          [req.user.id,item.user_id]
+        );
+        await client.query(
+          \`INSERT INTO admin_audit_logs(
+             actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata
+           ) VALUES($1,'professor.application.rejected','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)\`,
+          [req.user.id,inviteId,item.university_id,item.faculty_id,item.option_id,item.study_level_id,JSON.stringify({userId:item.user_id})]
+        );
+        await client.query("COMMIT");
+        return res.json({ message: "Demande de professeur refusée." });
+      }
+
+      const course = await client.query(\`
+        SELECT c.id FROM courses c JOIN subjects s ON s.id=c.subject_id
+        JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id
+        WHERE c.id=$1 AND c.is_active=TRUE AND s.is_active=TRUE
+          AND f.is_active=TRUE AND o.is_active=TRUE
+          AND f.university_id=$2 AND f.id=$3 AND s.option_id=$4 AND s.study_level_id=$5
+      \`, [courseId,item.university_id,item.faculty_id,item.option_id,item.study_level_id]);
+
+      if (!course.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: "course_outside_application_scope",
+          message: "Le cours choisi ne correspond pas à la demande du professeur."
+        });
+      }
+
+      await client.query(
+        "UPDATE professor_assignments SET course_id=$1,assigned_by=$2,is_active=TRUE WHERE id=$3",
+        [courseId,req.user.id,item.assignment_id]
+      );
+      const activated = await client.query(
+        \`UPDATE role_assignments SET status='active',assigned_by=COALESCE(assigned_by,$1),
+           approved_by=$1,revoked_at=NULL,updated_at=NOW()
+         WHERE user_id=$2 AND role='professor' AND status='pending' RETURNING id\`,
+        [req.user.id,item.user_id]
+      );
+      if (!activated.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "professor_application_already_processed" });
+      }
+      await client.query(
+        \`INSERT INTO admin_audit_logs(
+           actor_user_id,action,target_type,target_id,university_id,faculty_id,option_id,study_level_id,metadata
+         ) VALUES($1,'professor.application.approved','professor_invite',$2,$3,$4,$5,$6,$7::jsonb)\`,
+        [req.user.id,inviteId,item.university_id,item.faculty_id,item.option_id,item.study_level_id,JSON.stringify({userId:item.user_id,courseId})]
+      );
+      await client.query("COMMIT");
+      return res.json({ message: "Demande validée. Le professeur peut maintenant accéder à son espace." });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("Décision demande professeur:",error?.message || error);
+      return res.status(503).json({ error: "professor_application_decision_failed" });
+    } finally {
+      client.release();
     }
   });
 
@@ -258,7 +368,7 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
       }
       let invite = await client.query("SELECT id,is_active,user_id,first_name,last_name FROM professor_invites WHERE email=$1 FOR UPDATE", [email]);
       const existingUser = await client.query("SELECT id,role,is_active FROM users WHERE email=$1", [email]);
-      if (existingUser.rowCount && (!invite.rowCount || Number(invite.rows[0].user_id) !== Number(existingUser.rows[0].id) || existingUser.rows[0].role !== "professor" || !existingUser.rows[0].is_active)) {
+      if (existingUser.rowCount && (!invite.rowCount || Number(invite.rows[0].user_id) !== Number(existingUser.rows[0].id) || !["professor","applicant"].includes(existingUser.rows[0].role) || !existingUser.rows[0].is_active)) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "email_already_used", message: "Cette adresse possède déjà un compte qui n’est pas relié à cette fiche professeur ou qui est suspendu." });
       }

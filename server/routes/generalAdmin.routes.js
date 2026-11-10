@@ -168,8 +168,8 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     if (!assignmentId || typeof active !== "boolean") return res.status(400).json({ error: "invalid_assignment_status" });
     try {
       const result = await pool.query(
-        "UPDATE role_assignments SET status=$1,revoked_at=CASE WHEN $1='revoked' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$2 AND role='university_admin' RETURNING id,user_id,university_id,status",
-        [active ? "active" : "revoked",assignmentId]
+        "UPDATE role_assignments SET status=$1,assigned_by=CASE WHEN $1='active' THEN COALESCE(assigned_by,$3) ELSE assigned_by END,approved_by=CASE WHEN $1='active' THEN $3 ELSE approved_by END,revoked_at=CASE WHEN $1='revoked' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$2 AND role='university_admin' RETURNING id,user_id,university_id,status",
+        [active ? "active" : "revoked",assignmentId,req.user.id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "assignment_not_found" });
       await audit(req, active ? "university_admin.reactivated" : "university_admin.revoked", "role_assignment", assignmentId, result.rows[0].university_id, { userId: result.rows[0].user_id });
