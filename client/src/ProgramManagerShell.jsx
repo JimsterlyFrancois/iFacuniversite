@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 const tabs = [
   { id: "home", label: "Vue d’ensemble", icon: "⌂" },
@@ -46,7 +47,7 @@ const styles = `
 @media(max-width:520px){.program-topbar{padding:0 14px;height:60px}.program-layout{min-height:calc(100vh - 60px)}.program-sidebar{top:60px}.program-user{display:none}.program-heading h1{font-size:23px}.program-grid{gap:9px}.program-card{padding:14px}.program-stat-value{font-size:23px}.program-form{grid-template-columns:1fr}.program-field.full{grid-column:auto}.program-item{align-items:flex-start;flex-direction:column}}
 `;
 
-export default function ProgramManagerShell({ token, user, onLogout, request }) {
+export default function ProgramManagerShell({ token, user, onLogout, request, theme = "light", onToggleTheme }) {
   const [active, setActive] = useState("home");
   const [overview, setOverview] = useState({ students: 0, courses: 0, professors: 0, documents: 0 });
   const [scopes, setScopes] = useState([]);
@@ -192,6 +193,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
         <img src="/ifac-logo.svg" alt="" /><span>iFac <span>universite</span></span>
       </a>
       <div className="program-actions">
+        <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
         <span className="program-user">{user.firstName} {user.lastName}</span>
         <button className="program-button secondary" type="button" onClick={onLogout}>Déconnexion</button>
       </div>
