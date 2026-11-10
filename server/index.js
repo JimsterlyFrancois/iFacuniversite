@@ -11,6 +11,7 @@ import helmet from "helmet";
 import nodemailer from "nodemailer";
 import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
 import { requireGeneralAdmin } from "./lib/roleAuthorization.js";
+import { listRegistrableUniversities, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
 import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
@@ -262,9 +263,7 @@ function requireDatabase(_req, res, next) {
 
 app.get("/api/v1/catalog/universities", requireDatabase, async (_req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT id, code, name FROM universities WHERE is_active = TRUE AND registration_enabled = TRUE ORDER BY name"
-    );
+    const result = await listRegistrableUniversities(pool);
     res.set("Cache-Control", "no-store");
     return res.json({ data: result.rows });
   } catch {
@@ -336,14 +335,9 @@ app.post("/api/v1/auth/register", requireDatabase, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const profile = await client.query(
-      `SELECT u.id AS university_id, f.id AS faculty_id, o.id AS option_id, l.id AS study_level_id
-       FROM universities u JOIN faculties f ON f.university_id=u.id
-       JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
-       WHERE u.code=$1 AND f.code=$2 AND o.code=$3 AND l.code=$4
-       AND u.is_active AND u.registration_enabled = TRUE AND f.is_active AND o.is_active AND l.is_active`,
-      [universityCode, facultyCode, optionCode, studyLevelCode]
-    );
+    const profile = await findActiveAcademicProfile(client, {
+      universityCode, facultyCode, optionCode, studyLevelCode
+    });
     if (!profile.rowCount) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "invalid_academic_profile", message: "Le parcours universitaire sélectionné n’est pas valide." });
