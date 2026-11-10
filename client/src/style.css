@@ -912,78 +912,23 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 
 
 
-/* Reflets 3D légers sur l'emblème pendant l'écran d'identité de 10 secondes. */
+/* Cadre de présentation de l’emblème pendant l’écran d’identité. */
 .identity-logo-stage {
   position: relative;
   display: grid;
   place-items: center;
   width: clamp(150px, 36vw, 220px);
   margin: 0 0 22px;
-  perspective: 720px;
+  perspective: 900px;
   transform-style: preserve-3d;
   isolation: isolate;
-}
-.identity-logo-stage::before,
-.identity-logo-stage::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  -webkit-mask: url("/ifac-logo.svg") center / contain no-repeat;
-  mask: url("/ifac-logo.svg") center / contain no-repeat;
-}
-.identity-logo-stage::before {
-  background: linear-gradient(118deg, transparent 24%, #ffffff12 38%, #ffffffb8 48%, #e8ffff45 53%, transparent 66%);
-  transform: translateZ(9px) rotateY(-9deg);
-  opacity: 0;
-  animation: ifac-logo-reflection 10s cubic-bezier(.2,.65,.25,1) both;
-}
-.identity-logo-stage::after {
-  background: linear-gradient(112deg, transparent 35%, #d9ffff00 42%, #ffffffd9 49%, #8de9e3a8 52%, #ffffff00 60%, transparent 68%);
-  transform: translateZ(14px) rotateY(-13deg);
-  opacity: 0;
-  filter: blur(1px);
-  animation: ifac-logo-sheen 10s ease-in-out both;
 }
 .identity-logo-stage .identity-splash-logo {
   position: relative;
   z-index: 0;
   width: 100%;
+  height: auto;
   margin: 0;
-  transform: translateZ(0);
-  filter: drop-shadow(0 12px 18px #000c) drop-shadow(0 0 8px #d7ffff22);
-  animation: ifac-logo-depth 10s ease-in-out both;
-}
-@keyframes ifac-logo-reflection {
-  0%, 8% { opacity: 0; background-position: -160% 0; }
-  22% { opacity: .65; }
-  54% { opacity: .2; background-position: 160% 0; }
-  100% { opacity: 0; background-position: 180% 0; }
-}
-@keyframes ifac-logo-sheen {
-  0%, 12% { opacity: 0; transform: translate3d(-24%, 0, 12px) rotateY(-18deg); }
-  28% { opacity: .9; }
-  48% { opacity: .18; transform: translate3d(24%, 0, 18px) rotateY(12deg); }
-  100% { opacity: 0; transform: translate3d(24%, 0, 18px) rotateY(12deg); }
-}
-@keyframes ifac-logo-depth {
-  0% { transform: translateZ(-8px) rotateY(-5deg) scale(.97); }
-  22% { transform: translateZ(12px) rotateY(3deg) scale(1.015); }
-  48% { transform: translateZ(4px) rotateY(-2deg) scale(1); }
-  100% { transform: translateZ(0) rotateY(0) scale(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .identity-logo-stage::before,
-  .identity-logo-stage::after,
-  .identity-logo-stage .identity-splash-logo {
-    animation: none;
-    opacity: 0;
-    transform: none;
-  }
-  .identity-logo-stage .identity-splash-logo {
-    opacity: 1;
-    filter: drop-shadow(0 8px 14px #0009);
-  }
 }
 @media (max-width: 520px) {
   .identity-logo-stage { width: clamp(138px, 42vw, 180px); }
