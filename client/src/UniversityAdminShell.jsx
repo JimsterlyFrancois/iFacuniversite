@@ -40,7 +40,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
   const [notice,setNotice]=useState({scopeAssignmentId:"",title:"",body:""});
 
   const load=useCallback(async({silent=false}={})=>{
-    if(!silent)setLoading(true);setFeedback("");
+    if(!silent){setLoading(true);setFeedback("");}
     const paths=["/university-admin/overview","/university-admin/catalog","/university-admin/faculty-managers","/university-admin/announcements"];
     const results=await Promise.allSettled(paths.map(path=>request(path,{token})));
     if(results[0].status==="fulfilled")setOverview(results[0].value.data||{});
@@ -53,7 +53,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
     if(results[2].status==="fulfilled")setManagers(results[2].value.data||[]);
     if(results[3].status==="fulfilled")setAnnouncements(results[3].value.data||[]);
     const failed=results.find(item=>item.status==="rejected");
-    if(failed)setFeedback(failed.reason?.message||"Certaines données n’ont pas pu être chargées.");
+    if(failed&&!silent)setFeedback(failed.reason?.message||"Certaines données n’ont pas pu être chargées.");
     if (!silent) setLoading(false);
   },[request,token]);
   useEffect(()=>{load();},[load]);
