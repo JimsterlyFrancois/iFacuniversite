@@ -66,8 +66,8 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
   const [courseDescription, setCourseDescription] = useState("");
   const [professorForm, setProfessorForm] = useState({ firstName: "", lastName: "", email: "", courseId: "" });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     const results = await Promise.allSettled([
       request("/program-manager/overview", { token }),
       request("/program-manager/catalog", { token }),
@@ -83,7 +83,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
     if (results[3].status === "fulfilled") setDocuments(results[3].value.data || []);
     const failed = results.find(item => item.status === "rejected");
     if (failed) setFeedback(failed.reason?.message || "Certaines informations n’ont pas pu être chargées.");
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [request, token]);
 
   useEffect(() => { load(); }, [load]);
