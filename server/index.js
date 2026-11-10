@@ -145,34 +145,40 @@ async function getPublicUser(user) {
              LEFT JOIN study_levels al ON al.id=a.study_level_id
              WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces,
             COALESCE((
-              SELECT json_agg(json_build_object(
-                'assignmentId',a.id,'role',a.role,'status',a.status,
-                'universityId',COALESCE(a.university_id,pa.university_id,u.university_id),
-                'facultyId',COALESCE(a.faculty_id,pa.faculty_id,u.faculty_id),
-                'optionId',COALESCE(a.option_id,pa.option_id,u.option_id),
-                'studyLevelId',COALESCE(a.study_level_id,pa.study_level_id,u.study_level_id),
-                'universityName',COALESCE(au.name,pu.name,un.name),
-                'facultyName',COALESCE(af.name,pf.name,f.name),
-                'optionName',COALESCE(ao.name,po.name,o.name),
-                'studyLevelLabel',COALESCE(al.label,pl.label,l.label)
-              ) ORDER BY a.created_at DESC,a.id DESC)
-              FROM role_assignments a
-              LEFT JOIN professor_invites pi ON a.role='professor' AND pi.user_id=a.user_id
-              LEFT JOIN LATERAL (
-                SELECT pa.university_id,pa.faculty_id,pa.option_id,pa.study_level_id
+              SELECT json_agg(application.item ORDER BY application.created_at DESC)
+              FROM (
+                SELECT json_build_object(
+                  'assignmentId',a.id,'role',a.role,'status',a.status,
+                  'universityId',a.university_id,'facultyId',a.faculty_id,
+                  'optionId',a.option_id,'studyLevelId',a.study_level_id,
+                  'universityName',au.name,'facultyName',af.name,
+                  'optionName',ao.name,'studyLevelLabel',al.label
+                ) AS item,a.created_at
+                FROM role_assignments a
+                LEFT JOIN universities au ON au.id=a.university_id
+                LEFT JOIN faculties af ON af.id=a.faculty_id
+                LEFT JOIN options ao ON ao.id=a.option_id
+                LEFT JOIN study_levels al ON al.id=a.study_level_id
+                WHERE a.user_id=u.id AND a.role<>'professor' AND a.status IN ('pending','revoked')
+                UNION ALL
+                SELECT json_build_object(
+                  'assignmentId',pa.id,'role','professor',
+                  'status',CASE pa.approval_status WHEN 'pending' THEN 'pending' ELSE 'revoked' END,
+                  'universityId',pa.university_id,'facultyId',pa.faculty_id,
+                  'optionId',pa.option_id,'studyLevelId',pa.study_level_id,
+                  'universityName',pu.name,'facultyName',pf.name,
+                  'optionName',po.name,'studyLevelLabel',pl.label,
+                  'courseId',pa.requested_course_id,'courseName',pc.name
+                ) AS item,pa.created_at
                 FROM professor_assignments pa
-                WHERE pa.invite_id=pi.id AND pa.is_active=TRUE
-                ORDER BY pa.created_at DESC,pa.id DESC LIMIT 1
-              ) pa ON TRUE
-              LEFT JOIN universities au ON au.id=a.university_id
-              LEFT JOIN faculties af ON af.id=a.faculty_id
-              LEFT JOIN options ao ON ao.id=a.option_id
-              LEFT JOIN study_levels al ON al.id=a.study_level_id
-              LEFT JOIN universities pu ON pu.id=pa.university_id
-              LEFT JOIN faculties pf ON pf.id=pa.faculty_id
-              LEFT JOIN options po ON po.id=pa.option_id
-              LEFT JOIN study_levels pl ON pl.id=pa.study_level_id
-              WHERE a.user_id=u.id AND a.status IN ('pending','revoked')
+                JOIN professor_invites pi ON pi.id=pa.invite_id
+                JOIN universities pu ON pu.id=pa.university_id
+                JOIN faculties pf ON pf.id=pa.faculty_id
+                JOIN options po ON po.id=pa.option_id
+                JOIN study_levels pl ON pl.id=pa.study_level_id
+                LEFT JOIN courses pc ON pc.id=pa.requested_course_id
+                WHERE pi.user_id=u.id AND pa.approval_status IN ('pending','rejected')
+              ) application
             ),'[]'::json) AS role_applications
      FROM users u
      LEFT JOIN universities un ON un.id=u.university_id

@@ -62,3 +62,52 @@ test("program manager cannot create a subject in another program", async () => {
     assert.equal(pool.calls.some(call => call.sql.includes("INSERT INTO subjects")), false);
   });
 });
+
+test("a program manager approves only the selected course request, not other requests for the same professor", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ source: "pool", sql, params });
+      if (sql.includes("SELECT ra.university_id,ra.faculty_id,ra.option_id,ra.study_level_id")) {
+        return { rows: [{ university_id: 10, faculty_id: 20, option_id: 30, study_level_id: null, university_name: "Université A", faculty_name: "Faculté A", option_name: "Psychopédagogie", study_level_label: null }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    async connect() {
+      return {
+        async query(sql, params = []) {
+          calls.push({ source: "client", sql, params });
+          if (sql.includes("SELECT pa.id AS assignment_id,pa.invite_id")) {
+            return { rows: [{ assignment_id: 501, invite_id: 77, requested_course_id: 901, user_id: 88, university_id: 10, faculty_id: 20, option_id: 30, study_level_id: 40 }], rowCount: 1 };
+          }
+          if (sql.includes("SELECT c.id FROM courses c")) return { rows: [{ id: 901 }], rowCount: 1 };
+          if (sql.includes("SELECT COUNT(*) FILTER (WHERE approval_status='approved'")) {
+            return { rows: [{ approved_count: 1, pending_count: 2 }], rowCount: 1 };
+          }
+          return { rows: [], rowCount: 1 };
+        },
+        release() {}
+      };
+    }
+  };
+
+  await withApi(pool, async baseUrl => {
+    const response = await fetch(baseUrl + "/program-manager/professors/501/decision", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: "approve" })
+    });
+    assert.equal(response.status, 200);
+
+    const select = calls.find(call => call.sql.includes("SELECT pa.id AS assignment_id,pa.invite_id"));
+    assert.deepEqual(select.params, [501, 52]);
+    const update = calls.find(call => call.sql.includes("UPDATE professor_assignments SET course_id="));
+    assert.deepEqual(update.params, [901, 52, 501]);
+    assert.match(update.sql, /WHERE id=\$3/);
+    const aggregate = calls.find(call => call.sql.includes("COUNT(*) FILTER (WHERE approval_status='approved'"));
+    assert.deepEqual(aggregate.params, [77]);
+    const role = calls.find(call => call.sql.includes("UPDATE role_assignments SET status=$1"));
+    assert.deepEqual(role.params, ["active", 52, 88]);
+    assert.equal(calls.some(call => call.sql.includes("UPDATE professor_assignments SET course_id=") && !call.params.includes(501)), false);
+  });
+});
