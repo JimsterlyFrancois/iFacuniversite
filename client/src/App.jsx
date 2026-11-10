@@ -59,17 +59,21 @@ export default function App() {
   const selectedFaculty = faculties.find(x => String(x.id) === String(facultyId));
   const selectedOption = options.find(x => String(x.id) === String(optionId));
 
-  async function loadCatalogList(kind, path, setter) {
-    setCatalogLoading(previous => ({ ...previous, [kind]: true }));
-    setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
+  async function loadCatalogList(kind, path, setter, { silent = false } = {}) {
+    if (!silent) {
+      setCatalogLoading(previous => ({ ...previous, [kind]: true }));
+      setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
+    }
     try {
       const result = await request(path);
       setter(result.data || []);
     } catch {
-      setter([]);
-      setCatalogErrors(previous => ({ ...previous, [kind]: "Impossible de charger cette liste. Vérifiez la connexion." }));
+      if (!silent) {
+        setter([]);
+        setCatalogErrors(previous => ({ ...previous, [kind]: "Impossible de charger cette liste. Vérifiez la connexion." }));
+      }
     } finally {
-      setCatalogLoading(previous => ({ ...previous, [kind]: false }));
+      if (!silent) setCatalogLoading(previous => ({ ...previous, [kind]: false }));
     }
   }
 
@@ -80,32 +84,29 @@ export default function App() {
   useEffect(() => {
     if (mode !== "signup" && mode !== "responsible") return undefined;
     let inFlight = false;
-    const refresh = async () => {
-      if (inFlight || document.visibilityState === "hidden") return;
+    const isEditing = () => {
+      const active = document.activeElement;
+      return Boolean(active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.closest("form")));
+    };
+    const refresh = async (force = false) => {
+      if (inFlight || document.visibilityState === "hidden" || isEditing()) return;
       inFlight = true;
       try {
-        await loadCatalogList("universities", "/catalog/universities", setUniversities);
-        if (universityId) {
-          await loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties);
-        }
-        if (facultyId) {
-          await loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions);
-        }
-        if (optionId) {
-          await loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels);
-        }
-      } finally {
-        inFlight = false;
-      }
+        await loadCatalogList("universities", "/catalog/universities", setUniversities, { silent: true });
+        if (universityId) await loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties, { silent: true });
+        if (facultyId) await loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions, { silent: true });
+        if (optionId) await loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels, { silent: true });
+      } finally { inFlight = false; }
     };
-    refresh();
-    const timer = window.setInterval(refresh, 15000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    const onFocus = () => window.setTimeout(() => refresh(true), 1200);
+    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(() => refresh(true), 1200); };
+    const timer = window.setInterval(() => refresh(false), 60000);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [mode, universityId, facultyId, optionId]);
 
@@ -155,7 +156,7 @@ export default function App() {
       }
     };
     refreshStatus();
-    const timer = window.setInterval(refreshStatus, 15000);
+    const timer = window.setInterval(refreshStatus, 60000);
     window.addEventListener("focus", refreshStatus);
     document.addEventListener("visibilitychange", refreshStatus);
     return () => {
