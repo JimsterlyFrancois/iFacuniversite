@@ -214,13 +214,14 @@ export function createProgramManagerRouter({ pool, requireAuth, readPrivateObjec
 
   router.get("/program-manager/professors", requireAuth, requireProgramManager, async (req, res) => {
     try {
-      const result = await pool.query(`SELECT i.id,i.user_id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,
+      const result = await pool.query(`SELECT i.id,i.user_id,i.email,i.first_name,i.last_name,i.activated_at,i.is_active,u.email_verified_at,
           COALESCE(MAX(ra.status)::text,CASE WHEN i.user_id IS NULL THEN 'invited' ELSE 'pending' END) AS role_status,
           COALESCE(json_agg(json_build_object('assignment_id',pa.id,'course_id',pa.course_id,'course_name',c.name,
             'option_id',pa.option_id,'study_level_id',pa.study_level_id,
             'option_name',o.name,'level_label',l.label,'active',pa.is_active)) FILTER (WHERE pa.id IS NOT NULL),'[]') AS assignments
         FROM professor_invites i
         JOIN professor_assignments pa ON pa.invite_id=i.id
+        LEFT JOIN users u ON u.id=i.user_id
         LEFT JOIN courses c ON c.id=pa.course_id
         JOIN options o ON o.id=pa.option_id
         JOIN study_levels l ON l.id=pa.study_level_id
