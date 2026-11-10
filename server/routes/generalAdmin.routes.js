@@ -81,11 +81,11 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     if (!/^[A-Z0-9_-]{2,32}$/.test(code) || name.length < 2) return res.status(400).json({ error: "invalid_university", message: "Indiquez un code unique (2 à 32 caractères) et le nom de l’université." });
     try {
       const result = await pool.query(
-        "INSERT INTO universities(code,name,is_active,registration_enabled) VALUES($1,$2,TRUE,FALSE) RETURNING id,code,name,is_active,registration_enabled,created_at",
+        "INSERT INTO universities(code,name,is_active,registration_enabled) VALUES($1,$2,TRUE,TRUE) RETURNING id,code,name,is_active,registration_enabled,created_at",
         [code,name]
       );
       await audit(req, "university.created", "university", result.rows[0].id, result.rows[0].id, { code, name });
-      return res.status(201).json({ university: result.rows[0], message: "Université créée en mode configuration. Nommez son responsable ; il pourra créer les facultés, options et niveaux avant l’ouverture des inscriptions." });
+      return res.status(201).json({ university: result.rows[0], message: "Université créée et visible dans le formulaire d’inscription. Les facultés, options et niveaux seront proposés à mesure que la hiérarchie sera configurée." });
     } catch (error) {
       if (error.code === "23505") return res.status(409).json({ error: "university_code_exists", message: "Ce code d’université existe déjà." });
       return res.status(503).json({ error: "university_create_failed" });
