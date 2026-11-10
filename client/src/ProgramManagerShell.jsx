@@ -82,7 +82,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
     if (results[2].status === "fulfilled") setProfessors(results[2].value.data || []);
     if (results[3].status === "fulfilled") setDocuments(results[3].value.data || []);
     const failed = results.find(item => item.status === "rejected");
-    if (failed) setFeedback(failed.reason?.message || "Certaines informations n’ont pas pu être chargées.");
+    if (failed && !silent) setFeedback(failed.reason?.message || "Certaines informations n’ont pas pu être chargées.");
     if (!silent) setLoading(false);
   }, [request, token]);
 
