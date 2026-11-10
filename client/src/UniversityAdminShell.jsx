@@ -111,7 +111,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
 
   return <main className="ua-app"><style>{css}</style>
     <header className="ua-top"><a className="ua-brand" href="#university" onClick={event=>{event.preventDefault();setTab("overview");}}><img src="/ifac-logo.svg" alt=""/>iFac <em>universite</em></a>
-      <div className="ua-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="ua-user">{user.firstName} {user.lastName}</span><button className="ua-btn secondary" type="button" onClick={onLogout}>Déconnexion</button></div>
+      <div className="ua-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="ua-badge">{selectedScope?.university_name || scopes[0]?.university_name || user.universityName || "Université non renseignée"}</span><span className="ua-user">{user.firstName} {user.lastName}</span><button className="ua-btn secondary" type="button" onClick={onLogout}>Déconnexion</button></div>
     </header>
     <div className="ua-layout">
       <aside className="ua-side" aria-label="Navigation administrateur d’université">

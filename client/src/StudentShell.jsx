@@ -430,13 +430,18 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   const visibleDestinations = destinations.filter(x => !x.adminOnly || user.role === "admin");
   const homeDestinations = visibleDestinations.filter(x => !["messages", "home", "notes", "profile"].includes(x.id));
   const profileImage = user.avatarUrl || user.avatar_url || user.profileImageUrl || user.profile_image_url || "";
+  const assignedWorkspace = Array.isArray(user.workspaces)
+    ? user.workspaces.find(workspace => workspace.role === user.role && workspace.universityName)
+      || user.workspaces.find(workspace => workspace.universityName)
+    : null;
+  const displayUniversityName = assignedWorkspace?.universityName || user.universityName || "Université non renseignée";
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
   const badgeText = count => count >= 100 ? "99+" : String(count);
   const serviceCount = id => id === "class" ? serviceCounts.class : id === "notifications" ? serviceCounts.notifications : id === "classDocs" ? serviceCounts.classDocs : badgeCount(id);
   return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="preview-pill">{user.firstName} {user.lastName}</span>{onOpenGeneralAdmin && <button className="subtle-button" onClick={onOpenGeneralAdmin}>Console générale</button>}<button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
-    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">UPNCH au lancement</div></aside>
-      <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">UPNCH</span></div>
+    <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">{displayUniversityName}</div></aside>
+      <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">{displayUniversityName}</span></div>
         {active === "home" && <nav className="mobile-dashboard" aria-label="Services universitaires">
           <div className="mobile-dashboard-heading"><span>MES SERVICES</span><small>Accès rapides</small></div>
           <div className="mobile-dashboard-grid">
@@ -449,7 +454,8 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
           </div>
         </nav>}
         {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}
-        {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}\n        {active === "profile" && <div className="profile-page">
+        {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}
+        {active === "profile" && <div className="profile-page">
           <section className="profile-overview student-card">
             <div className="profile-avatar" aria-hidden="true">{profileImage ? <img src={profileImage} alt="" /> : (user.firstName || user.email || "U").trim().charAt(0).toUpperCase()}</div>
             <div className="profile-identity">
@@ -467,7 +473,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
               <h2>Informations du compte</h2>
               <div className="profile-info-row"><span>Adresse e-mail</span><strong>{user.email}</strong></div>
               <div className="profile-info-row"><span>Rôle</span><strong>{user.role === "admin" ? "Administrateur" : user.role === "delegate" ? "Délégué" : user.role === "professor" ? "Professeur" : "Étudiant"}</strong></div>
-              <div className="profile-info-row"><span>Université</span><strong>{user.universityName || "UPNCH"}</strong></div>
+              <div className="profile-info-row"><span>Université</span><strong>{displayUniversityName}</strong></div>
               <div className="profile-info-row"><span>Faculté / option</span><strong>{[user.facultyName, user.optionName].filter(Boolean).join(" · ") || "Non renseignée"}</strong></div>
               <div className="profile-info-row"><span>Niveau</span><strong>{user.studyLevelLabel || "Non renseigné"}</strong></div>
             </section>
