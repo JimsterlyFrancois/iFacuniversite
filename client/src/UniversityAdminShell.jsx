@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle.jsx";
+import useAutoRefresh from "./useAutoRefresh.js";
 
 const nav = [
   ["overview","Tableau de bord"],["faculties","Facultés"],["options","Options"],["levels","Niveaux d’études"],
@@ -56,6 +57,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
     setLoading(false);
   },[request,token]);
   useEffect(()=>{load();},[load]);
+  useAutoRefresh(load);
 
   const faculties=useMemo(()=>catalog.faculties||[],[catalog.faculties]);
   const options=useMemo(()=>catalog.options||[],[catalog.options]);
@@ -127,7 +129,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
         {loading?<div className="ua-empty">Chargement des données universitaires…</div>:<>
           {tab==="overview"&&<>
             <div className="ua-grid">{[["Facultés",overview.faculties],["Options",overview.programs],["Étudiants",overview.students],["Professeurs",overview.professors],["Responsables de faculté",overview.facultyManagers],["Responsables de programme",overview.programManagers],["Cours actifs",overview.courses],["Documents",overview.documents],["Annonces",overview.announcements]].map(([label,value])=><article className="ua-card" key={label}><div className="ua-stat-label">{label}</div><div className="ua-stat">{value??0}</div></article>)}</div>
-            <article className="ua-card"><h2>État des inscriptions</h2>{selectedScope?.registration_enabled?<p className="ua-muted">Les inscriptions étudiantes sont ouvertes.</p>:<><p className="ua-muted">Les inscriptions restent fermées jusqu’à la configuration d’au moins une faculté, une option et un niveau actif.</p><button className="ua-btn" disabled={busy||!faculties.some(f=>f.is_active)||!options.some(o=>o.is_active)||!levels.some(l=>l.is_active)} onClick={()=>action("/university-admin/registration/enable","POST",{scopeAssignmentId:Number(scopeAssignmentId)})}>Ouvrir les inscriptions</button></>}</article>
+            <article className="ua-card"><h2>Visibilité dans les inscriptions</h2><p className="ua-muted">Cette université apparaît automatiquement dans la liste publique dès qu’elle est active. Les facultés, options et niveaux sont affichés uniquement lorsqu’ils existent et sont actifs. Un étudiant ne pourra terminer son inscription que lorsqu’un parcours complet est disponible.</p></article>
           </>}
           {tab==="faculties"&&<>
             <article className="ua-card"><h2>{editingFaculty?"Modifier une faculté":"Créer une faculté"}</h2><form className="ua-form" onSubmit={saveFaculty}>

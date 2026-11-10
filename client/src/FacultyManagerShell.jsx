@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import ThemeToggle from "./ThemeToggle.jsx";
+import useAutoRefresh from "./useAutoRefresh.js";
 
 const nav = [
   ["overview","Vue d’ensemble","⌂"],
@@ -83,6 +84,7 @@ export default function FacultyManagerShell({token,user,onLogout,request,theme =
   },[request,token]);
 
   useEffect(()=>{load();},[load]);
+  useAutoRefresh(load);
 
   const visibleLevels=levels.filter(level=>String(level.option_id)===String(form.optionId));
   const page={
