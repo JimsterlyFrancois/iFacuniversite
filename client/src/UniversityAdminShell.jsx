@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 const nav = [
   ["overview","Tableau de bord"],["faculties","Facultés"],["options","Options"],["levels","Niveaux d’études"],
@@ -25,7 +26,7 @@ const css = `
 `;
 
 const blank = { code:"", name:"" };
-export default function UniversityAdminShell({ token, user, onLogout, request }) {
+export default function UniversityAdminShell({ token, user, onLogout, request, theme = "light", onToggleTheme }) {
   const [tab,setTab]=useState("overview"),[overview,setOverview]=useState({});
   const [scopes,setScopes]=useState([]),[scopeAssignmentId,setScopeAssignmentId]=useState("");
   const [catalog,setCatalog]=useState({faculties:[],options:[],levels:[]});
@@ -108,7 +109,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request })
 
   return <main className="ua-app"><style>{css}</style>
     <header className="ua-top"><a className="ua-brand" href="#university" onClick={event=>{event.preventDefault();setTab("overview");}}><img src="/ifac-logo.svg" alt=""/>iFac <em>universite</em></a>
-      <div className="ua-actions"><span className="ua-user">{user.firstName} {user.lastName}</span><button className="ua-btn secondary" type="button" onClick={onLogout}>Déconnexion</button></div>
+      <div className="ua-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="ua-user">{user.firstName} {user.lastName}</span><button className="ua-btn secondary" type="button" onClick={onLogout}>Déconnexion</button></div>
     </header>
     <div className="ua-layout">
       <aside className="ua-side" aria-label="Navigation administrateur d’université">
