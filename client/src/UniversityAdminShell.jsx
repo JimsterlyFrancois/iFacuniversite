@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle.jsx";
+import useAutoRefresh from "./useAutoRefresh.js";
 
 const nav = [
   ["overview","Tableau de bord"],["faculties","Facultés"],["options","Options"],["levels","Niveaux d’études"],
@@ -56,6 +57,7 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
     setLoading(false);
   },[request,token]);
   useEffect(()=>{load();},[load]);
+  useAutoRefresh(load);
 
   const faculties=useMemo(()=>catalog.faculties||[],[catalog.faculties]);
   const options=useMemo(()=>catalog.options||[],[catalog.options]);
