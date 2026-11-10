@@ -64,8 +64,8 @@ export default function FacultyManagerShell({token,user,onLogout,request,theme =
   const [downloadingId,setDownloadingId]=useState(null);
   const [form,setForm]=useState({email:"",optionId:"",studyLevelId:""});
 
-  const load=useCallback(async()=>{
-    setLoading(true);
+  const load=useCallback(async({silent=false}={})=>{
+    if(!silent)setLoading(true);
     const results=await Promise.allSettled([
       request("/faculty-manager/overview",{token}),
       request("/faculty-manager/programs",{token}),
@@ -79,8 +79,8 @@ export default function FacultyManagerShell({token,user,onLogout,request,theme =
     if(results[3].status==="fulfilled")setProfessors(results[3].value.data||[]);
     if(results[4].status==="fulfilled")setDocuments(results[4].value.data||[]);
     const failed=results.find(x=>x.status==="rejected");
-    if(failed)setFeedback(failed.reason?.message||"Certaines informations n’ont pas pu être chargées.");
-    setLoading(false);
+    if(failed&&!silent)setFeedback(failed.reason?.message||"Certaines informations n’ont pas pu être chargées.");
+    if (!silent) setLoading(false);
   },[request,token]);
 
   useEffect(()=>{load();},[load]);

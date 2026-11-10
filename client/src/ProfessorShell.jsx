@@ -58,8 +58,8 @@ export default function ProfessorShell({ token, user, onLogout, request, theme =
   const [courseId, setCourseId] = useState("");
   const [file, setFile] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     const results = await Promise.allSettled([
       request("/professor/assignments", { token }),
       request("/professor/applications", { token }),
@@ -74,7 +74,7 @@ export default function ProfessorShell({ token, user, onLogout, request, theme =
     else setDocuments([]);
     if (results[3].status === "fulfilled") setNotifications(results[3].value.data || []);
     else setNotifications([]);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [request, token]);
 
   useEffect(() => { load(); }, [load]);
