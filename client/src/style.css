@@ -910,3 +910,142 @@ html[data-ifac-theme="dark"] .student-dark input,html[data-ifac-theme="dark"] .s
 html[data-ifac-theme="dark"] .student-dark input::placeholder,html[data-ifac-theme="dark"] .student-dark textarea::placeholder{color:#9aada8}
 html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"] .student-dark table th{border-color:#2b403c}
 
+
+
+/* Micro-interactions psychopédagogiques : repères doux, sans changement de palette */
+.brand-logo,
+.identity-splash-logo {
+  transform-origin: 50% 50%;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  animation: ifac-logo-coin-turn 1.15s cubic-bezier(.2,.72,.28,1) both;
+}
+@keyframes ifac-logo-coin-turn {
+  0% { transform: perspective(700px) rotateY(0deg); }
+  45% { transform: perspective(700px) rotateY(180deg); }
+  100% { transform: perspective(700px) rotateY(360deg); }
+}
+
+/* Apparition courte : aide à repérer les zones sans mouvement continu */
+.student-card,
+.student-empty-card,
+.ga-card,
+.ua-card,
+.faculty-card,
+.professor-card,
+.professor-request-card,
+.program-card,
+.profile-stat-card,
+.profile-tool-card,
+.mobile-dashboard-tile,
+.registration-request-card {
+  animation: ifac-soft-arrive .28s ease-out both;
+}
+@keyframes ifac-soft-arrive {
+  from { opacity: .82; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Survol réservé aux dispositifs qui disposent d'un pointeur */
+@media (hover: hover) and (pointer: fine) {
+  .student-card,
+  .ga-card,
+  .ua-card,
+  .faculty-card,
+  .professor-card,
+  .professor-request-card,
+  .program-card,
+  .profile-stat-card,
+  .profile-tool-card,
+  .mobile-dashboard-tile,
+  .registration-request-card {
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  .student-card:hover,
+  .ga-card:hover,
+  .ua-card:hover,
+  .faculty-card:hover,
+  .professor-card:hover,
+  .professor-request-card:hover,
+  .program-card:hover,
+  .profile-stat-card:hover,
+  .profile-tool-card:hover,
+  .mobile-dashboard-tile:hover,
+  .registration-request-card:hover {
+    transform: translateY(-2px);
+  }
+  .student-nav-item:hover,
+  .professor-nav-button:hover,
+  .professor-button:hover,
+  .mobile-nav-item:hover,
+  .subtle-button:hover,
+  .theme-button:hover,
+  .preview-open-button:hover,
+  .admin-review-actions button:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* Retours immédiats et discrets sur les commandes */
+.student-nav-item,
+.professor-nav-button,
+.professor-button,
+.mobile-nav-item,
+.subtle-button,
+.theme-button,
+.preview-open-button,
+.admin-review-actions button {
+  transition: transform .16s ease, border-color .16s ease, background-color .16s ease;
+}
+.student-nav-item:active,
+.professor-nav-button:active,
+.professor-button:active,
+.mobile-nav-item:active,
+.subtle-button:active,
+.theme-button:active,
+.preview-open-button:active,
+.admin-review-actions button:active {
+  transform: scale(.985);
+}
+
+/* L'utilisateur garde la maîtrise du mouvement */
+@media (prefers-reduced-motion: reduce) {
+  .brand-logo,
+  .identity-splash-logo,
+  .student-card,
+  .student-empty-card,
+  .ga-card,
+  .ua-card,
+  .faculty-card,
+  .professor-card,
+  .professor-request-card,
+  .program-card,
+  .profile-stat-card,
+  .profile-tool-card,
+  .mobile-dashboard-tile,
+  .registration-request-card {
+    animation: none !important;
+  }
+  .student-card,
+  .ga-card,
+  .ua-card,
+  .faculty-card,
+  .professor-card,
+  .professor-request-card,
+  .program-card,
+  .profile-stat-card,
+  .profile-tool-card,
+  .mobile-dashboard-tile,
+  .registration-request-card,
+  .student-nav-item,
+  .professor-nav-button,
+  .professor-button,
+  .mobile-nav-item,
+  .subtle-button,
+  .theme-button,
+  .preview-open-button,
+  .admin-review-actions button {
+    transition: none !important;
+    transform: none !important;
+  }
+}
