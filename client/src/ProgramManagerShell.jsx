@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ThemeToggle from "./ThemeToggle.jsx";
+import useAutoRefresh from "./useAutoRefresh.js";
 
 const tabs = [
   { id: "home", label: "Vue d’ensemble", icon: "⌂" },
@@ -86,6 +87,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
   }, [request, token]);
 
   useEffect(() => { load(); }, [load]);
+  useAutoRefresh(load);
 
   const courses = useMemo(() => catalog.courses || [], [catalog]);
   const levels = useMemo(() => catalog.levels || [], [catalog]);
