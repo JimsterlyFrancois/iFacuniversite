@@ -33,7 +33,7 @@ export default function App() {
   const [workspaceRole, setWorkspaceRole] = useState("");
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("login");
-  const [responsibleRole, setResponsibleRole] = useState("program_manager");
+  const [responsibleRole, setResponsibleRole] = useState("university_admin");
   const [professorApplications, setProfessorApplications] = useState([{ id: "request-1", universityId: "", facultyId: "", optionId: "", studyLevelId: "", courseId: "" }]);
   const [nextProfessorApplicationId, setNextProfessorApplicationId] = useState(2);
   const [feedback, setFeedback] = useState("");
@@ -78,6 +78,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (mode !== "signup" && mode !== "responsible") return undefined;
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        await loadCatalogList("universities", "/catalog/universities", setUniversities);
+        if (universityId) {
+          await loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties);
+        }
+        if (facultyId) {
+          await loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions);
+        }
+        if (optionId) {
+          await loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels);
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [mode, universityId, facultyId, optionId]);
+
+  useEffect(() => {
     setFacultyId("");
     setOptionId("");
     setStudyLevelId("");
@@ -105,6 +136,32 @@ export default function App() {
   }, [optionId]);
 
   useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
+
+  const pendingRoleApplications = (user?.roleApplications || []).some(item => item.status === "pending");
+  useEffect(() => {
+    if (!token || !pendingRoleApplications) return undefined;
+    let inFlight = false;
+    const refreshStatus = async () => {
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        const result = await request("/auth/me", { token });
+        setUser(result.user);
+      } catch {
+        // Keep the current screen available; the next focus or interval retries.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = window.setInterval(refreshStatus, 15000);
+    window.addEventListener("focus", refreshStatus);
+    document.addEventListener("visibilitychange", refreshStatus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshStatus);
+      document.removeEventListener("visibilitychange", refreshStatus);
+    };
+  }, [token, pendingRoleApplications]);
 
   useEffect(() => {
     if (!user) { setWorkspaceRole(""); return; }
@@ -257,7 +314,7 @@ export default function App() {
     <header className="topbar"><a className="brand" href="/"><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><button type="button" className="top-login-button" onClick={() => { setMode("login"); setFeedback(""); document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Connexion <span aria-hidden="true">→</span></button></header>
     <section className="auth-layout" aria-label="Connexion et inscription">
       <aside className="visual-panel"><img className="campus-image" src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1000&q=70" alt="Groupe d’étudiants universitaires réunis sur un campus" /><div className="visual-overlay" /><div className="visual-content"><p className="eyebrow">L’ESPACE DES ÉTUDIANTS HAÏTIENS</p><h1 className="hero-message">Votre parcours universitaire,<br /><span>mieux organisé.</span></h1><p>Retrouvez vos documents de cours, vos notes personnelles et les informations utiles à vos études dans un seul espace.</p><div className="hero-student-tags"><span>Documents de cours</span><span>Notes privées</span><span>Vie universitaire</span></div><button type="button" className="hero-login-button" onClick={() => { setMode("login"); setFeedback(""); document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>Se connecter <span aria-hidden="true">→</span></button></div></aside>
-      <section className="form-panel" id="auth-card"><div className="form-inner"><div className="form-heading"><p className="eyebrow">iFAC UNIVERSITE</p><h2>{mode === "signup" ? "Créer votre compte" : mode === "professor" ? "Créer un compte professeur" : mode === "responsible" ? "Créer un compte responsable" : "Se connecter"}</h2><p>{mode === "signup" ? "Choisissez votre parcours universitaire." : mode === "professor" ? "Déposez plusieurs demandes de cours, même dans des universités et facultés différentes. Chaque demande sera validée séparément." : mode === "responsible" ? "Choisissez votre fonction et son périmètre. Votre accès sera activé après validation hiérarchique." : "Accédez à votre espace universitaire."}</p></div>
+      <section className="form-panel" id="auth-card"><div className="form-inner"><div className="form-heading"><p className="eyebrow">iFAC UNIVERSITE</p><h2>{mode === "signup" ? "Créer votre compte" : mode === "professor" ? "Créer un compte professeur" : mode === "responsible" ? "Créer un compte responsable" : "Se connecter"}</h2><p>{mode === "signup" ? "Choisissez votre parcours universitaire." : mode === "professor" ? "Déposez plusieurs demandes de cours, même dans des universités et facultés différentes. Chaque demande sera validée séparément." : mode === "responsible" ? "Pour une nouvelle université, commencez par Responsable d’université. Après validation, vous pourrez configurer les facultés, options et niveaux." : "Accédez à votre espace universitaire."}</p></div>
         <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription étudiant</button><button type="button" className={mode === "professor" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("professor");setFeedback("");}}>Espace professeur</button><button type="button" className={mode === "responsible" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("responsible");setFeedback("");}}>Espace responsables</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
         <form className="auth-form" onSubmit={submit}>
           {(mode === "signup" || mode === "professor" || mode === "responsible") && <div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>}
@@ -273,9 +330,10 @@ export default function App() {
           </div>}
           {mode === "responsible" && <>
             <Field label="Responsabilité demandée"><select required value={responsibleRole} onChange={e => setResponsibleRole(e.target.value)}><option value="university_admin">Responsable d’université</option><option value="faculty_manager">Responsable de faculté</option><option value="program_manager">Responsable de programme / option</option></select></Field>
+            {responsibleRole === "university_admin" && <p className="form-footer">Aucune faculté ni option n’est nécessaire pour cette première demande. L’administration générale validera votre accès à l’université.</p>}
             <Field label="Université d’exercice"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
-            {responsibleRole !== "university_admin" && <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : "Choisir la faculté"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>}
-            {responsibleRole === "program_manager" && <><Field label="Programme / option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : "Choisir le programme"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field><Field label="Niveau (facultatif)"><select value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Tous les niveaux du programme"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
+            {responsibleRole !== "university_admin" && <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : faculties.length ? "Choisir la faculté" : "Aucune faculté active configurée"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>}
+            {responsibleRole === "program_manager" && <><Field label="Programme / option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : options.length ? "Choisir le programme" : "Aucune option active configurée"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field><Field label="Niveau (facultatif)"><select value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Tous les niveaux du programme"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           </>}
         <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
           <Field label="Mot de passe"><div className="password-wrap"><input name="password" type={showPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete={mode === "login" ? "current-password" : "new-password"} /><button className="password-toggle" type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? "Masquer" : "Voir"}</button></div></Field>
