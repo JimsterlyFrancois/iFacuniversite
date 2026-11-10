@@ -52,6 +52,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
   const [scopes, setScopes] = useState([]);
   const [catalog, setCatalog] = useState({ subjects: [], courses: [] });
   const [professors, setProfessors] = useState([]);
+  const [approvalCourses, setApprovalCourses] = useState({});
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -170,6 +171,20 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
     finally { setBusy(false); }
   }
 
+  async function decideProfessor(professor, decision) {
+    const courseId = professor.requested_course_id ? null : approvalCourses[professor.assignment_id];
+    if (decision === "approve" && !professor.requested_course_id && !courseId) { setFeedback("Choisissez d’abord le cours à attribuer."); return; }
+    setBusy(true); setFeedback("");
+    try {
+      const result = await request(`/program-manager/professors/${professor.assignment_id}/decision`, {
+        token, method: "PATCH", body: JSON.stringify({ decision, courseId: courseId ? Number(courseId) : null })
+      });
+      setFeedback(result.message || "Demande mise à jour.");
+      await load();
+    } catch (error) { setFeedback(error.message); }
+    finally { setBusy(false); }
+  }
+
   return <main className="program-app">
     <style>{styles}</style>
     <header className="program-topbar">
@@ -243,8 +258,14 @@ export default function ProgramManagerShell({ token, user, onLogout, request }) 
                 <div className="program-field full"><button className="program-button" disabled={busy}>Déclarer et affecter le professeur</button></div>
               </form>}
             </section>
-            <section className="program-card"><h2>Professeurs et affectations</h2>
-              {professors.length ? <div className="program-list">{professors.map(professor => <article className="program-item" key={professor.id}><div><strong>{professor.first_name} {professor.last_name}</strong><div className="program-muted">{professor.email} · {professor.activated_at ? "Compte activé" : "En attente d’activation"}</div>{(professor.assignments || []).map((assignment,index) => <div className="program-muted" key={assignment.assignment_id || index}>{assignment.course_name} · {assignment.option_name} · {assignment.level_label} · {assignment.active ? "Affectation active" : "Suspendue"}</div>)}</div><span className="program-pill">{professor.is_active ? "Actif" : "Suspendu"}</span></article>)}</div> : <div className="program-empty">Aucun professeur n’est encore déclaré dans votre programme.</div>}
+            <section className="program-card"><h2>Demandes de cours et affectations</h2>
+              {professors.length ? <div className="program-list">{professors.map(application => {
+                const eligibleCourses = courses.filter(course => String(course.option_id) === String(application.option_id) && String(course.study_level_id) === String(application.study_level_id));
+                const statusLabel = !application.is_active ? "Suspendue" : application.approval_status === "approved" ? "Approuvée" : application.approval_status === "rejected" ? "Refusée" : "À valider";
+                return <article className="program-item" key={application.assignment_id}><div><strong>{application.first_name} {application.last_name}</strong><div className="program-muted">{application.email} · {application.email_verified_at ? "Adresse e-mail confirmée" : "E-mail à confirmer"}</div><div className="program-muted">{application.university_name} · {application.faculty_name} · {application.option_name} · {application.level_label}</div><div className="program-muted">Cours demandé : {application.requested_course_name || application.course_name || "À préciser par le responsable"}</div>
+                  {application.approval_status === "pending" && <div className="program-form-actions" style={{marginTop:10}}>{!application.requested_course_id && <label className="program-field">Cours à attribuer<select value={approvalCourses[application.assignment_id] || ""} onChange={event => setApprovalCourses(value => ({ ...value, [application.assignment_id]: event.target.value }))}><option value="">Choisir un cours du programme</option>{eligibleCourses.map(course => <option key={course.id} value={course.id}>{course.name}</option>)}</select></label>}<button className="program-button" type="button" disabled={busy || (!application.requested_course_id && !approvalCourses[application.assignment_id])} onClick={() => decideProfessor(application,"approve")}>Valider cette demande</button><button className="program-button secondary" type="button" disabled={busy} onClick={() => decideProfessor(application,"reject")}>Refuser</button></div>}
+                </div><span className="program-pill">{statusLabel}</span></article>;
+              })}</div> : <div className="program-empty">Aucune demande de professeur dans votre programme.</div>}
             </section>
           </>}
           {active === "documents" && <section className="program-card"><h2>Documents pédagogiques du programme</h2>

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 
 const tabs = [
   { id: "home", label: "Vue d’ensemble", icon: "⌂" },
   { id: "courses", label: "Mes cours", icon: "▤" },
+  { id: "applications", label: "Demandes de cours", icon: "＋" },
   { id: "documents", label: "Documents pédagogiques", icon: "▧" },
   { id: "notifications", label: "Notifications", icon: "◉" },
   { id: "profile", label: "Mon profil", icon: "○" }
@@ -29,6 +31,8 @@ const styles = `
 .professor-doc-title{font-size:14px;font-weight:700}.professor-file-meta{font-size:11px;color:#888;margin-top:5px}
 @media(max-width:850px){.professor-layout{grid-template-columns:1fr}.professor-sidebar{position:sticky;top:68px;z-index:4;flex-direction:row;overflow-x:auto;padding:9px;border-right:0;border-bottom:1px solid #e7e7e7}.professor-nav-title,.professor-sidebar-note{display:none}.professor-nav-button{white-space:nowrap;padding:9px 11px;font-size:12px}.professor-main{padding:22px 16px}.professor-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.professor-topbar{padding:0 14px;height:60px}.professor-layout{min-height:calc(100vh - 60px)}.professor-sidebar{top:60px}.professor-user-chip{display:none}.professor-heading h1{font-size:23px}.professor-grid{grid-template-columns:1fr 1fr;gap:9px}.professor-card{padding:14px}.professor-stat-value{font-size:23px}.professor-form{grid-template-columns:1fr}.professor-field.full{grid-column:auto}.professor-list-item{align-items:flex-start;flex-direction:column}}
+
+.professor-request-card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:15px;border:1px solid #ececec;border-radius:10px;margin-bottom:13px}.professor-request-card .request-card-heading{grid-column:1/-1;color:#333}.professor-request-card .request-remove-button{color:#996900}.professor-request-card .request-catalog-error{grid-column:1/-1}.professor-request-card .professor-field{min-width:0}
 `;
 
 function dateLabel(value) {
@@ -40,6 +44,8 @@ function dateLabel(value) {
 export default function ProfessorShell({ token, user, onLogout, request }) {
   const [active, setActive] = useState("home");
   const [assignments, setAssignments] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [applicationDraft, setApplicationDraft] = useState({ universityId: "", facultyId: "", optionId: "", studyLevelId: "", courseId: "" });
   const [documents, setDocuments] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,14 +60,17 @@ export default function ProfessorShell({ token, user, onLogout, request }) {
     setLoading(true);
     const results = await Promise.allSettled([
       request("/professor/assignments", { token }),
+      request("/professor/applications", { token }),
       request("/class-documents", { token }),
       request("/notifications", { token })
     ]);
     if (results[0].status === "fulfilled") setAssignments(results[0].value.data || []);
     else setAssignments([]);
-    if (results[1].status === "fulfilled") setDocuments(results[1].value.data || []);
+    if (results[1].status === "fulfilled") setApplications(results[1].value.data || []);
+    else setApplications([]);
+    if (results[2].status === "fulfilled") setDocuments(results[2].value.data || []);
     else setDocuments([]);
-    if (results[2].status === "fulfilled") setNotifications(results[2].value.data || []);
+    if (results[3].status === "fulfilled") setNotifications(results[3].value.data || []);
     else setNotifications([]);
     setLoading(false);
   }, [request, token]);
@@ -73,13 +82,36 @@ export default function ProfessorShell({ token, user, onLogout, request }) {
     return assignments.filter(item => item.course_id && item.course_name && !seen.has(String(item.course_id)) && seen.add(String(item.course_id)));
   }, [assignments]);
   const unread = notifications.filter(item => !item.read_at).length;
+  const catalogRequest = useCallback((path, options = {}) => request(path, { ...options, token }), [request, token]);
   const pageTitle = {
     home: ["Vue d’ensemble", "Suivez vos affectations et accédez rapidement à vos outils pédagogiques."],
     courses: ["Mes cours", "Consultez les cours qui vous ont été attribués par un responsable habilité."],
+    applications: ["Demandes de cours", "Ajoutez des demandes dans d’autres universités, facultés, programmes et niveaux, puis suivez chaque validation."],
     documents: ["Documents pédagogiques", "Publiez et consultez les ressources des cours auxquels vous êtes affecté."],
     notifications: ["Notifications", "Les informations et mises à jour liées à votre activité pédagogique."],
     profile: ["Mon profil", "Informations de votre compte professeur."]
   }[active];
+
+  async function submitCourseApplication(event) {
+    event.preventDefault();
+    const payload = {
+      universityId: Number(applicationDraft.universityId), facultyId: Number(applicationDraft.facultyId),
+      optionId: Number(applicationDraft.optionId), studyLevelId: Number(applicationDraft.studyLevelId),
+      courseId: Number(applicationDraft.courseId)
+    };
+    if (!Object.values(payload).every(value => Number.isSafeInteger(value) && value > 0)) {
+      setFeedback("Complétez toute la demande avant de l’envoyer.");
+      return;
+    }
+    setBusy(true); setFeedback("");
+    try {
+      const result = await request("/professor/applications", { token, method: "POST", body: JSON.stringify(payload) });
+      setApplicationDraft({ universityId: "", facultyId: "", optionId: "", studyLevelId: "", courseId: "" });
+      setFeedback(result.message || "Demande envoyée au responsable du programme.");
+      await load();
+    } catch (error) { setFeedback(error.message || "La demande n’a pas pu être envoyée."); }
+    finally { setBusy(false); }
+  }
 
   async function publishDocument(event) {
     event.preventDefault();
@@ -173,6 +205,10 @@ export default function ProfessorShell({ token, user, onLogout, request }) {
           {active === "courses" && <section className="professor-card"><h2>Mes affectations pédagogiques</h2>
             {assignments.length ? <div className="professor-list">{assignments.map((item,index) => <div className="professor-list-item" key={item.course_id ? `${item.course_id}-${index}` : index}><div><strong>{item.course_name || "Affectation de niveau"}</strong><div className="professor-muted">{item.university_name} · {item.faculty_name} · {item.option_name} · {item.level_label}</div></div><span className="professor-pill">{item.course_id ? "Cours actif" : "Niveau attribué"}</span></div>)}</div> : <div className="professor-empty">Aucune affectation active. Contactez le responsable de programme de votre parcours.</div>}
           </section>}
+          {active === "applications" && <>
+            <section className="professor-card professor-section"><h2>Ajouter une demande de cours</h2><p>Vous pouvez déposer des demandes dans plusieurs universités. Chaque programme reçoit uniquement les demandes qui relèvent de son périmètre.</p><form onSubmit={submitCourseApplication}><AcademicCourseRequestFields variant="professor" request={catalogRequest} value={applicationDraft} onChange={setApplicationDraft} heading="Nouvelle demande" /><div className="professor-actions"><button className="professor-button" type="submit" disabled={busy}>{busy ? "Envoi…" : "Envoyer la demande"}</button></div></form></section>
+            <section className="professor-card"><h2>Suivi de mes demandes</h2>{applications.length ? <div className="professor-list">{applications.map(item => <article className="professor-list-item" key={item.assignment_id}><div><strong>{item.requested_course_name || item.course_name || "Demande de cours"}</strong><div className="professor-muted">{item.university_name} · {item.faculty_name} · {item.option_name} · {item.level_label}</div>{item.reviewed_at && <div className="professor-muted">Traitée le {dateLabel(item.reviewed_at)}</div>}{item.review_note && <div className="professor-muted">{item.review_note}</div>}</div><span className="professor-pill">{!item.is_active ? "Suspendue" : item.approval_status === "approved" ? "Approuvée" : item.approval_status === "rejected" ? "Refusée" : "En attente"}</span></article>)}</div> : <div className="professor-empty">Aucune demande enregistrée.</div>}</section>
+          </>}
           {active === "documents" && <>
             <section className="professor-card professor-section"><h2>Publier un document dans un cours</h2>
               {!courses.length ? <div className="professor-empty">La publication sera disponible après l’attribution d’au moins un cours.</div> : <form className="professor-form" onSubmit={publishDocument}>

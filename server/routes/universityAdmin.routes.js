@@ -70,9 +70,11 @@ export function createUniversityAdminRouter({pool,requireAuth}){
  router.patch("/university-admin/faculty-managers/:id/status",requireAuth,scope,async(req,res)=>{
   const id=idOf(req.params.id),active=req.body?.active;if(!id||typeof active!=="boolean")return res.status(400).json({error:"invalid_assignment"});
   try{const r=await pool.query(`UPDATE role_assignments ra SET status=CASE WHEN $1 THEN 'active' ELSE 'revoked' END,
+    assigned_by=CASE WHEN $1 THEN COALESCE(ra.assigned_by,$4) ELSE ra.assigned_by END,
+    approved_by=CASE WHEN $1 THEN $4 ELSE ra.approved_by END,
     revoked_at=CASE WHEN $1 THEN NULL ELSE NOW() END,updated_at=NOW()
     WHERE ra.id=$2 AND ra.role='faculty_manager' AND ra.university_id=ANY($3::bigint[]) RETURNING ra.id,ra.status,ra.faculty_id,ra.university_id`,
-    [active,id,req.universityScopes.map(x=>x.university_id)]);
+    [active,id,req.universityScopes.map(x=>x.university_id),req.user.id]);
    if(!r.rowCount)return res.status(404).json({error:"assignment_not_found"});
    if(active){const count=await pool.query("SELECT COUNT(*)::int total FROM role_assignments WHERE role='faculty_manager' AND university_id=$1 AND faculty_id=$2 AND status='active'",[r.rows[0].university_id,r.rows[0].faculty_id]);if(count.rows[0].total>4){await pool.query("UPDATE role_assignments SET status='revoked',revoked_at=NOW() WHERE id=$1",[id]);return res.status(409).json({error:"faculty_manager_limit"});}}
    await pool.query("INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,faculty_id,metadata) VALUES($1,$2,'role_assignment',$3,$4,$5,$6::jsonb)",[req.user.id,active?"faculty_manager.reactivated":"faculty_manager.revoked",id,r.rows[0].university_id,r.rows[0].faculty_id,JSON.stringify({status:r.rows[0].status})]);
