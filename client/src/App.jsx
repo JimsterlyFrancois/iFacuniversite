@@ -258,19 +258,47 @@ export default function App() {
     }
   }
 
-  const verifyToken = new URLSearchParams(window.location.search).get("token");
-  const authAccessToken = new URLSearchParams(window.location.hash.slice(1)).get("access_token");
+  const verifyParams = new URLSearchParams(window.location.search);
+  const verifyHash = new URLSearchParams(window.location.hash.slice(1));
+  const verifyToken = verifyParams.get("token");
+  const verifyTokenHash = verifyParams.get("token_hash");
+  const verifyType = verifyParams.get("type") || "email";
+  const authAccessToken = verifyHash.get("access_token");
   useEffect(() => {
     if (window.location.pathname !== "/verify-email") return;
-    const token = authAccessToken || verifyToken;
-    if (!token) {
-      setFeedback("Le lien de confirmation est incomplet. Ouvrez le lien reçu dans votre e-mail ou recommencez l’inscription.");
+    const payload = verifyTokenHash
+      ? { tokenHash: verifyTokenHash, type: verifyType }
+      : authAccessToken
+        ? { accessToken: authAccessToken }
+        : verifyToken
+          ? { token: verifyToken }
+          : null;
+    if (!payload) {
+      setFeedback("Le lien de confirmation est incomplet ou expiré. Demandez un nouvel e-mail de confirmation.");
       return;
     }
-    request("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) })
-      .then(r => { setMode("login"); setFeedback(r.message); window.history.replaceState({}, "", "/"); })
-      .catch(e => setFeedback(e.message));
-  }, [verifyToken, authAccessToken]);
+    setBusy(true);
+    request("/auth/verify-email", { method: "POST", body: JSON.stringify(payload) })
+      .then(result => {
+        if (result.token && result.user) {
+          sessionStorage.setItem("ifac_token", result.token);
+          setToken(result.token);
+          setUser(result.user);
+          setFeedback("");
+          setIdentityFeedback("");
+          setIdentityScreen(true);
+        } else {
+          setMode("login");
+          setFeedback(result.message || "Adresse e-mail confirmée. Connectez-vous pour accéder à votre espace.");
+        }
+        window.history.replaceState({}, "", "/");
+      })
+      .catch(error => {
+        setFeedback(error.message || "La confirmation n’a pas abouti. Demandez un nouveau lien.");
+        window.history.replaceState({}, "", "/");
+      })
+      .finally(() => setBusy(false));
+  }, [verifyToken, verifyTokenHash, verifyType, authAccessToken]);
 
   if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
