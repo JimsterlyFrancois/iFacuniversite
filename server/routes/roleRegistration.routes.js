@@ -141,8 +141,7 @@ export function createRoleRegistrationRouter({ pool }) {
         return res.status(503).json({ error: "role_registration_unavailable", message: "Le compte n’a pas pu être créé. Vérifiez le service de confirmation e-mail." });
       }
 
-      const authUserId = authData.user?.id ||
-        (await pool.query("SELECT id FROM auth.users WHERE lower(email)=lower($1) LIMIT 1", [email])).rows[0]?.id;
+      const authUserId = authData.user?.id;
       if (!authUserId) return res.status(503).json({
         error: "auth_identity_unavailable", message: "L’identifiant du compte est indisponible. Contactez l’administration."
       });
