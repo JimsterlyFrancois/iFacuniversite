@@ -12,8 +12,8 @@ Ce document décrit les routes de l'API et leurs contrôles. Les routes d'authen
 - Ne jamais accepter un rôle administrateur depuis le formulaire public.
 - Vérifier l'identité et les droits côté serveur pour chaque ressource; masquer un bouton dans l'interface n'est pas une autorisation.
 - Les erreurs ne doivent pas révéler si une adresse e-mail possède un compte.
-- Le catalogue officiel UPNCH doit être validé avant activation. Aucune option ni aucun niveau ne doit être inventé.
-- Les données des autres universités restent inactives par défaut.
+- Chaque catalogue d’établissement doit être validé par les responsables autorisés avant activation. Aucune option ni aucun niveau ne doit être inventé.
+- L’activation et les autorisations sont gérées indépendamment pour chaque établissement.
 
 ## Routes
 
