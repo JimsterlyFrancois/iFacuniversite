@@ -1,5 +1,5 @@
 -- iFac universite — schéma PostgreSQL initial
--- Les catalogues restent vides jusqu'à validation des données officielles UPNCH.
+-- Le catalogue multi-établissements est administré depuis l’application.
 -- Les mots de passe doivent être stockés uniquement sous forme de hash robuste.
 
 CREATE TABLE universities (
@@ -14,8 +14,7 @@ CREATE TABLE universities (
 
 CREATE TABLE faculties (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
-  university_id BIGINT REFERENCES universities(id),
+  university_id BIGINT NOT NULL REFERENCES universities(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -27,7 +26,7 @@ CREATE TABLE faculties (
 
 CREATE TABLE options (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  faculty_id BIGINT REFERENCES faculties(id),
+  faculty_id BIGINT NOT NULL REFERENCES faculties(id),
   code VARCHAR(32) NOT NULL,
   name VARCHAR(180) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT FALSE,
@@ -39,7 +38,7 @@ CREATE TABLE options (
 
 CREATE TABLE study_levels (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  option_id BIGINT REFERENCES options(id),
+  option_id BIGINT NOT NULL REFERENCES options(id),
   code VARCHAR(16) NOT NULL,
   label VARCHAR(80) NOT NULL,
   sort_order SMALLINT NOT NULL,
@@ -50,15 +49,15 @@ CREATE TABLE study_levels (
 
 CREATE TABLE users (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
-  university_id BIGINT NOT NULL REFERENCES universities(id),
-  faculty_id BIGINT NOT NULL REFERENCES faculties(id),
-  option_id BIGINT NOT NULL REFERENCES options(id),
+  auth_user_id UUID UNIQUE,
+  university_id BIGINT REFERENCES universities(id),
+  faculty_id BIGINT REFERENCES faculties(id),
+  option_id BIGINT REFERENCES options(id),
   study_level_id BIGINT REFERENCES study_levels(id),
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100) NOT NULL,
   email VARCHAR(254) NOT NULL,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   role VARCHAR(20) NOT NULL DEFAULT 'student'
     CHECK (role IN ('student', 'delegate', 'professor', 'admin', 'applicant')),
   email_verified_at TIMESTAMPTZ,
@@ -102,7 +101,7 @@ CREATE TABLE subjects (
 
 CREATE TABLE documents (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  subject_id BIGINT NOT NULL REFERENCES subjects(id),
+  subject_id BIGINT REFERENCES subjects(id),
   title VARCHAR(220) NOT NULL,
   file_key TEXT NOT NULL,
   mime_type VARCHAR(120) NOT NULL,
