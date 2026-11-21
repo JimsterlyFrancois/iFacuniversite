@@ -1,38 +1,39 @@
-# Configuration serveur — iFac universite
+# Configuration serveur — iFac Université
 
-## Connexions utilisées
+## Services
 - Interface React/Vite : `http://localhost:3435`.
-- API Express : `http://localhost:3434` (ou le port fourni par l'hébergeur).
-- Base de données : PostgreSQL via `DATABASE_URL`.
-- Le catalogue d'inscription est chargé depuis l'API : universités, facultés, options et niveaux. Les listes dépendantes sont filtrées par les identifiants renvoyés par la base.
-- Les appels de l'interface vers `/api/v1` doivent être servis par l'API Express. En local, Vite transmet `/api` au serveur sur le port 3434.
+- API Express : `http://localhost:3434`.
+- Base applicative : Neon PostgreSQL via `DATABASE_URL`.
+- Identités et confirmation d’e-mail : Supabase Auth.
+- Fichiers privés : Supabase Storage.
+- En production, Vercel sert le site et relaie les routes `/api/*` vers Express.
 
-## Configuration locale et hébergement
-1. Copier `.env.example` vers `.env` localement. Ne jamais publier ce fichier ni partager ses secrets.
-2. Définir `DATABASE_URL` avec la chaîne de connexion PostgreSQL fournie par Supabase (section Connect) ou par la base PostgreSQL déjà choisie pour iFac.
-3. Définir `APP_BASE_URL=https://i-facuniversite.vercel.app` et `ADMIN_EMAIL` sur l'adresse exacte du compte administrateur. Dans Supabase → Authentication → URL Configuration, utiliser cette adresse comme Site URL et autoriser `/verify-email` et `/reset-password` dans Redirect URLs.
-4. Configurer le SMTP d'authentification dans **Supabase → Authentication → SMTP Settings** pour les confirmations d'inscription. Pour Brevo : hôte `smtp-relay.brevo.com`, port `587`, identifiant SMTP Brevo, clé SMTP Brevo (pas la clé API) et adresse expéditeur vérifiée. Définir également `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` et `MAIL_FROM` dans Vercel : le serveur Express utilise Nodemailer pour ses e-mails personnalisés de récupération du mot de passe. Ne pas publier les clés.
-5. Créer dans Supabase Storage un bucket nommé `ifac-documents`, en le laissant **privé**, avec une limite de fichier de 15 Mo et le type autorisé PDF. Configurer `SUPABASE_URL`, `SUPABASE_SECRET_KEY` et `SUPABASE_STORAGE_BUCKET=ifac-documents` (ou l’ancienne variable `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_ROLE_KEY`) dans l'environnement du serveur.
-6. Ne jamais exposer `SUPABASE_SERVICE_ROLE_KEY` au navigateur, ne jamais lui donner un préfixe `VITE_` et ne jamais l'ajouter au dépôt GitHub.
-7. Appliquer le schéma à la base ciblée : `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/db/schema.sql`. Exécuter ensuite `server/db/seed_upnch.sql` si le catalogue UPNCH n'y est pas déjà présent.
-8. Installer les dépendances avec `npm install`, puis lancer `npm run dev`.
+Neon et Supabase ont des responsabilités distinctes : les données applicatives sont dans Neon ; Supabase Auth conserve les identités ; Supabase Storage conserve les fichiers privés.
 
-## Fonctions raccordées à l'API
-- Authentification : inscription, connexion, déconnexion, profil de session et demande de récupération du mot de passe.
-- Catalogue : universités, facultés, options et niveaux actifs, servis depuis PostgreSQL.
-- Notes privées : lecture, création, modification et suppression limitées au propriétaire.
-- Documents : liste des métadonnées et routes d'envoi/téléchargement protégées par authentification et rôle administrateur.
-- Annonces : lecture ciblée selon le profil et création par administrateur.
-- Messagerie : groupes auxquels l'étudiant appartient, lecture et envoi de messages avec contrôle d'appartenance.
-- Administration : statistiques et consultation des matières.
+## Configuration
+1. Copier `.env.example` vers `.env` pour le développement local. Ne jamais publier ce fichier.
+2. Définir `DATABASE_URL` avec la chaîne Neon qui utilise le pooler. Conserver `DIRECT_URL` pour les migrations contrôlées. L’API limite son pool PostgreSQL à une connexion par instance Vercel par défaut.
+3. Définir `SUPABASE_URL` et `SUPABASE_PUBLISHABLE_KEY` pour les opérations Auth. La clé `SUPABASE_SECRET_KEY` doit rester côté serveur et sert aux opérations d’administration Auth et Storage.
+4. Configurer les buckets Storage privés `ifac-documents` et `ifac-announcements`, puis définir `SUPABASE_STORAGE_BUCKET` et `SUPABASE_ANNOUNCEMENTS_BUCKET`.
+5. Définir `APP_BASE_URL=https://i-facuniversite.vercel.app`. Dans Supabase Auth, utiliser cette URL comme adresse du site et autoriser les chemins de confirmation et de récupération utilisés par l’application.
+6. Configurer le SMTP de Supabase Auth pour les courriels de confirmation. Configurer aussi `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` et `MAIL_FROM` pour les courriels de récupération envoyés par Express. Les deux services doivent être testés.
+7. Définir `ADMIN_EMAIL` avec l’adresse exacte du compte désigné. `IFAC_OWNER_EMAIL` est facultatif et réservé aux droits de gestion des visuels d’annonces.
 
-## État des connexions et contrôles requis
-- **Stockage PDF :** le code téléverse et télécharge les fichiers via Supabase Storage privé. Les fichiers précédemment enregistrés sur un disque local ne sont pas migrés automatiquement ; ils doivent être transférés avant de réutiliser leurs enregistrements.
-- **E-mail :** les confirmations d'inscription sont envoyées par Supabase Auth via son SMTP personnalisé. Les e-mails de récupération du mot de passe sont envoyés par Nodemailer depuis Express. Les deux configurations SMTP doivent être actives et testées avant d'ouvrir les inscriptions.
-- **Administration :** l'interface et les routes API prennent en charge la création de matières, la publication d'annonces générales, la création de groupes par faculté/option/niveau et le retrait des documents. Le rôle administrateur est protégé côté serveur.
-- **Avis :** le formulaire étudiant est raccordé à la route API de réception des avis.
-- **Déploiement :** les variables doivent être ajoutées dans l'environnement qui exécute réellement l'API, et pas seulement dans le projet Vercel de l'interface. Vérifier que l'API Express est déployée correctement et que `GET /api/health` renvoie `status: ok`.
-- **Tests finaux à effectuer après configuration :** inscription, réception du courriel, confirmation, connexion, création/téléchargement/suppression d'un PDF, création de matière, annonce, groupe et avis.
-- **Sécurité :** ne jamais placer les valeurs secrètes dans le code source ou dans un message.
+## Base de données
+Pour une base vide, appliquer `server/db/schema.sql` à l’aide de `DIRECT_URL`. Pour une base déjà utilisée, comparer d’abord les tables, colonnes, contraintes et index ; appliquer uniquement les migrations manquantes. Ne jamais réinitialiser une base contenant des comptes ou des documents.
 
-Les paiements et la synchronisation hors ligne ne font pas partie du périmètre de cette version.
+Le schéma applicatif ne doit pas dépendre de la présence du schéma PostgreSQL `auth` dans Neon. L’association aux identités externes utilise la colonne `users.auth_user_id` et les API Auth côté serveur.
+
+## Fonctions raccordées
+- Authentification, confirmation d’adresse, profils et sessions.
+- Catalogue multi-établissements : universités, facultés, options et niveaux.
+- Espaces étudiant, délégué, professeur, responsable de programme, responsable de faculté et administration.
+- Documents privés, notes personnelles, annonces, groupes et messages.
+- Gestion des rôles et périmètres, comptes, journal d’audit et forfaits.
+
+Les paiements en ligne et la synchronisation hors ligne complète ne sont pas activés dans cette version.
+
+## Contrôles avant publication
+Vérifier `GET /api/health`, le chargement des catalogues, la création et la confirmation d’un compte, la connexion, la récupération du mot de passe, les droits par rôle, l’envoi et la lecture de fichiers privés, les annonces et les messages. Ces essais doivent être réalisés sur une branche Neon d’aperçu avant toute modification de production.
+
+Ne jamais placer les valeurs secrètes dans le code source, les journaux ou les messages.
