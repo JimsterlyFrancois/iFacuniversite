@@ -77,8 +77,38 @@ const pool = databaseUrl
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      frameSrc: ["'none'"],
+      formAction: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      fontSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://*.supabase.co", "wss://*.supabase.co"],
+      ...(process.env.NODE_ENV === "production" ? { upgradeInsecureRequests: [] } : {})
+    }
+  }
+}));
 app.use(express.json({ limit: "1mb" }));
+// Global API throttling limits scraping and request floods while preserving normal app polling.
+app.use("/api/v1", rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "rate_limit_exceeded", message: "Trop de requêtes. Réessayez dans quelques minutes." }
+}));
+// API responses may contain personal or academic information; never let shared caches retain them.
+app.use("/api/v1", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 app.use("/api/v1/auth", rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }));
 const smtpPort = Number(process.env.SMTP_PORT || 465);
 const mailer = process.env.SMTP_USER && process.env.SMTP_PASS
