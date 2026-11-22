@@ -85,7 +85,7 @@ export function createProfessorsRouter({ pool, requireAuth, requireAdmin }) {
         console.error("Activation professeur Supabase:",auth.status,detail);
         return res.status(503).json({error:"professor_activation_unavailable",message:"Le compte n’a pas pu être créé. Vérifiez le service e-mail."});
       }
-      const authUserId = data.user?.id || (await pool.query("SELECT id FROM auth.users WHERE lower(email)=lower($1) LIMIT 1",[email])).rows[0]?.id;
+      const authUserId = data.user?.id;
       if (!authUserId) return res.status(503).json({error:"professor_auth_identity_unavailable",message:"L’identifiant du compte Supabase est indisponible. Contactez l’administration."});
       const a=assignments.rows[0];
       const hash=await bcrypt.hash(randomBytes(48).toString("hex"),12);

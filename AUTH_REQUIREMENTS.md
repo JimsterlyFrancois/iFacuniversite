@@ -1,25 +1,32 @@
-# iFacuniversite — exigences d’inscription et de connexion
+# iFac Université — exigences d’inscription et de connexion
 
-## Périmètre initial
-- L’UPNCH est la seule université activée au lancement.
-- Les données de facultés, écoles, options et niveaux doivent être structurées de façon à permettre l’ajout d’autres universités publiques haïtiennes plus tard.
-- Les niveaux sont affichés sous la forme « 1re année (L1) », « 2e année (L2) », « 3e année (L3) » et « 4e année (L4) ».
+## Périmètre
+- L’application prend en charge plusieurs universités et établissements.
+- Les universités, facultés ou écoles, options et niveaux proviennent du catalogue administré dans la base de données.
+- Aucun nom d’établissement ni catalogue particulier ne doit être codé en dur dans l’interface.
+- Les niveaux sont affichés à partir des libellés réellement configurés, par exemple « 1re année (L1) » à « 4e année (L4) ».
 
 ## Inscription
-Champs requis : nom, prénom, adresse e-mail valide, faculté/école, niveau, mot de passe et confirmation du mot de passe. L’option est requise lorsqu’elle existe pour la faculté ou l’école choisie. Le choix de la faculté filtre les options disponibles.
-Le mot de passe doit être affichable/masquable et avoir au moins 8 caractères. La confirmation doit correspondre au mot de passe.
+Champs requis : nom, prénom, adresse e-mail valide, établissement, faculté ou école, option et niveau lorsque ces niveaux sont requis par le parcours, mot de passe et confirmation. Les choix dépendants sont chargés depuis l’API. Le serveur vérifie à nouveau la cohérence des identifiants avant de créer le profil.
 
-## Connexion
-Champs requis : adresse e-mail et mot de passe. Le mot de passe doit pouvoir être affiché ou masqué. Prévoir un vrai flux de récupération du mot de passe.
+Le mot de passe doit contenir au moins 10 caractères. La confirmation doit correspondre au mot de passe. Les champs de mot de passe doivent pouvoir être affichés ou masqués.
 
-## Activation et e-mail
-L’inscription réelle doit créer un compte non activé et envoyer un lien à durée limitée. Le compte ne doit être activé qu’après validation du jeton côté serveur. Prévoir la limitation de fréquence, les réponses anti-énumération d’adresses, l’expiration et l’usage unique des jetons.
+## Connexion et identité
+- Supabase Auth gère l’identité et la confirmation de l’adresse e-mail.
+- Le profil applicatif, les rôles et les sessions sont enregistrés dans Neon PostgreSQL.
+- Le lien entre le profil applicatif et l’identité externe est conservé dans `users.auth_user_id`.
+- Le code serveur ne doit pas supposer que le schéma PostgreSQL `auth.users` existe dans Neon. La recherche d’une identité non liée passe par l’API d’administration Auth, depuis le serveur uniquement.
+- La récupération du mot de passe utilise un jeton à durée limitée, à usage unique, vérifié côté serveur.
 
-## Interface
-- Image d’ambiance universitaire avec texte alternatif.
-- Animations légères uniquement; respecter prefers-reduced-motion.
-- Mise en page responsive, messages d’erreur lisibles et navigation clavier.
-- Ne pas ajouter de faux témoignages, logos partenaires ou affirmations de sécurité non vérifiées.
+## Rôles et autorisations
+Un utilisateur ne peut pas s’attribuer un rôle administratif depuis un formulaire public. Les demandes de responsabilité sont validées par le niveau d’administration autorisé. Chaque route vérifie l’identité et le périmètre d’accès côté serveur.
 
-## État technique — important
-La branche contient l’interface et les contrôles côté navigateur. Les routes d’inscription/connexion, le stockage sécurisé des mots de passe, la base de données, l’envoi réel d’e-mails, la confirmation d’adresse et la récupération du mot de passe ne sont pas encore reliés. Les messages de l’interface indiquent cette limite. Ne pas collecter de véritables comptes étudiants et ne pas fusionner vers main avant la mise en place et la vérification de ces fonctions côté serveur.
+## Interface et accessibilité
+- Afficher une image de couverture universitaire avec un texte alternatif pertinent.
+- Adapter les écrans aux téléphones, tablettes et ordinateurs.
+- Respecter `prefers-reduced-motion`.
+- Prévoir des erreurs compréhensibles, des états de chargement et une navigation clavier.
+- Ne pas ajouter de faux témoignages, logos partenaires ou garanties de sécurité non vérifiées.
+
+## Contrôles avant production
+Tester l’inscription, la confirmation e-mail, la connexion, la récupération du mot de passe, la révocation de session, les permissions par rôle, les catalogues multi-établissements et les fichiers privés sur un environnement d’aperçu connecté à une branche Neon isolée.

@@ -1,15 +1,15 @@
-# Cahier des fonctionnalités — iFac (UPNCH)
+# Cahier des fonctionnalités — iFac
 
 ## 1. Concept
-iFac est une bibliothèque numérique de ressources universitaires destinée aux étudiantes et étudiants de l’UPNCH. Les utilisateurs consultent les documents dans l’application (PDF, Word, Excel et PowerPoint) et prennent leurs notes personnelles au même endroit. Les documents sont organisés par université, faculté ou école, option, niveau et matière.
+iFac est un portail numérique de ressources et de services destiné aux communautés universitaires. Les utilisateurs consultent les documents dans l’application (PDF, Word, Excel et PowerPoint) et prennent leurs notes personnelles au même endroit. Les documents sont organisés par université, faculté ou école, option, niveau et matière.
 
 ## 2. Inscription et filtrage obligatoires
 Le formulaire d’inscription comprend au minimum : nom complet, faculté ou école, option et niveau. Les trois derniers champs sont obligatoires. Les champs de compte nécessaires (adresse e-mail et mot de passe) sont également requis lorsque l’authentification sera activée.
 
-- Facultés et écoles à prendre en charge dans le catalogue : FSE, FSAE/GL, FSAE, FDSP/RI, ESUTH et ESSAP/MT/TS.
+- Les facultés et écoles sont définies dans le catalogue de chaque établissement ; aucune liste n’est figée dans le code.
 - La liste des options dépend de la faculté ou de l’école choisie.
 - La liste des niveaux dépend de l’option sélectionnée et ne présente que les niveaux réellement configurés et actifs.
-- Les catalogues doivent être validés à partir des informations officielles de l’UPNCH. Ne créer aucune option ni aucun niveau par supposition.
+- Les catalogues doivent être validés par les établissements concernés. Ne créer aucune option ni aucun niveau par supposition.
 - Lorsqu’une faculté ou une école change, l’option et le niveau sont réinitialisés. Lorsqu’une option change, le niveau est réinitialisé.
 - Le bouton « Rejoindre ma classe » reste désactivé tant que tous les champs obligatoires ne sont pas valides.
 - Le serveur vérifie à nouveau la combinaison université–faculté/école–option–niveau. Toute combinaison inconnue ou désactivée est refusée, même si elle a été envoyée manuellement par le navigateur.
@@ -57,8 +57,8 @@ Objectif de phase mobile : application native ou enveloppe mobile avec stockage 
 - Le blocage des captures d’écran peut être appliqué sur Android natif dans les écrans compatibles; il ne peut pas être garanti de façon universelle dans un navigateur web.
 - Le fonctionnement hors ligne complet est une phase distincte et ne doit pas être présenté comme disponible avant son implémentation et ses tests.
 
-## 11. Extension à d’autres universités publiques
-L’architecture prévoit plusieurs universités. Seule l’UPNCH est active au lancement. Toute nouvelle université reste inactive tant que son catalogue, ses règles et ses responsables n’ont pas été configurés et validés.
+## 11. Gestion multi-établissements
+L’architecture prend en charge plusieurs universités et établissements. Chaque établissement possède son catalogue, ses règles et ses responsables. Un établissement reste inactif tant que son catalogue et ses autorisations n’ont pas été configurés et validés.
 
 ## 12. Design et navigation
 - Identité visuelle : vert sarcelle (teal), avec mode sombre.
@@ -69,7 +69,7 @@ L’architecture prévoit plusieurs universités. Seule l’UPNCH est active au 
 - Prévoir des états de chargement, des erreurs compréhensibles, des écrans vides et une navigation accessible au clavier.
 
 ## Ordre de réalisation
-1. Confirmer le catalogue officiel UPNCH (facultés/écoles, options et niveaux).
+1. Valider le catalogue de chaque établissement (facultés/écoles, options et niveaux).
 2. Construire la navigation responsive et les écrans principaux avec des états vides explicites.
 3. Concevoir le schéma de données et les API avec validation des permissions côté serveur.
 4. Relier l’authentification, la confirmation d’e-mail et la récupération de compte.
@@ -78,5 +78,5 @@ L’architecture prévoit plusieurs universités. Seule l’UPNCH est active au 
 7. Traiter le paiement et le hors-ligne comme phases distinctes.
 8. Tester les permissions, les formats de fichiers, les tailles d’écran et les scénarios d’erreur avant publication.
 
-## Limites connues
-Le prototype actuel contient principalement l’interface d’inscription/connexion. L’authentification réelle, la base de données applicative, les documents, les notes, la messagerie, les annonces, l’administration, le paiement et le stockage hors ligne ne doivent pas être considérés comme opérationnels avant leur développement et leurs tests.
+## État de réalisation et limites
+Le dépôt contient l’interface, l’API, les espaces par rôle et les modules de catalogue, documents, notes, annonces, messagerie et administration. Leur disponibilité effective dépend de la configuration des services et des tests de déploiement. Les paiements et la synchronisation hors ligne complète restent des phases ultérieures.

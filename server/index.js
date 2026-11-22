@@ -519,7 +519,7 @@ app.post("/api/v1/auth/password-reset/confirm", requireDatabase, async (req, res
       return res.status(400).json({ error: "invalid_or_expired_token" });
     }
     const userId = match.rows[0].user_id;
-    const authUserId = await resolveAuthUserId(client, userId, match.rows[0].auth_user_id);
+    const authUserId = await resolveAuthUserId(client, userId, match.rows[0].auth_user_id, { supabaseUrl: supabaseAuthUrl, secretKey: storageKey });
     let passwordHash;
     if (authUserId) {
       const authUpdate = await updateSupabaseUserPassword({

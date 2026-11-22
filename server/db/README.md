@@ -1,22 +1,32 @@
-# Base de données iFac universite
+# Base de données iFac Université
 
-## Préparation PostgreSQL
+## Fournisseur et connexions
+L’application utilise PostgreSQL sur Neon pour les profils, les catalogues, les sessions, les documents, les annonces, les messages, les notes et les données d’administration.
 
-1. Créer une base PostgreSQL dédiée à l'application.
-2. Configurer la variable d'environnement `DATABASE_URL` dans l'environnement du serveur. Ne jamais committer cette valeur dans Git.
-3. Appliquer le schéma initial depuis la racine du dépôt avec un client PostgreSQL :
+- `DATABASE_URL` : connexion Neon avec pooler, utilisée par l’API.
+- `DIRECT_URL` : connexion directe facultative, réservée aux migrations et opérations de maintenance.
+- Toujours conserver les secrets dans les variables d’environnement de l’hébergeur ou dans un fichier local non versionné.
+
+## Initialisation
+1. Créer une branche Neon de travail à partir de la branche cible.
+2. Vérifier que la branche contient les tables et migrations attendues.
+3. Sur une base réellement vide uniquement, appliquer le schéma :
 
 ```sh
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f server/db/schema.sql
+psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -f server/db/schema.sql
 ```
 
-4. Redémarrer le serveur, puis vérifier `GET /api/health`.
-5. Vérifier `GET /api/v1/catalog/universities`. La réponse peut contenir une liste vide tant qu'aucune université n'a été activée et validée.
+4. Sur une base qui contient déjà des données, ne pas rejouer le schéma initial. Appliquer uniquement les migrations manquantes, après comparaison du schéma et sauvegarde vérifiée.
+5. Vérifier `GET /api/health` et les routes de catalogue.
 
-## Sécurité et données initiales
+## Catalogue et comptes
+Les établissements, facultés, options et niveaux sont gérés par l’interface d’administration. Aucun fichier de seed ne doit injecter un établissement ou un catalogue non validé.
 
-- Le schéma ne charge volontairement aucune faculté, option ou niveau : les informations officielles UPNCH doivent être confirmées avant insertion.
-- Ne pas créer d'utilisateur administrateur en modifiant un formulaire public.
-- Ne pas utiliser de vrais comptes étudiants tant que l'inscription, le hash des mots de passe, les sessions, la confirmation e-mail et la récupération de compte ne sont pas implémentés et testés.
-- Pour la production, restreindre l'accès réseau à PostgreSQL et utiliser une connexion TLS conforme aux paramètres du fournisseur.
-- Les routes de catalogue sont des lectures publiques; elles ne remplacent pas la validation serveur requise lors de la future inscription.
+Ne jamais créer un administrateur en modifiant un formulaire public. Les demandes de rôle suivent le processus de validation prévu dans l’API.
+
+## Sécurité et fiabilité
+- Conserver les connexions PostgreSQL chiffrées.
+- Garder les buckets Storage privés et servir les fichiers après contrôle des droits.
+- Ne pas exposer les clés Auth ou Storage au navigateur.
+- Ne pas activer de politiques d’accès génériques sur la base pour contourner le backend.
+- Avant tout changement de structure en production, sauvegarder les données, tester sur une branche Neon séparée et vérifier les contraintes et les relations.
