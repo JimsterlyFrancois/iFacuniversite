@@ -16,3 +16,9 @@ Les annonces actives apparaissent dans un encart commun au-dessus de l'espace de
 Appliquer d'abord `supabase/migrations/20261125160000_platform_announcements.sql` au projet Supabase, puis déployer le code correspondant. La migration crée uniquement les deux nouvelles tables et leurs index, active RLS et interdit leur accès direct aux rôles `anon` et `authenticated`. Les données des universités et des utilisateurs ne sont pas modifiées.
 
 Les annonces publiées peuvent être suspendues et réactivées depuis la console. Les publications et changements de statut sont consignés dans `admin_audit_logs`.
+
+## Transfert des responsables d'université
+
+La rubrique **Administrateurs** du Super Admin est transversale : aucune université, y compris l'UPNCH, n'a de privilège spécial dans cette gestion. Un administrateur général peut nommer un compte déjà créé et actif pour n'importe quelle université, puis retirer une affectation de responsable.
+
+Pour quitter soi-même une université, il faut d'abord nommer un successeur dans cette université, puis utiliser **Me retirer de cette université** sur sa propre ligne. Cette action retire uniquement l'affectation `university_admin` concernée ; elle ne retire pas le rôle global `admin_general`. Si le dernier responsable actif est retiré, le système ferme automatiquement les inscriptions étudiantes jusqu'à la nomination d'un autre responsable.
