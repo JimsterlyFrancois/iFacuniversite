@@ -117,3 +117,36 @@ test("revoking one university administrator keeps registration open when another
     assert.equal(calls.filter(call => call.sql.includes("INSERT INTO admin_audit_logs")).length, 1);
   });
 });
+
+
+test("a general administrator can revoke their own university-admin assignment without losing global administration", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("UPDATE role_assignments SET status")) {
+        assert.match(sql, /AND role='university_admin'/);
+        return { rows: [{ id: 12, user_id: 1, university_id: 10, status: "revoked" }], rowCount: 1 };
+      }
+      if (sql.includes("UPDATE universities u") && sql.includes("registration_enabled=FALSE")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("INSERT INTO admin_audit_logs")) return { rows: [{ id: 1 }], rowCount: 1 };
+      throw new Error("Unexpected query: " + sql);
+    }
+  };
+
+  await withApi(pool, async base => {
+    const response = await fetch(base + "/general-admin/university-admins/12/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: false })
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.message, "Accès administrateur retiré.");
+    assert.equal(calls.some(call => call.sql.includes("UPDATE users")), false);
+    assert.equal(calls.some(call => call.sql.includes("role='admin_general'")), false);
+    assert.equal(calls.some(call => call.sql.includes("INSERT INTO admin_audit_logs")), true);
+  });
+});

@@ -22,6 +22,7 @@ import { createFacultyManagerRouter } from "./routes/facultyManager.routes.js";
 import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js";
 import { createUniversityCatalogRouter } from "./routes/universityCatalog.routes.js";
 import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
+import { createPlatformAnnouncementsRouter } from "./routes/platformAnnouncements.routes.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -401,6 +402,7 @@ app.use("/api/v1", createFacultyManagerRouter({ pool, requireAuth, readPrivateOb
 app.use("/api/v1", createUniversityAdminRouter({ pool, requireAuth }));
 app.use("/api/v1", createUniversityCatalogRouter({ pool, requireAuth }));
 app.use("/api/v1", createGeneralAdminRouter({ pool, requireAuth }));
+app.use("/api/v1", createPlatformAnnouncementsRouter({ pool, requireAuth }));
 
 app.get("/api/health", async (_req, res) => {
   if (!pool) {
