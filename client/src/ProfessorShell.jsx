@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiUrl } from "./apiBase.js";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import useAutoRefresh from "./useAutoRefresh.js";
@@ -152,7 +153,7 @@ export default function ProfessorShell({ token, user, onLogout, request, theme =
 
   async function downloadDocument(id, name) {
     try {
-      const response = await fetch(`/api/v1/class-documents/${id}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(apiUrl(`/api/v1/class-documents/${id}/download`), { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
         throw new Error(result.message || result.error || "Téléchargement impossible.");
