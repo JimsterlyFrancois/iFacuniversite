@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
+import { hasActiveRoleApprover, roleApproverMessage } from "../lib/roleHierarchy.js";
 
 const validEmail = value =>
   typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && value.trim().length <= 254;
@@ -113,12 +114,26 @@ export function createRoleRegistrationRouter({ pool }) {
               message: "Au moins une demande utilise un cours qui ne correspond pas à son université, sa faculté, son programme ou son niveau."
             });
           }
+          if (!(await hasActiveRoleApprover(pool, application))) {
+            return res.status(409).json({
+              error: "role_approver_unavailable",
+              message: roleApproverMessage("professor")
+            });
+          }
         }
-      } else if (!(await validateScope(pool, scope))) {
-        return res.status(400).json({
-          error: "invalid_role_scope",
-          message: "Le périmètre choisi ne correspond pas à la structure universitaire active."
-        });
+      } else {
+        if (!(await validateScope(pool, scope))) {
+          return res.status(400).json({
+            error: "invalid_role_scope",
+            message: "Le périmètre choisi ne correspond pas à la structure universitaire active."
+          });
+        }
+        if (!(await hasActiveRoleApprover(pool, scope))) {
+          return res.status(409).json({
+            error: "role_approver_unavailable",
+            message: roleApproverMessage(scope.role)
+          });
+        }
       }
 
       const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
