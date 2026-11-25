@@ -10,7 +10,7 @@ test("student catalogue lists only active universities with registration enabled
   });
   assert.match(receivedSql, /u\.is_active\s*=\s*TRUE/i);
   assert.match(receivedSql, /u\.registration_enabled\s*=\s*TRUE/i);
-  assert.match(receivedSql, /EXISTS\s*\([\s\S]*JOIN faculties f[\s\S]*JOIN options o[\s\S]*JOIN study_levels l/i);
+  assert.match(receivedSql, /EXISTS\s*\([\s\S]*FROM faculties f[\s\S]*JOIN options o[\s\S]*JOIN study_levels l/i);
   assert.match(receivedSql, /f\.is_active\s*=\s*TRUE/i);
   assert.match(receivedSql, /o\.is_active\s*=\s*TRUE/i);
   assert.match(receivedSql, /l\.is_active\s*=\s*TRUE/i);
