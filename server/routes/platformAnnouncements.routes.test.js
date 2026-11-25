@@ -22,7 +22,7 @@ async function withApi(pool, run) {
   }
 }
 
-test("platform announcement feed uses the authenticated account and enforces active role and academic scope matching in SQL", async () => {
+test("platform announcement feed derives active roles and scopes together from the authenticated account", async () => {
   const calls = [];
   const items = [{ id: 5, title: "Avis officiel", body: "Message ciblé", created_at: "2026-11-25T12:00:00.000Z" }];
   const pool = {
@@ -38,11 +38,13 @@ test("platform announcement feed uses the authenticated account and enforces act
     assert.equal(response.status, 200);
     assert.deepEqual(body.data, items);
     assert.deepEqual(calls[0].params, [42]);
-    assert.match(calls[0].sql, /WITH user_roles\(role\) AS/);
-    assert.match(calls[0].sql, /user_scopes\(university_id,faculty_id,option_id,study_level_id\) AS/);
-    assert.match(calls[0].sql, /CARDINALITY\(t.target_roles\)=0/);
-    assert.match(calls[0].sql, /t\.study_level_id=s\.study_level_id/);
+    assert.match(calls[0].sql, /WITH user_contexts\(role,university_id,faculty_id,option_id,study_level_id\) AS/);
+    assert.match(calls[0].sql, /ra\.role,ra\.university_id,ra\.faculty_id,ra\.option_id,ra\.study_level_id/);
+    assert.match(calls[0].sql, /uc\.role=ANY\(t\.target_roles\)/);
+    assert.match(calls[0].sql, /uc\.university_id=uc\.university_id/);
+    assert.match(calls[0].sql, /uc\.role='university_admin'/);
     assert.match(calls[0].sql, /un\.is_active=TRUE/);
-    assert.match(calls[0].sql, /s\.faculty_id IS NULL AND EXISTS/);
+    assert.doesNotMatch(calls[0].sql, /WITH user_roles\(role\) AS/);
+    assert.doesNotMatch(calls[0].sql, /user_scopes\(/);
   });
 });
