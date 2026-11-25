@@ -105,7 +105,7 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     if (!id || name.length < 2 || !/^[A-Z0-9_-]{2,32}$/.test(code) || typeof isActive !== "boolean") return res.status(400).json({ error: "invalid_university_update" });
     try {
       const result = await pool.query(
-        "UPDATE universities SET code=$1,name=$2,is_active=$3,registration_enabled=CASE WHEN $3 THEN registration_enabled ELSE FALSE END,updated_at=NOW() WHERE id=$4 RETURNING id,code,name,is_active,registration_enabled",
+        "UPDATE universities SET code=$1,name=$2,is_active=$3,registration_enabled=CASE WHEN $3 AND is_active THEN registration_enabled ELSE FALSE END,updated_at=NOW() WHERE id=$4 RETURNING id,code,name,is_active,registration_enabled",
         [code,name,isActive,id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "university_not_found" });

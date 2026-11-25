@@ -3,7 +3,7 @@
 ALTER TABLE public.universities
   ALTER COLUMN registration_enabled SET DEFAULT FALSE;
 
--- Close only institutions that currently have no complete active academic path.
+-- Close inactive institutions and those without an active university administrator or a complete active academic path.
 -- Existing accounts, assignments and historical academic records are preserved.
 UPDATE public.universities u
 SET registration_enabled = FALSE,
