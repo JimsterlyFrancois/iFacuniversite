@@ -6,6 +6,12 @@ export async function listRegistrableUniversities(queryable) {
        AND u.registration_enabled = TRUE
        AND EXISTS (
          SELECT 1
+         FROM role_assignments ra
+         JOIN users administrator ON administrator.id=ra.user_id AND administrator.is_active=TRUE
+         WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='active'
+       )
+       AND EXISTS (
+         SELECT 1
          FROM faculties f
          JOIN options o ON o.faculty_id=f.id
          JOIN study_levels l ON l.option_id=o.id
@@ -50,6 +56,11 @@ export async function findActiveAcademicProfile(queryable, {
      JOIN study_levels l ON l.option_id=o.id
      WHERE u.code=$1 AND f.code=$2 AND o.code=$3 AND l.code=$4
        AND u.is_active=TRUE AND u.registration_enabled=TRUE
+       AND EXISTS (
+         SELECT 1 FROM role_assignments ra
+         JOIN users administrator ON administrator.id=ra.user_id AND administrator.is_active=TRUE
+         WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='active'
+       )
        AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE`,
     [universityCode, facultyCode, optionCode, studyLevelCode]
   );

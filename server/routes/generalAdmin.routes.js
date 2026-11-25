@@ -177,8 +177,33 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
         [active ? "active" : "revoked",assignmentId,req.user.id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "assignment_not_found" });
+      let registrationClosed = false;
+      if (!active) {
+        const closed = await pool.query(
+          `UPDATE universities u
+           SET registration_enabled=FALSE,updated_at=NOW()
+           WHERE u.id=$1 AND u.registration_enabled=TRUE
+             AND NOT EXISTS (
+               SELECT 1 FROM role_assignments ra
+               JOIN users administrator ON administrator.id=ra.user_id AND administrator.is_active=TRUE
+               WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='active'
+             )
+           RETURNING u.id`,
+          [result.rows[0].university_id]
+        );
+        registrationClosed = closed.rowCount > 0;
+      }
       await audit(req, active ? "university_admin.reactivated" : "university_admin.revoked", "role_assignment", assignmentId, result.rows[0].university_id, { userId: result.rows[0].user_id });
-      return res.json({ message: active ? "Accès administrateur réactivé." : "Accès administrateur retiré." });
+      if (registrationClosed) {
+        await audit(req, "university.registration_auto_closed_no_admin", "university", result.rows[0].university_id, result.rows[0].university_id, { reason: "no_active_university_admin" });
+      }
+      return res.json({
+        message: active
+          ? "Accès administrateur réactivé. Les inscriptions ne sont pas rouvertes automatiquement."
+          : registrationClosed
+            ? "Accès administrateur retiré. Aucun responsable d’université ne reste actif : les inscriptions étudiantes ont été fermées."
+            : "Accès administrateur retiré."
+      });
     } catch (error) {
       if (error.code === "23514") return res.status(409).json({ error: "university_admin_limit", message: "La limite de deux administrateurs actifs est atteinte." });
       return res.status(503).json({ error: "university_admin_status_failed" });

@@ -58,3 +58,62 @@ test("new universities stay closed to student registration until their hierarchy
     assert.deepEqual(insert.params, ["NEWUNI", "Nouvelle université"]);
   });
 });
+
+
+test("revoking the last active university administrator closes student registration", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("UPDATE role_assignments SET status")) {
+        return { rows: [{ id: 7, user_id: 31, university_id: 10, status: "revoked" }], rowCount: 1 };
+      }
+      if (sql.includes("UPDATE universities u") && sql.includes("registration_enabled=FALSE")) {
+        return { rows: [{ id: 10 }], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO admin_audit_logs")) return { rows: [{ id: 1 }], rowCount: 1 };
+      throw new Error("Unexpected query: " + sql);
+    }
+  };
+  await withApi(pool, async base => {
+    const response = await fetch(base + "/general-admin/university-admins/7/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: false })
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.match(body.message, /inscriptions étudiantes ont été fermées/i);
+    assert.equal(calls.some(call => call.sql.includes("registration_enabled=FALSE")), true);
+    assert.equal(calls.filter(call => call.sql.includes("INSERT INTO admin_audit_logs")).length, 2);
+  });
+});
+
+test("revoking one university administrator keeps registration open when another remains active", async () => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("UPDATE role_assignments SET status")) {
+        return { rows: [{ id: 8, user_id: 32, university_id: 10, status: "revoked" }], rowCount: 1 };
+      }
+      if (sql.includes("UPDATE universities u") && sql.includes("registration_enabled=FALSE")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("INSERT INTO admin_audit_logs")) return { rows: [{ id: 1 }], rowCount: 1 };
+      throw new Error("Unexpected query: " + sql);
+    }
+  };
+  await withApi(pool, async base => {
+    const response = await fetch(base + "/general-admin/university-admins/8/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: false })
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.message, "Accès administrateur retiré.");
+    assert.equal(calls.some(call => call.sql.includes("registration_enabled=FALSE") && call.sql.includes("UPDATE universities u")), true);
+    assert.equal(calls.filter(call => call.sql.includes("INSERT INTO admin_audit_logs")).length, 1);
+  });
+});

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { findActiveAcademicProfile, listActiveRoleUniversities, listProfessorUniversities, listRegistrableUniversities } from "./registrationCatalog.js";
 
-test("student catalogue lists only active universities with registration enabled and a complete active path", async () => {
+test("student catalogue lists only active universities with an active administrator, registration enabled and a complete active path", async () => {
   let receivedSql = "";
   const rows = [{ id: 71, code: "READY", name: "Université prête" }];
   const result = await listRegistrableUniversities({
@@ -10,6 +10,8 @@ test("student catalogue lists only active universities with registration enabled
   });
   assert.match(receivedSql, /u\.is_active\s*=\s*TRUE/i);
   assert.match(receivedSql, /u\.registration_enabled\s*=\s*TRUE/i);
+  assert.match(receivedSql, /ra\.role='university_admin' AND ra\.status='active'/i);
+  assert.match(receivedSql, /administrator\.is_active=TRUE/i);
   assert.match(receivedSql, /EXISTS\s*\([\s\S]*FROM faculties f[\s\S]*JOIN options o[\s\S]*JOIN study_levels l/i);
   assert.match(receivedSql, /f\.is_active\s*=\s*TRUE/i);
   assert.match(receivedSql, /o\.is_active\s*=\s*TRUE/i);
@@ -53,6 +55,7 @@ test("student registration requires a complete active path and an open universit
   assert.match(receivedSql, /JOIN study_levels l ON l\.option_id=o\.id/i);
   assert.match(receivedSql, /u\.is_active=TRUE/i);
   assert.match(receivedSql, /u\.registration_enabled=TRUE/i);
+  assert.match(receivedSql, /ra\.role='university_admin' AND ra\.status='active'/i);
   assert.match(receivedSql, /f\.is_active=TRUE/i);
   assert.match(receivedSql, /o\.is_active=TRUE/i);
   assert.match(receivedSql, /l\.is_active=TRUE/i);

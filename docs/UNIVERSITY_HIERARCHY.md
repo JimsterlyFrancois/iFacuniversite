@@ -11,7 +11,7 @@
 
 ## Deux catalogues distincts
 
-- `GET /api/v1/catalog/universities` est destiné à l’inscription étudiante. Il ne retourne que les établissements actifs, dont les inscriptions sont ouvertes et qui possèdent au moins une chaîne active Faculté → Option → Niveau.
+- `GET /api/v1/catalog/universities` est destiné à l’inscription étudiante. Il ne retourne que les établissements actifs qui disposent d’au moins un responsable d’université actif, dont les inscriptions sont ouvertes et qui possèdent au moins une chaîne active Faculté → Option → Niveau.
 - `GET /api/v1/catalog/role-universities` sert aux demandes de responsables et de professeurs. Il retourne les établissements actifs même pendant leur configuration.
 - Les catalogues de facultés, d’options et de niveaux continuent à respecter la relation parent-enfant et le statut actif de chaque élément.
 - L’API de création du compte étudiant vérifie à nouveau que l’établissement est ouvert et que le parcours complet est actif. Masquer un choix dans l’interface n’est jamais considéré comme un contrôle de sécurité suffisant.
@@ -20,7 +20,7 @@
 
 Une université nouvellement créée reste active pour sa préparation administrative, mais `registration_enabled` est initialisé à `false`. La présence d’une université dans le formulaire des responsables n’implique donc pas que les étudiants peuvent s’y inscrire.
 
-Le responsable d’université peut ouvrir les inscriptions lorsqu’au moins une chaîne active Faculté → Option → Niveau existe. Il peut aussi les fermer manuellement. Si une désactivation de faculté, d’option ou de niveau fait disparaître le dernier parcours complet, l’API referme automatiquement les inscriptions. Les comptes existants et les données historiques ne sont pas supprimés.
+Le responsable d’université peut ouvrir les inscriptions lorsqu’au moins une chaîne active Faculté → Option → Niveau existe. Il peut aussi les fermer manuellement. Si une désactivation de faculté, d’option ou de niveau fait disparaître le dernier parcours complet, ou si l’administrateur général retire le dernier responsable d’université actif, l’API referme automatiquement les inscriptions. Réactiver ou nommer un responsable ne rouvre jamais automatiquement les inscriptions. Les comptes existants et les données historiques ne sont pas supprimés.
 
 ## Validation hiérarchique des demandes
 

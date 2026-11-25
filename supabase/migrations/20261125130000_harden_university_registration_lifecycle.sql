@@ -9,7 +9,19 @@ UPDATE public.universities u
 SET registration_enabled = FALSE,
     updated_at = NOW()
 WHERE u.registration_enabled = TRUE
-  AND NOT EXISTS (
+  AND (
+    u.is_active IS NOT TRUE
+    OR NOT EXISTS (
+      SELECT 1
+      FROM public.role_assignments ra
+      JOIN public.users administrator
+        ON administrator.id = ra.user_id
+       AND administrator.is_active = TRUE
+      WHERE ra.university_id = u.id
+        AND ra.role = 'university_admin'
+        AND ra.status = 'active'
+    )
+    OR NOT EXISTS (
     SELECT 1
     FROM public.faculties f
     JOIN public.options o ON o.faculty_id = f.id
@@ -18,4 +30,5 @@ WHERE u.registration_enabled = TRUE
       AND f.is_active = TRUE
       AND o.is_active = TRUE
       AND l.is_active = TRUE
+    )
   );
