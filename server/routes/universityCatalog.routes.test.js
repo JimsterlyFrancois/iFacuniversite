@@ -94,11 +94,11 @@ test("an option cannot be created in a faculty outside the administrator's unive
   });
 });
 
-test("student registration cannot be enabled before the academic catalogue is complete", async () => {
+test("student registration cannot be enabled without one connected active faculty-option-level path", async () => {
   const pool = makePool({
     scopes: [{ assignment_id: 7, university_id: 10, university_name: "Université A" }],
-    query: async sql => sql.includes("SELECT COUNT(DISTINCT f.id)")
-      ? { rows: [{ faculties: 0, options: 0, levels: 0 }], rowCount: 1 }
+    query: async sql => sql.includes("SELECT EXISTS")
+      ? { rows: [{ catalog_ready: false }], rowCount: 1 }
       : { rows: [], rowCount: 0 }
   });
   await withApi(pool, async base => {
@@ -109,6 +109,46 @@ test("student registration cannot be enabled before the academic catalogue is co
     const body = await response.json();
     assert.equal(response.status, 409);
     assert.equal(body.error, "academic_catalog_incomplete");
-    assert.equal(pool.calls.some(call => call.sql.includes("UPDATE universities SET registration_enabled")), false);
+    assert.match(body.message, /chaîne complète et active/i);
+    assert.equal(pool.calls.some(call => call.sql.includes("UPDATE universities SET registration_enabled=TRUE")), false);
+  });
+});
+
+test("student registration opens only after the server confirms a connected active path", async () => {
+  const pool = makePool({
+    scopes: [{ assignment_id: 7, university_id: 10, university_name: "Université A" }],
+    query: async sql => {
+      if (sql.includes("SELECT EXISTS")) return { rows: [{ catalog_ready: true }], rowCount: 1 };
+      if (sql.includes("UPDATE universities SET registration_enabled=TRUE")) return { rows: [{ id: 10, name: "Université A", registration_enabled: true }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    }
+  });
+  await withApi(pool, async base => {
+    const response = await fetch(base + "/university-admin/registration/enable", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeAssignmentId: 7 })
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).university.registration_enabled, true);
+    assert.equal(pool.calls.some(call => call.sql.includes("UPDATE universities SET registration_enabled=TRUE")), true);
+  });
+});
+
+test("university administrators can close student registration without deleting existing accounts", async () => {
+  const pool = makePool({
+    scopes: [{ assignment_id: 7, university_id: 10, university_name: "Université A" }],
+    query: async sql => sql.includes("UPDATE universities SET registration_enabled=FALSE")
+      ? { rows: [{ id: 10, name: "Université A", registration_enabled: false }], rowCount: 1 }
+      : { rows: [], rowCount: 1 }
+  });
+  await withApi(pool, async base => {
+    const response = await fetch(base + "/university-admin/registration/disable", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeAssignmentId: 7 })
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.university.registration_enabled, false);
+    assert.match(body.message, /comptes existants ne sont pas supprimés/i);
   });
 });
