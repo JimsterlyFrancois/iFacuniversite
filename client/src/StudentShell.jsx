@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { apiUrl } from "./apiBase.js";
 import ProfessorManagement from "./ProfessorManagement.jsx";
 import CourseManagement from "./CourseManagement.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
@@ -103,7 +104,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
         if (user.role === "admin") { const adminResult = await request("/admin/announcements", { token }); setAdminAnnouncements(adminResult.data || []); setCanUploadAnnouncementFlyer(Boolean(adminResult.canUploadFlyers)); }
         const decorated = await Promise.all((r.data || []).map(async item => {
           if (!item.has_image) return item;
-          try { const response = await fetch(`/api/v1/announcements/${item.id}/image`, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return item; return { ...item, imageUrl: URL.createObjectURL(await response.blob()) }; } catch { return item; }
+          try { const response = await fetch(apiUrl(`/api/v1/announcements/${item.id}/image`), { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) return item; return { ...item, imageUrl: URL.createObjectURL(await response.blob()) }; } catch { return item; }
         }));
         setItems(decorated);
       }
@@ -217,7 +218,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   }
   async function viewPdf(endpoint, title) {
     try {
-      const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(apiUrl(endpoint), { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || data.error || "Ouverture du PDF impossible."); }
       const blob = await response.blob();
       if (blob.type && blob.type !== "application/pdf") throw new Error("Le fichier reçu n’est pas un PDF valide.");
@@ -228,7 +229,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   function viewClassDocument(id, title) { return viewPdf(`/api/v1/class-documents/${id}/download`, title); }
   async function downloadClassDocument(id, name) {
     try {
-      const response = await fetch(`/api/v1/class-documents/${id}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(apiUrl(`/api/v1/class-documents/${id}/download`), { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || data.error || "Téléchargement impossible."); }
       const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a");
       a.href = url; a.download = name || `document-${id}.pdf`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -419,7 +420,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   }
   async function downloadDocument(id, title) {
     try {
-      const response = await fetch(`/api/v1/documents/${id}/download`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(apiUrl(`/api/v1/documents/${id}/download`), { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) { const r = await response.json().catch(() => ({})); throw new Error(r.message || r.error || "Téléchargement impossible."); }
       const blob = await response.blob(); const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = title || `document-${id}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
