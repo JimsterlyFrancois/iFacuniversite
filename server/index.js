@@ -240,6 +240,48 @@ async function getPublicUser(user) {
                 JOIN study_levels pl ON pl.id=pa.study_level_id
                 LEFT JOIN courses pc ON pc.id=pa.requested_course_id
                 WHERE pi.user_id=u.id AND pa.approval_status IN ('pending','rejected')
+                UNION ALL
+                SELECT json_build_object(
+                  'assignmentId',a.id,'role',a.role,'status','blocked',
+                  'universityId',a.university_id,'facultyId',a.faculty_id,
+                  'optionId',a.option_id,'studyLevelId',a.study_level_id,
+                  'universityName',au.name,'facultyName',af.name,
+                  'optionName',ao.name,'studyLevelLabel',al.label
+                ) AS item,a.created_at
+                FROM role_assignments a
+                LEFT JOIN universities au ON au.id=a.university_id
+                LEFT JOIN faculties af ON af.id=a.faculty_id
+                LEFT JOIN options ao ON ao.id=a.option_id
+                LEFT JOIN study_levels al ON al.id=a.study_level_id
+                WHERE a.user_id=u.id AND a.status='active' AND a.role<>'admin_general'
+                  AND (
+                    (a.role='university_admin' AND au.is_active IS NOT TRUE)
+                    OR (a.role='faculty_manager' AND (au.is_active IS NOT TRUE OR af.is_active IS NOT TRUE))
+                    OR (a.role='program_manager' AND (
+                      au.is_active IS NOT TRUE OR af.is_active IS NOT TRUE OR ao.is_active IS NOT TRUE
+                      OR (a.study_level_id IS NOT NULL AND al.is_active IS NOT TRUE)
+                    ))
+                  )
+                UNION ALL
+                SELECT json_build_object(
+                  'assignmentId',pa.id,'role','professor','status','blocked',
+                  'universityId',pa.university_id,'facultyId',pa.faculty_id,
+                  'optionId',pa.option_id,'studyLevelId',pa.study_level_id,
+                  'universityName',pu.name,'facultyName',pf.name,
+                  'optionName',po.name,'studyLevelLabel',pl.label,
+                  'courseId',pa.requested_course_id,'courseName',pc.name
+                ) AS item,pa.created_at
+                FROM professor_assignments pa
+                JOIN professor_invites pi ON pi.id=pa.invite_id
+                JOIN universities pu ON pu.id=pa.university_id
+                JOIN faculties pf ON pf.id=pa.faculty_id
+                JOIN options po ON po.id=pa.option_id
+                JOIN study_levels pl ON pl.id=pa.study_level_id
+                LEFT JOIN courses pc ON pc.id=pa.course_id
+                WHERE pi.user_id=u.id AND pa.is_active=TRUE AND pa.approval_status='approved'
+                  AND pa.course_id IS NOT NULL
+                  AND (pu.is_active IS NOT TRUE OR pf.is_active IS NOT TRUE OR po.is_active IS NOT TRUE
+                    OR pl.is_active IS NOT TRUE OR pc.is_active IS NOT TRUE)
               ) application
             ),'[]'::json) AS role_applications
      FROM users u
