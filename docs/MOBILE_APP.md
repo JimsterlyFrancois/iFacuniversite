@@ -38,9 +38,9 @@ Le paquet Capacitor iOS est installé et l'identité de l'application est partag
 
 ## API, comptes et fichiers
 
-- Neon reste la base PostgreSQL de l'application.
+- Supabase fournit la base PostgreSQL de l'application.
 - Supabase Auth reste le fournisseur d'identité existant.
 - Supabase Storage conserve les documents et fichiers privés.
 - Les appels API mobiles utilisent le domaine de production configuré au moment du build.
 
-Le cache hors ligne des documents et les notifications push natives ne sont pas encore implémentés dans cette première intégration.
+Le catalogue académique utilise un cache local limité aux listes publiques de sélection : l’application affiche immédiatement la dernière liste connue, puis la resynchronise lorsque l’utilisateur revient au premier plan, au plus une fois toutes les cinq minutes. Les documents privés ne sont pas mis en cache hors ligne et les notifications push natives ne sont pas encore implémentées.

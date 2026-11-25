@@ -7,13 +7,19 @@ import FacultyManagerShell from "./FacultyManagerShell.jsx";
 import UniversityAdminShell from "./UniversityAdminShell.jsx";
 import GeneralAdminShell from "./GeneralAdminShell.jsx";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
+import { readCatalogCache, writeCatalogCache } from "./catalogCache.js";
 
 const API = apiUrl("/api/v1");
 async function request(path, { token, ...options } = {}) {
   const headers = { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers };
-  const response = await fetch(`${API}${path}`, { ...options, headers });
+  let response;
+  try {
+    response = await fetch(`${API}${path}`, { ...options, headers });
+  } catch {
+    throw new Error("network_unreachable");
+  }
   const data = response.status === 204 ? null : await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.message || data?.error || "Une erreur est survenue.");
+  if (!response.ok) throw new Error(data?.message || data?.error || `http_${response.status}`);
   return data;
 }
 function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label>; }
@@ -48,13 +54,19 @@ export default function App() {
   const [optionId, setOptionId] = useState("");
   const [studyLevelId, setStudyLevelId] = useState("");
 
-  // Le catalogue est chargé depuis l'API et la base de données.
-  const [universities, setUniversities] = useState([]);
-  const [roleUniversities, setRoleUniversities] = useState([]);
+  // Le catalogue est d'abord affiché depuis le cache local, puis synchronisé avec l'API.
+  const [universities, setUniversities] = useState(() => readCatalogCache("/catalog/universities") ?? []);
+  const [roleUniversities, setRoleUniversities] = useState(() => readCatalogCache("/catalog/role-universities") ?? []);
   const [faculties, setFaculties] = useState([]);
   const [options, setOptions] = useState([]);
   const [levels, setLevels] = useState([]);
-  const [catalogLoading, setCatalogLoading] = useState({ universities: false, roleUniversities: false, faculties: false, options: false, levels: false });
+  const [catalogLoading, setCatalogLoading] = useState(() => ({
+    universities: readCatalogCache("/catalog/universities") === null,
+    roleUniversities: readCatalogCache("/catalog/role-universities") === null,
+    faculties: false,
+    options: false,
+    levels: false
+  }));
   const [catalogErrors, setCatalogErrors] = useState({ universities: "", roleUniversities: "", faculties: "", options: "", levels: "" });
 
   const selectedUniversity = universities.find(x => String(x.id) === String(universityId));
@@ -62,64 +74,66 @@ export default function App() {
   const selectedOption = options.find(x => String(x.id) === String(optionId));
 
   async function loadCatalogList(kind, path, setter, { silent = false } = {}) {
-    if (!silent) {
-      setCatalogLoading(previous => ({ ...previous, [kind]: true }));
-      setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
-    }
+    const cached = readCatalogCache(path);
+    if (cached !== null) setter(cached);
+    if (!silent && cached === null) setCatalogLoading(previous => ({ ...previous, [kind]: true }));
+    setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
     try {
       const result = await request(path);
-      setter(result.data || []);
-    } catch {
-      if (!silent) {
-        setter([]);
-        setCatalogErrors(previous => ({ ...previous, [kind]: "Impossible de charger cette liste. Vérifiez la connexion." }));
-      }
+      if (!Array.isArray(result?.data)) throw new Error("invalid_catalog_response");
+      setter(result.data);
+      writeCatalogCache(path, result.data);
+      setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
+    } catch (error) {
+      if (cached === null) setter([]);
+      const message = cached !== null
+        ? "Synchronisation indisponible. La dernière liste enregistrée reste affichée."
+        : error?.message === "network_unreachable"
+          ? "Le serveur iFac ne répond pas actuellement. Votre connexion Internet n’est pas nécessairement en cause."
+          : "Le catalogue iFac est temporairement indisponible. Réessayez dans quelques instants.";
+      setCatalogErrors(previous => ({ ...previous, [kind]: message }));
     } finally {
-      if (!silent) setCatalogLoading(previous => ({ ...previous, [kind]: false }));
+      if (!silent && cached === null) setCatalogLoading(previous => ({ ...previous, [kind]: false }));
     }
   }
 
   useEffect(() => {
-    loadCatalogList("universities", "/catalog/universities", setUniversities);
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "responsible") return;
-    loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities);
+    if (mode === "signup") {
+      loadCatalogList("universities", "/catalog/universities", setUniversities);
+    } else if (mode === "responsible") {
+      loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities);
+    }
   }, [mode]);
 
   useEffect(() => {
     if (mode !== "signup" && mode !== "responsible") return undefined;
     let inFlight = false;
+    let lastRefreshAt = Date.now();
     const isEditing = () => {
       const active = document.activeElement;
       return Boolean(active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.closest("form")));
     };
-    const refresh = async (force = false) => {
-      if (inFlight || document.visibilityState === "hidden" || isEditing()) return;
+    const refresh = async () => {
+      if (inFlight || document.visibilityState === "hidden" || isEditing() || Date.now() - lastRefreshAt < 300000) return;
       inFlight = true;
+      lastRefreshAt = Date.now();
       try {
         if (mode === "responsible") {
           await loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities, { silent: true });
         } else {
           await loadCatalogList("universities", "/catalog/universities", setUniversities, { silent: true });
         }
-        if (universityId) await loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties, { silent: true });
-        if (facultyId) await loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions, { silent: true });
-        if (optionId) await loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels, { silent: true });
       } finally { inFlight = false; }
     };
-    const onFocus = () => window.setTimeout(() => refresh(true), 1200);
-    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(() => refresh(true), 1200); };
-    const timer = window.setInterval(() => refresh(false), 60000);
+    const onFocus = () => window.setTimeout(refresh, 1200);
+    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(refresh, 1200); };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [mode, universityId, facultyId, optionId]);
+  }, [mode]);
 
   useEffect(() => {
     setFacultyId("");

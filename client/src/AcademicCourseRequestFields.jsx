@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readCatalogCache, writeCatalogCache } from "./catalogCache.js";
 
 export default function AcademicCourseRequestFields({
   value,
@@ -9,20 +10,40 @@ export default function AcademicCourseRequestFields({
   removable = false,
   onRemove
 }) {
-  const [universities, setUniversities] = useState([]);
-  const [loadingUniversities, setLoadingUniversities] = useState(true);
+  const [universities, setUniversities] = useState(() => readCatalogCache("/catalog/professor-universities") ?? []);
+  const [loadingUniversities, setLoadingUniversities] = useState(() => readCatalogCache("/catalog/professor-universities") === null);
   const [faculties, setFaculties] = useState([]);
   const [options, setOptions] = useState([]);
   const [levels, setLevels] = useState([]);
   const [courses, setCourses] = useState([]);
   const [error, setError] = useState("");
 
+  async function loadCatalog(path, setter, message, isCancelled, onFinally) {
+    const cached = readCatalogCache(path);
+    if (cached !== null && !isCancelled()) setter(cached);
+    try {
+      const result = await request(path);
+      if (!Array.isArray(result?.data)) throw new Error("invalid_catalog_response");
+      if (!isCancelled()) {
+        setter(result.data);
+        writeCatalogCache(path, result.data);
+        setError("");
+      }
+    } catch {
+      if (!isCancelled()) {
+        if (cached === null) setter([]);
+        setError(cached !== null
+          ? "Synchronisation indisponible. La dernière liste enregistrée reste affichée."
+          : message);
+      }
+    } finally {
+      if (!isCancelled()) onFinally?.();
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
-    request("/catalog/professor-universities")
-      .then(result => { if (!cancelled) setUniversities(result.data || []); })
-      .catch(() => { if (!cancelled) setError("Impossible de charger le catalogue des universités."); })
-      .finally(() => { if (!cancelled) setLoadingUniversities(false); });
+    loadCatalog("/catalog/professor-universities", setUniversities, "Impossible de charger le catalogue des universités.", () => cancelled, () => setLoadingUniversities(false));
     return () => { cancelled = true; };
   }, [request]);
 
@@ -30,9 +51,7 @@ export default function AcademicCourseRequestFields({
     let cancelled = false;
     setFaculties([]); setOptions([]); setLevels([]); setCourses([]);
     if (!value.universityId) return undefined;
-    request("/catalog/faculties?universityId=" + encodeURIComponent(value.universityId))
-      .then(result => { if (!cancelled) setFaculties(result.data || []); })
-      .catch(() => { if (!cancelled) setError("Impossible de charger les facultés de cette université."); });
+    loadCatalog("/catalog/faculties?universityId=" + encodeURIComponent(value.universityId), setFaculties, "Impossible de charger les facultés de cette université.", () => cancelled);
     return () => { cancelled = true; };
   }, [request, value.universityId]);
 
@@ -40,9 +59,7 @@ export default function AcademicCourseRequestFields({
     let cancelled = false;
     setOptions([]); setLevels([]); setCourses([]);
     if (!value.facultyId) return undefined;
-    request("/catalog/options?facultyId=" + encodeURIComponent(value.facultyId))
-      .then(result => { if (!cancelled) setOptions(result.data || []); })
-      .catch(() => { if (!cancelled) setError("Impossible de charger les programmes de cette faculté."); });
+    loadCatalog("/catalog/options?facultyId=" + encodeURIComponent(value.facultyId), setOptions, "Impossible de charger les programmes de cette faculté.", () => cancelled);
     return () => { cancelled = true; };
   }, [request, value.facultyId]);
 
@@ -50,9 +67,7 @@ export default function AcademicCourseRequestFields({
     let cancelled = false;
     setLevels([]); setCourses([]);
     if (!value.optionId) return undefined;
-    request("/catalog/levels?optionId=" + encodeURIComponent(value.optionId))
-      .then(result => { if (!cancelled) setLevels(result.data || []); })
-      .catch(() => { if (!cancelled) setError("Impossible de charger les niveaux de ce programme."); });
+    loadCatalog("/catalog/levels?optionId=" + encodeURIComponent(value.optionId), setLevels, "Impossible de charger les niveaux de ce programme.", () => cancelled);
     return () => { cancelled = true; };
   }, [request, value.optionId]);
 
@@ -60,9 +75,7 @@ export default function AcademicCourseRequestFields({
     let cancelled = false;
     setCourses([]);
     if (!value.studyLevelId) return undefined;
-    request("/catalog/courses?studyLevelId=" + encodeURIComponent(value.studyLevelId))
-      .then(result => { if (!cancelled) setCourses(result.data || []); })
-      .catch(() => { if (!cancelled) setError("Impossible de charger les cours de ce niveau."); });
+    loadCatalog("/catalog/courses?studyLevelId=" + encodeURIComponent(value.studyLevelId), setCourses, "Impossible de charger les cours de ce niveau.", () => cancelled);
     return () => { cancelled = true; };
   }, [request, value.studyLevelId]);
 
@@ -75,7 +88,7 @@ export default function AcademicCourseRequestFields({
       <strong>{heading}</strong>
       {removable && <button type="button" className="request-remove-button" onClick={onRemove}>Retirer</button>}
     </div>
-    <label className={fieldClass}><span>Université</span><select required value={value.universityId || ""} onChange={event => update({ universityId: event.target.value, facultyId: "", optionId: "", studyLevelId: "", courseId: "" })}><option value="">Choisir l’université</option>{universities.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <label className={fieldClass}><span>Université</span><select required value={value.universityId || ""} onChange={event => update({ universityId: event.target.value, facultyId: "", optionId: "", studyLevelId: "", courseId: "" })}><option value="">{loadingUniversities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     {!loadingUniversities && !error && universities.length===0 && <p className="request-catalog-error" role="status">Aucune université ne propose actuellement de cours actifs dans le catalogue. Les responsables de programme doivent d’abord créer et activer les cours.</p>}
     <label className={fieldClass}><span>Faculté / école</span><select required disabled={!value.universityId} value={value.facultyId || ""} onChange={event => update({ facultyId: event.target.value, optionId: "", studyLevelId: "", courseId: "" })}><option value="">Choisir la faculté</option>{faculties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label className={fieldClass}><span>Option / programme</span><select required disabled={!value.facultyId} value={value.optionId || ""} onChange={event => update({ optionId: event.target.value, studyLevelId: "", courseId: "" })}><option value="">Choisir le programme</option>{options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
