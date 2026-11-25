@@ -11,7 +11,7 @@ import helmet from "helmet";
 import nodemailer from "nodemailer";
 import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
 import { requireGeneralAdmin } from "./lib/roleAuthorization.js";
-import { listRegistrableUniversities, listActiveRoleUniversities, listProfessorUniversities, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
+import { listRegistrableUniversities, listActiveRoleUniversities, listProfessorUniversities, listActiveCoursesForStudyLevel, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
 import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
@@ -506,6 +506,20 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
+  }
+});
+
+app.get("/api/v1/catalog/courses", requireDatabase, async (req, res) => {
+  const studyLevelId = Number(req.query.studyLevelId);
+  if (!Number.isSafeInteger(studyLevelId) || studyLevelId < 1) {
+    return res.status(400).json({ error: "invalid_study_level_id" });
+  }
+  try {
+    const result = await listActiveCoursesForStudyLevel(pool, studyLevelId);
+    res.set("Cache-Control", "public, max-age=60, s-maxage=60, stale-while-revalidate=300");
+    return res.json({ data: result.rows });
+  } catch {
+    return res.status(503).json({ error: "course_catalog_unavailable", message: "Les cours de ce niveau sont temporairement indisponibles." });
   }
 });
 

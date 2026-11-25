@@ -49,6 +49,28 @@ export default function AcademicCourseRequestFields({
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
+    let lastRefreshAt = Date.now();
+    const refresh = () => {
+      if (cancelled || inFlight || document.visibilityState === "hidden" || Date.now() - lastRefreshAt < 300000) return;
+      inFlight = true;
+      lastRefreshAt = Date.now();
+      loadCatalog("/catalog/professor-universities", setUniversities, "Impossible de charger le catalogue des universités.", () => cancelled)
+        .finally(() => { inFlight = false; });
+    };
+    const onFocus = () => window.setTimeout(refresh, 1200);
+    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(refresh, 1200); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [request]);
+
+  useEffect(() => {
+    let cancelled = false;
     setFaculties([]); setOptions([]); setLevels([]); setCourses([]);
     if (!value.universityId) return undefined;
     loadCatalog("/catalog/faculties?universityId=" + encodeURIComponent(value.universityId), setFaculties, "Impossible de charger les facultés de cette université.", () => cancelled);
