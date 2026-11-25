@@ -63,11 +63,15 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
   const options=useMemo(()=>catalog.options||[],[catalog.options]);
   const levels=useMemo(()=>catalog.levels||[],[catalog.levels]);
   const selectedScope=scopes.find(scope=>String(scope.assignment_id)===scopeAssignmentId);
-  const registrationReady=levels.some(level=>level.is_active&&options.some(option=>option.is_active&&String(option.id)===String(level.option_id)&&faculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(option.faculty_id))));
-  const registrationOpen=Boolean(selectedScope?.registration_enabled);
-  const activeFacultyCount=faculties.filter(item=>item.is_active).length;
-  const activeOptionCount=options.filter(item=>item.is_active&&faculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(item.faculty_id))).length;
-  const activeLevelCount=levels.filter(item=>item.is_active&&options.some(option=>option.is_active&&String(option.id)===String(item.option_id)&&faculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(option.faculty_id)))).length;
+  const selectedUniversityId=String(selectedScope?.university_id ?? scopes[0]?.university_id ?? "");
+  const scopedFaculties=faculties.filter(item=>String(item.university_id)===selectedUniversityId);
+  const scopedOptions=options.filter(item=>String(item.university_id)===selectedUniversityId);
+  const scopedLevels=levels.filter(item=>String(item.university_id)===selectedUniversityId);
+  const registrationReady=scopedLevels.some(level=>level.is_active&&scopedOptions.some(option=>option.is_active&&String(option.id)===String(level.option_id)&&scopedFaculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(option.faculty_id))));
+  const registrationOpen=Boolean(selectedScope?.registration_enabled)&&registrationReady;
+  const activeFacultyCount=scopedFaculties.filter(item=>item.is_active).length;
+  const activeOptionCount=scopedOptions.filter(item=>item.is_active&&scopedFaculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(item.faculty_id))).length;
+  const activeLevelCount=scopedLevels.filter(item=>item.is_active&&scopedOptions.some(option=>option.is_active&&String(option.id)===String(item.option_id)&&scopedFaculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(option.faculty_id)))).length;
   const pages={overview:["Vue d’ensemble","Pilotage et configuration de votre université."],registration:["Ouverture des inscriptions","Contrôlez l’accès des étudiants après avoir configuré un parcours complet."],faculties:["Facultés","Créez, modifiez ou désactivez les facultés de votre université."],options:["Options","Organisez les options à l’intérieur de chaque faculté."],levels:["Niveaux d’études","Définissez les niveaux pour chaque option."],managers:["Responsables de faculté","Nommez et gérez les responsables de faculté."],announcements:["Annonces","Publiez les informations officielles de votre université."]};
 
   async function action(path,method,body){
