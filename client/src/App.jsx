@@ -50,11 +50,12 @@ export default function App() {
 
   // Le catalogue est chargé depuis l'API et la base de données.
   const [universities, setUniversities] = useState([]);
+  const [roleUniversities, setRoleUniversities] = useState([]);
   const [faculties, setFaculties] = useState([]);
   const [options, setOptions] = useState([]);
   const [levels, setLevels] = useState([]);
-  const [catalogLoading, setCatalogLoading] = useState({ universities: false, faculties: false, options: false, levels: false });
-  const [catalogErrors, setCatalogErrors] = useState({ universities: "", faculties: "", options: "", levels: "" });
+  const [catalogLoading, setCatalogLoading] = useState({ universities: false, roleUniversities: false, faculties: false, options: false, levels: false });
+  const [catalogErrors, setCatalogErrors] = useState({ universities: "", roleUniversities: "", faculties: "", options: "", levels: "" });
 
   const selectedUniversity = universities.find(x => String(x.id) === String(universityId));
   const selectedFaculty = faculties.find(x => String(x.id) === String(facultyId));
@@ -83,6 +84,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (mode !== "responsible") return;
+    loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities);
+  }, [mode]);
+
+  useEffect(() => {
     if (mode !== "signup" && mode !== "responsible") return undefined;
     let inFlight = false;
     const isEditing = () => {
@@ -93,7 +99,11 @@ export default function App() {
       if (inFlight || document.visibilityState === "hidden" || isEditing()) return;
       inFlight = true;
       try {
-        await loadCatalogList("universities", "/catalog/universities", setUniversities, { silent: true });
+        if (mode === "responsible") {
+          await loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities, { silent: true });
+        } else {
+          await loadCatalogList("universities", "/catalog/universities", setUniversities, { silent: true });
+        }
         if (universityId) await loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties, { silent: true });
         if (facultyId) await loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions, { silent: true });
         if (optionId) await loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels, { silent: true });
@@ -363,7 +373,9 @@ export default function App() {
           {mode === "responsible" && <>
             <Field label="Responsabilité demandée"><select required value={responsibleRole} onChange={e => setResponsibleRole(e.target.value)}><option value="university_admin">Responsable d’université</option><option value="faculty_manager">Responsable de faculté</option><option value="program_manager">Responsable de programme / option</option></select></Field>
             {responsibleRole === "university_admin" && <p className="form-footer">Aucune faculté ni option n’est nécessaire pour cette première demande. L’administration générale validera votre accès à l’université.</p>}
-            <Field label="Université d’exercice"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
+            {responsibleRole === "faculty_manager" && universityId && !catalogLoading.faculties && faculties.length === 0 && <p className="form-footer">Aucune faculté active n’est encore configurée. La première étape est la nomination d’un responsable d’université, qui pourra créer les facultés.</p>}
+            {responsibleRole === "program_manager" && facultyId && !catalogLoading.options && options.length === 0 && <p className="form-footer">Aucun programme actif n’est encore configuré dans cette faculté. Le responsable d’université doit d’abord créer les options.</p>}
+            <Field label="Université d’exercice"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.roleUniversities ? "Chargement des établissements actifs…" : "Choisir l’université"}</option>{roleUniversities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.roleUniversities && <small className="form-feedback" role="status">{catalogErrors.roleUniversities}</small>}</Field>
             {responsibleRole !== "university_admin" && <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : faculties.length ? "Choisir la faculté" : "Aucune faculté active configurée"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>}
             {responsibleRole === "program_manager" && <><Field label="Programme / option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : options.length ? "Choisir le programme" : "Aucune option active configurée"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field><Field label="Niveau (facultatif)"><select value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Tous les niveaux du programme"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           </>}

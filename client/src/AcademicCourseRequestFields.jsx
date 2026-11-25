@@ -18,7 +18,7 @@ export default function AcademicCourseRequestFields({
 
   useEffect(() => {
     let cancelled = false;
-    request("/catalog/universities")
+    request("/catalog/role-universities")
       .then(result => { if (!cancelled) setUniversities(result.data || []); })
       .catch(() => { if (!cancelled) setError("Impossible de charger le catalogue des universités."); });
     return () => { cancelled = true; };
