@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "./apiBase.js";
 import StudentShell from "./StudentShell.jsx";
 import ProfessorShell from "./ProfessorShell.jsx";
 import ProgramManagerShell from "./ProgramManagerShell.jsx";
@@ -7,7 +8,7 @@ import UniversityAdminShell from "./UniversityAdminShell.jsx";
 import GeneralAdminShell from "./GeneralAdminShell.jsx";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 
-const API = "/api/v1";
+const API = apiUrl("/api/v1");
 async function request(path, { token, ...options } = {}) {
   const headers = { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers };
   const response = await fetch(`${API}${path}`, { ...options, headers });
