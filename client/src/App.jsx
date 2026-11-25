@@ -50,11 +50,12 @@ export default function App() {
 
   // Le catalogue est chargé depuis l'API et la base de données.
   const [universities, setUniversities] = useState([]);
+  const [roleUniversities, setRoleUniversities] = useState([]);
   const [faculties, setFaculties] = useState([]);
   const [options, setOptions] = useState([]);
   const [levels, setLevels] = useState([]);
-  const [catalogLoading, setCatalogLoading] = useState({ universities: false, faculties: false, options: false, levels: false });
-  const [catalogErrors, setCatalogErrors] = useState({ universities: "", faculties: "", options: "", levels: "" });
+  const [catalogLoading, setCatalogLoading] = useState({ universities: false, roleUniversities: false, faculties: false, options: false, levels: false });
+  const [catalogErrors, setCatalogErrors] = useState({ universities: "", roleUniversities: "", faculties: "", options: "", levels: "" });
 
   const selectedUniversity = universities.find(x => String(x.id) === String(universityId));
   const selectedFaculty = faculties.find(x => String(x.id) === String(facultyId));
@@ -83,6 +84,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (mode !== "responsible") return;
+    loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities);
+  }, [mode]);
+
+  useEffect(() => {
     if (mode !== "signup" && mode !== "responsible") return undefined;
     let inFlight = false;
     const isEditing = () => {
@@ -93,7 +99,11 @@ export default function App() {
       if (inFlight || document.visibilityState === "hidden" || isEditing()) return;
       inFlight = true;
       try {
-        await loadCatalogList("universities", "/catalog/universities", setUniversities, { silent: true });
+        if (mode === "responsible") {
+          await loadCatalogList("roleUniversities", "/catalog/role-universities", setRoleUniversities, { silent: true });
+        } else {
+          await loadCatalogList("universities", "/catalog/universities", setUniversities, { silent: true });
+        }
         if (universityId) await loadCatalogList("faculties", `/catalog/faculties?universityId=${encodeURIComponent(universityId)}`, setFaculties, { silent: true });
         if (facultyId) await loadCatalogList("options", `/catalog/options?facultyId=${encodeURIComponent(facultyId)}`, setOptions, { silent: true });
         if (optionId) await loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels, { silent: true });
@@ -308,8 +318,9 @@ export default function App() {
     if (user.baseRole === "applicant" && rawRoles.length === 0) {
       const applications = user.roleApplications || [];
       const hasPendingApplications = applications.some(item => item.status === "pending");
+      const hasBlockedApplications = applications.some(item => item.status === "blocked");
       const roleLabels = { professor: "Professeur", university_admin: "Responsable d’université", faculty_manager: "Responsable de faculté", program_manager: "Responsable de programme" };
-      return <main className="identity-splash"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">VÉRIFICATION UNIVERSITAIRE</p><h1>{hasPendingApplications ? <>Demande <span>en cours</span></> : <>Demande <span>terminée</span></>}</h1><p className="identity-splash-caption">{hasPendingApplications ? "Votre compte est créé. L’accès à votre espace sera ouvert après validation de votre demande par l’autorité compétente." : "Votre demande a été refusée ou votre accès a été retiré. Contactez l’administration de votre université pour demander une révision."}</p><div style={{maxWidth:440,margin:"20px auto",padding:16,border:"1px solid #5b4a16",borderRadius:10,textAlign:"left",background:"#181818"}}>{applications.length ? applications.map(item => <p key={item.assignmentId} style={{margin:"8px 0",fontSize:12,color:"#f1f1f1"}}><strong>{roleLabels[item.role] || item.role}</strong> — {item.status === "pending" ? "En attente de validation" : "Demande refusée ou accès retiré"}<br/><span style={{color:"#b9b9b9"}}>{[item.courseName,item.universityName,item.facultyName,item.optionName,item.studyLevelLabel].filter(Boolean).join(" · ")}</span></p>) : <p style={{fontSize:12,color:"#ddd"}}>Aucune demande en attente n’est associée à ce compte. Contactez l’administration iFac.</p>}</div><button className="submit-button" type="button" disabled={busy} onClick={refreshRoleStatus}>{busy ? "Actualisation…" : "Actualiser mon statut"}</button><button className="submit-button" type="button" onClick={logout}>Retour à la connexion</button>{feedback && <p className="form-feedback" role="status">{feedback}</p>}</div></main>;
+      return <main className="identity-splash"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">VÉRIFICATION UNIVERSITAIRE</p><h1>{hasPendingApplications ? <>Demande <span>en cours</span></> : hasBlockedApplications ? <>Accès <span>suspendu</span></> : <>Demande <span>terminée</span></>}</h1><p className="identity-splash-caption">{hasPendingApplications ? "Votre compte est créé. L’accès à votre espace sera ouvert après validation de votre demande par l’autorité compétente." : hasBlockedApplications ? "Votre affectation est conservée, mais l’université ou le périmètre académique associé est désactivé. Contactez l’administration compétente pour rétablir l’accès." : "Votre demande a été refusée ou votre accès a été retiré. Contactez l’administration de votre université pour demander une révision."}</p><div style={{maxWidth:440,margin:"20px auto",padding:16,border:"1px solid #5b4a16",borderRadius:10,textAlign:"left",background:"#181818"}}>{applications.length ? applications.map(item => <p key={item.assignmentId} style={{margin:"8px 0",fontSize:12,color:"#f1f1f1"}}><strong>{roleLabels[item.role] || item.role}</strong> — {item.status === "pending" ? "En attente de validation" : item.status === "blocked" ? "Accès suspendu : établissement ou parcours inactif" : "Demande refusée ou accès retiré"}<br/><span style={{color:"#b9b9b9"}}>{[item.courseName,item.universityName,item.facultyName,item.optionName,item.studyLevelLabel].filter(Boolean).join(" · ")}</span></p>) : <p style={{fontSize:12,color:"#ddd"}}>Aucune demande en attente n’est associée à ce compte. Contactez l’administration iFac.</p>}</div><button className="submit-button" type="button" disabled={busy} onClick={refreshRoleStatus}>{busy ? "Actualisation…" : "Actualiser mon statut"}</button><button className="submit-button" type="button" onClick={logout}>Retour à la connexion</button>{feedback && <p className="form-feedback" role="status">{feedback}</p>}</div></main>;
     }
     const roles = rawRoles.filter(role => !(role === "admin" && rawRoles.includes("admin_general")));
     const activeRole = roles.includes(workspaceRole) ? workspaceRole : user.role;
@@ -350,6 +361,7 @@ export default function App() {
         <div className="auth-tabs"><button type="button" className={mode === "signup" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("signup");setFeedback("");}}>Inscription étudiant</button><button type="button" className={mode === "professor" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("professor");setFeedback("");}}>Espace professeur</button><button type="button" className={mode === "responsible" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("responsible");setFeedback("");}}>Espace responsables</button><button type="button" className={mode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => {setMode("login");setFeedback("");}}>Connexion</button></div>
         <form className="auth-form" onSubmit={submit}>
           {(mode === "signup" || mode === "professor" || mode === "responsible") && <div className="field-row"><Field label="Nom"><input name="lastName" required maxLength="100" autoComplete="family-name" /></Field><Field label="Prénom"><input name="firstName" required maxLength="100" autoComplete="given-name" /></Field></div>}
+          {mode === "signup" && universities.length === 0 && !catalogLoading.universities && !catalogErrors.universities && <p className="form-footer">Aucun établissement n’a encore ouvert les inscriptions étudiantes. L’administration doit d’abord nommer un responsable d’université, faire configurer un parcours actif (faculté, option et niveau), puis ouvrir les inscriptions.</p>}
           {mode === "signup" && <>
           <Field label="Université"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
           <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : !universityId ? "Choisir la faculté" : faculties.length ? "Choisir la faculté" : "Aucune faculté active configurée"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>
@@ -363,7 +375,9 @@ export default function App() {
           {mode === "responsible" && <>
             <Field label="Responsabilité demandée"><select required value={responsibleRole} onChange={e => setResponsibleRole(e.target.value)}><option value="university_admin">Responsable d’université</option><option value="faculty_manager">Responsable de faculté</option><option value="program_manager">Responsable de programme / option</option></select></Field>
             {responsibleRole === "university_admin" && <p className="form-footer">Aucune faculté ni option n’est nécessaire pour cette première demande. L’administration générale validera votre accès à l’université.</p>}
-            <Field label="Université d’exercice"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.universities ? "Chargement des universités…" : "Choisir l’université"}</option>{universities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.universities && <small className="form-feedback" role="status">{catalogErrors.universities}</small>}</Field>
+            {responsibleRole === "faculty_manager" && universityId && !catalogLoading.faculties && faculties.length === 0 && <p className="form-footer">Aucune faculté active n’est encore configurée. La première étape est la nomination d’un responsable d’université, qui pourra créer les facultés.</p>}
+            {responsibleRole === "program_manager" && facultyId && !catalogLoading.options && options.length === 0 && <p className="form-footer">Aucun programme actif n’est encore configuré dans cette faculté. Le responsable d’université doit d’abord créer les options.</p>}
+            <Field label="Université d’exercice"><select required value={universityId} onChange={e => setUniversityId(e.target.value)}><option value="">{catalogLoading.roleUniversities ? "Chargement des établissements actifs…" : "Choisir l’université"}</option>{roleUniversities.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.roleUniversities && <small className="form-feedback" role="status">{catalogErrors.roleUniversities}</small>}</Field>
             {responsibleRole !== "university_admin" && <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : faculties.length ? "Choisir la faculté" : "Aucune faculté active configurée"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>}
             {responsibleRole === "program_manager" && <><Field label="Programme / option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : options.length ? "Choisir le programme" : "Aucune option active configurée"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field><Field label="Niveau (facultatif)"><select value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Tous les niveaux du programme"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           </>}

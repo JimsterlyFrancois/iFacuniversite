@@ -3,7 +3,7 @@ import ThemeToggle from "./ThemeToggle.jsx";
 import useAutoRefresh from "./useAutoRefresh.js";
 
 const nav = [
-  ["overview","Tableau de bord"],["faculties","Facultés"],["options","Options"],["levels","Niveaux d’études"],
+  ["overview","Tableau de bord"],["registration","Inscriptions"],["faculties","Facultés"],["options","Options"],["levels","Niveaux d’études"],
   ["managers","Responsables de faculté"],["announcements","Annonces"]
 ];
 const css = `
@@ -63,7 +63,16 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
   const options=useMemo(()=>catalog.options||[],[catalog.options]);
   const levels=useMemo(()=>catalog.levels||[],[catalog.levels]);
   const selectedScope=scopes.find(scope=>String(scope.assignment_id)===scopeAssignmentId);
-  const pages={overview:["Vue d’ensemble","Pilotage et configuration de votre université."],faculties:["Facultés","Créez, modifiez ou désactivez les facultés de votre université."],options:["Options","Organisez les options à l’intérieur de chaque faculté."],levels:["Niveaux d’études","Définissez les niveaux pour chaque option."],managers:["Responsables de faculté","Nommez et gérez les responsables de faculté."],announcements:["Annonces","Publiez les informations officielles de votre université."]};
+  const selectedUniversityId=String(selectedScope?.university_id ?? scopes[0]?.university_id ?? "");
+  const scopedFaculties=faculties.filter(item=>String(item.university_id)===selectedUniversityId);
+  const scopedOptions=options.filter(item=>String(item.university_id)===selectedUniversityId);
+  const scopedLevels=levels.filter(item=>String(item.university_id)===selectedUniversityId);
+  const registrationReady=scopedLevels.some(level=>level.is_active&&scopedOptions.some(option=>option.is_active&&String(option.id)===String(level.option_id)&&scopedFaculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(option.faculty_id))));
+  const registrationOpen=Boolean(selectedScope?.registration_enabled)&&registrationReady;
+  const activeFacultyCount=scopedFaculties.filter(item=>item.is_active).length;
+  const activeOptionCount=scopedOptions.filter(item=>item.is_active&&scopedFaculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(item.faculty_id))).length;
+  const activeLevelCount=scopedLevels.filter(item=>item.is_active&&scopedOptions.some(option=>option.is_active&&String(option.id)===String(item.option_id)&&scopedFaculties.some(faculty=>faculty.is_active&&String(faculty.id)===String(option.faculty_id)))).length;
+  const pages={overview:["Vue d’ensemble","Pilotage et configuration de votre université."],registration:["Ouverture des inscriptions","Contrôlez l’accès des étudiants après avoir configuré un parcours complet."],faculties:["Facultés","Créez, modifiez ou désactivez les facultés de votre université."],options:["Options","Organisez les options à l’intérieur de chaque faculté."],levels:["Niveaux d’études","Définissez les niveaux pour chaque option."],managers:["Responsables de faculté","Nommez et gérez les responsables de faculté."],announcements:["Annonces","Publiez les informations officielles de votre université."]};
 
   async function action(path,method,body){
     setBusy(true);setFeedback("");
@@ -94,6 +103,10 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
       ? await action("/university-admin/levels/"+editingLevel.id,"PATCH",body)
       : await action("/university-admin/levels","POST",{...body,optionId:Number(levelForm.optionId)});
     if(result){setLevelForm({optionId:"",code:"",label:"",sortOrder:"1"});setEditingLevel(null);}
+  }
+  async function changeRegistration(enabled){
+    if(!scopeAssignmentId){setFeedback("Sélectionnez l’université à gérer.");return;}
+    await action("/university-admin/registration/"+(enabled?"enable":"disable"),"POST",{scopeAssignmentId:Number(scopeAssignmentId)});
   }
   async function appoint(event){
     event.preventDefault();
@@ -129,7 +142,11 @@ export default function UniversityAdminShell({ token, user, onLogout, request, t
         {loading?<div className="ua-empty">Chargement des données universitaires…</div>:<>
           {tab==="overview"&&<>
             <div className="ua-grid">{[["Facultés",overview.faculties],["Options",overview.programs],["Étudiants",overview.students],["Professeurs",overview.professors],["Responsables de faculté",overview.facultyManagers],["Responsables de programme",overview.programManagers],["Cours actifs",overview.courses],["Documents",overview.documents],["Annonces",overview.announcements]].map(([label,value])=><article className="ua-card" key={label}><div className="ua-stat-label">{label}</div><div className="ua-stat">{value??0}</div></article>)}</div>
-            <article className="ua-card"><h2>Visibilité dans les inscriptions</h2><p className="ua-muted">Cette université apparaît automatiquement dans la liste publique dès qu’elle est active. Les facultés, options et niveaux sont affichés uniquement lorsqu’ils existent et sont actifs. Un étudiant ne pourra terminer son inscription que lorsqu’un parcours complet est disponible.</p></article>
+            <article className="ua-card"><h2>État des inscriptions étudiantes</h2><p className="ua-muted">{registrationOpen?"Les inscriptions étudiantes sont actuellement ouvertes.":"Les inscriptions étudiantes restent fermées tant que vous ne les ouvrez pas."} La disponibilité d’un établissement dans les demandes de responsables est indépendante de cette option.</p><div className="ua-actions"><span className="ua-pill">{registrationOpen?"Inscriptions ouvertes":"Inscriptions fermées"}</span><span className="ua-muted">{registrationReady?"Un parcours actif complet est disponible.":"Un parcours actif complet doit encore être configuré."}</span><button className="ua-btn secondary" type="button" onClick={()=>setTab("registration")}>Gérer les inscriptions</button></div></article>
+          </>}
+          {tab==="registration"&&<>
+            <article className="ua-card"><h2>{registrationOpen?"Les inscriptions sont ouvertes":"Les inscriptions sont fermées"}</h2><p className="ua-muted">Un étudiant ne peut créer un compte que si l’établissement possède au moins une chaîne active et reliée : université → faculté → option → niveau. La vérification est aussi effectuée par le serveur au moment de l’inscription.</p><div className="ua-grid"><article className="ua-card"><div className="ua-stat-label">Facultés actives</div><div className="ua-stat">{activeFacultyCount}</div></article><article className="ua-card"><div className="ua-stat-label">Options actives</div><div className="ua-stat">{activeOptionCount}</div></article><article className="ua-card"><div className="ua-stat-label">Niveaux actifs reliés</div><div className="ua-stat">{activeLevelCount}</div></article></div>{!registrationReady&&<p className="ua-feedback">Configuration incomplète : ajoutez au moins une faculté, une option liée à cette faculté et un niveau lié à cette option avant d’ouvrir les inscriptions.</p>}<div className="ua-actions"><button className="ua-btn" type="button" disabled={busy||registrationOpen||!registrationReady} onClick={()=>changeRegistration(true)}>Ouvrir les inscriptions étudiantes</button><button className="ua-btn danger" type="button" disabled={busy||!registrationOpen} onClick={()=>changeRegistration(false)}>Fermer les inscriptions</button></div></article>
+            <article className="ua-card"><h2>Ordre de configuration</h2><ol><li>Créer au moins une faculté active.</li><li>Créer une option dans cette faculté.</li><li>Créer un niveau d’études dans cette option.</li><li>Ouvrir les inscriptions après vérification du parcours.</li></ol></article>
           </>}
           {tab==="faculties"&&<>
             <article className="ua-card"><h2>{editingFaculty?"Modifier une faculté":"Créer une faculté"}</h2><form className="ua-form" onSubmit={saveFaculty}>

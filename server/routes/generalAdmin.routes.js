@@ -65,9 +65,14 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     try {
       const result = await pool.query(`
         SELECT u.id,u.code,u.name,u.is_active,u.registration_enabled,u.created_at,
-          (SELECT COUNT(*)::int FROM faculties f WHERE f.university_id=u.id) faculties,
+          (SELECT COUNT(*)::int FROM faculties f WHERE f.university_id=u.id AND f.is_active=TRUE) faculties,
+          (SELECT COUNT(*)::int FROM options o JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=u.id AND f.is_active=TRUE AND o.is_active=TRUE) options,
+          (SELECT COUNT(*)::int FROM study_levels l JOIN options o ON o.id=l.option_id JOIN faculties f ON f.id=o.faculty_id WHERE f.university_id=u.id AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE) levels,
+          EXISTS (SELECT 1 FROM faculties f JOIN options o ON o.faculty_id=f.id JOIN study_levels l ON l.option_id=o.id
+            WHERE f.university_id=u.id AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE) catalog_ready,
           (SELECT COUNT(*)::int FROM users x WHERE x.university_id=u.id AND x.is_active=TRUE) users,
           (SELECT COUNT(*)::int FROM role_assignments ra WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='active') admins,
+          (SELECT COUNT(*)::int FROM role_assignments ra WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='pending') pending_admins,
           (SELECT s.status FROM university_subscriptions s WHERE s.university_id=u.id AND s.status IN ('trialing','active','past_due','suspended') ORDER BY s.created_at DESC LIMIT 1) subscription_status,
           (SELECT p.name FROM university_subscriptions s JOIN saas_plans p ON p.id=s.plan_id WHERE s.university_id=u.id AND s.status IN ('trialing','active','past_due','suspended') ORDER BY s.created_at DESC LIMIT 1) plan_name
         FROM universities u ORDER BY u.created_at DESC,u.name`);
@@ -81,11 +86,11 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     if (!/^[A-Z0-9_-]{2,32}$/.test(code) || name.length < 2) return res.status(400).json({ error: "invalid_university", message: "Indiquez un code unique (2 à 32 caractères) et le nom de l’université." });
     try {
       const result = await pool.query(
-        "INSERT INTO universities(code,name,is_active,registration_enabled) VALUES($1,$2,TRUE,TRUE) RETURNING id,code,name,is_active,registration_enabled,created_at",
+        "INSERT INTO universities(code,name,is_active,registration_enabled) VALUES($1,$2,TRUE,FALSE) RETURNING id,code,name,is_active,registration_enabled,created_at",
         [code,name]
       );
       await audit(req, "university.created", "university", result.rows[0].id, result.rows[0].id, { code, name });
-      return res.status(201).json({ university: result.rows[0], message: "Université créée et visible dans le formulaire d’inscription. Les facultés, options et niveaux seront proposés à mesure que la hiérarchie sera configurée." });
+      return res.status(201).json({ university: result.rows[0], message: "Université créée. Elle est disponible pour les demandes de responsable, mais restera absente de l’inscription étudiante jusqu’à la configuration d’un parcours complet et à l’ouverture des inscriptions." });
     } catch (error) {
       if (error.code === "23505") return res.status(409).json({ error: "university_code_exists", message: "Ce code d’université existe déjà." });
       return res.status(503).json({ error: "university_create_failed" });
@@ -100,7 +105,7 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
     if (!id || name.length < 2 || !/^[A-Z0-9_-]{2,32}$/.test(code) || typeof isActive !== "boolean") return res.status(400).json({ error: "invalid_university_update" });
     try {
       const result = await pool.query(
-        "UPDATE universities SET code=$1,name=$2,is_active=$3,updated_at=NOW() WHERE id=$4 RETURNING id,code,name,is_active",
+        "UPDATE universities SET code=$1,name=$2,is_active=$3,registration_enabled=CASE WHEN $3 AND is_active THEN registration_enabled ELSE FALSE END,updated_at=NOW() WHERE id=$4 RETURNING id,code,name,is_active,registration_enabled",
         [code,name,isActive,id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "university_not_found" });
@@ -172,8 +177,33 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
         [active ? "active" : "revoked",assignmentId,req.user.id]
       );
       if (!result.rowCount) return res.status(404).json({ error: "assignment_not_found" });
+      let registrationClosed = false;
+      if (!active) {
+        const closed = await pool.query(
+          `UPDATE universities u
+           SET registration_enabled=FALSE,updated_at=NOW()
+           WHERE u.id=$1 AND u.registration_enabled=TRUE
+             AND NOT EXISTS (
+               SELECT 1 FROM role_assignments ra
+               JOIN users administrator ON administrator.id=ra.user_id AND administrator.is_active=TRUE
+               WHERE ra.university_id=u.id AND ra.role='university_admin' AND ra.status='active'
+             )
+           RETURNING u.id`,
+          [result.rows[0].university_id]
+        );
+        registrationClosed = closed.rowCount > 0;
+      }
       await audit(req, active ? "university_admin.reactivated" : "university_admin.revoked", "role_assignment", assignmentId, result.rows[0].university_id, { userId: result.rows[0].user_id });
-      return res.json({ message: active ? "Accès administrateur réactivé." : "Accès administrateur retiré." });
+      if (registrationClosed) {
+        await audit(req, "university.registration_auto_closed_no_admin", "university", result.rows[0].university_id, result.rows[0].university_id, { reason: "no_active_university_admin" });
+      }
+      return res.json({
+        message: active
+          ? "Accès administrateur réactivé. Les inscriptions ne sont pas rouvertes automatiquement."
+          : registrationClosed
+            ? "Accès administrateur retiré. Aucun responsable d’université ne reste actif : les inscriptions étudiantes ont été fermées."
+            : "Accès administrateur retiré."
+      });
     } catch (error) {
       if (error.code === "23514") return res.status(409).json({ error: "university_admin_limit", message: "La limite de deux administrateurs actifs est atteinte." });
       return res.status(503).json({ error: "university_admin_status_failed" });

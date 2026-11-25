@@ -10,6 +10,7 @@ export default function AcademicCourseRequestFields({
   onRemove
 }) {
   const [universities, setUniversities] = useState([]);
+  const [loadingUniversities, setLoadingUniversities] = useState(true);
   const [faculties, setFaculties] = useState([]);
   const [options, setOptions] = useState([]);
   const [levels, setLevels] = useState([]);
@@ -18,9 +19,10 @@ export default function AcademicCourseRequestFields({
 
   useEffect(() => {
     let cancelled = false;
-    request("/catalog/universities")
+    request("/catalog/professor-universities")
       .then(result => { if (!cancelled) setUniversities(result.data || []); })
-      .catch(() => { if (!cancelled) setError("Impossible de charger le catalogue des universités."); });
+      .catch(() => { if (!cancelled) setError("Impossible de charger le catalogue des universités."); })
+      .finally(() => { if (!cancelled) setLoadingUniversities(false); });
     return () => { cancelled = true; };
   }, [request]);
 
@@ -74,6 +76,7 @@ export default function AcademicCourseRequestFields({
       {removable && <button type="button" className="request-remove-button" onClick={onRemove}>Retirer</button>}
     </div>
     <label className={fieldClass}><span>Université</span><select required value={value.universityId || ""} onChange={event => update({ universityId: event.target.value, facultyId: "", optionId: "", studyLevelId: "", courseId: "" })}><option value="">Choisir l’université</option>{universities.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    {!loadingUniversities && !error && universities.length===0 && <p className="request-catalog-error" role="status">Aucune université ne propose actuellement de cours actifs dans le catalogue. Les responsables de programme doivent d’abord créer et activer les cours.</p>}
     <label className={fieldClass}><span>Faculté / école</span><select required disabled={!value.universityId} value={value.facultyId || ""} onChange={event => update({ facultyId: event.target.value, optionId: "", studyLevelId: "", courseId: "" })}><option value="">Choisir la faculté</option>{faculties.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label className={fieldClass}><span>Option / programme</span><select required disabled={!value.facultyId} value={value.optionId || ""} onChange={event => update({ optionId: event.target.value, studyLevelId: "", courseId: "" })}><option value="">Choisir le programme</option>{options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <label className={fieldClass}><span>Niveau</span><select required disabled={!value.optionId} value={value.studyLevelId || ""} onChange={event => update({ studyLevelId: event.target.value, courseId: "" })}><option value="">Choisir le niveau</option>{levels.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>

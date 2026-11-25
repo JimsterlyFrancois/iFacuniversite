@@ -41,6 +41,21 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
   };
   const scopeIds = req => req.universityScopes.map(scope => scope.university_id);
 
+  async function closeRegistrationIfCatalogIncomplete(universityId) {
+    await pool.query(
+      `UPDATE universities u SET registration_enabled=FALSE,updated_at=NOW()
+       WHERE u.id=$1 AND u.registration_enabled=TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM faculties f
+           JOIN options o ON o.faculty_id=f.id
+           JOIN study_levels l ON l.option_id=o.id
+           WHERE f.university_id=u.id
+             AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE
+         )`,
+      [universityId]
+    );
+  }
+
   async function audit(client, req, action, type, id, universityId, facultyId = null, optionId = null, metadata = {}) {
     await client.query(
       `INSERT INTO admin_audit_logs
@@ -122,6 +137,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,metadata) VALUES($1,'academic.faculty_updated','faculty',$2,$3,$4::jsonb)",
         [req.user.id, id, result.rows[0].university_id, JSON.stringify({ code, name, isActive: active })]
       );
+      if (!active) await closeRegistrationIfCatalogIncomplete(result.rows[0].university_id);
       return res.json({ faculty: result.rows[0], message: "Faculté mise à jour." });
     } catch (error) {
       if (error?.code === "23505") return res.status(409).json({ error: "faculty_already_exists" });
@@ -142,6 +158,7 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,metadata) VALUES($1,'academic.faculty_deactivated','faculty',$2,$3,'{}'::jsonb)",
         [req.user.id, id, result.rows[0].university_id]
       );
+      await closeRegistrationIfCatalogIncomplete(result.rows[0].university_id);
       return res.json({ message: "Faculté désactivée. Les données historiques sont conservées." });
     } catch { return res.status(503).json({ error: "faculty_deactivate_failed" }); }
   });
@@ -181,10 +198,11 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         `UPDATE options o SET code=$1,name=$2,is_active=$3
          FROM faculties f WHERE o.id=$4 AND f.id=o.faculty_id
            AND f.university_id=ANY($5::bigint[])
-         RETURNING o.id,o.faculty_id,o.code,o.name,o.is_active`,
+         RETURNING o.id,o.faculty_id,o.code,o.name,o.is_active,f.university_id`,
         [code, name, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "option_not_found" });
+      if (!active) await closeRegistrationIfCatalogIncomplete(result.rows[0].university_id);
       return res.json({ option: result.rows[0], message: "Option mise à jour." });
     } catch (error) {
       if (error?.code === "23505") return res.status(409).json({ error: "option_already_exists" });
@@ -199,10 +217,11 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
       const result = await pool.query(
         `UPDATE options o SET is_active=FALSE FROM faculties f
          WHERE o.id=$1 AND f.id=o.faculty_id AND f.university_id=ANY($2::bigint[])
-         RETURNING o.id`,
+         RETURNING o.id,f.university_id`,
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "option_not_found" });
+      await closeRegistrationIfCatalogIncomplete(result.rows[0].university_id);
       return res.json({ message: "Option désactivée. Les données historiques sont conservées." });
     } catch { return res.status(503).json({ error: "option_deactivate_failed" }); }
   });
@@ -244,10 +263,11 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
         `UPDATE study_levels l SET code=$1,label=$2,sort_order=$3,is_active=$4
          FROM options o JOIN faculties f ON f.id=o.faculty_id
          WHERE l.id=$5 AND o.id=l.option_id AND f.university_id=ANY($6::bigint[])
-         RETURNING l.id,l.option_id,l.code,l.label,l.sort_order,l.is_active`,
+         RETURNING l.id,l.option_id,l.code,l.label,l.sort_order,l.is_active,f.university_id`,
         [code, label, sortOrder, active, id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "study_level_not_found" });
+      if (!active) await closeRegistrationIfCatalogIncomplete(result.rows[0].university_id);
       return res.json({ level: result.rows[0], message: "Niveau d’études mis à jour." });
     } catch (error) {
       if (error?.code === "23505") return res.status(409).json({ error: "study_level_already_exists" });
@@ -262,10 +282,11 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
       const result = await pool.query(
         `UPDATE study_levels l SET is_active=FALSE FROM options o JOIN faculties f ON f.id=o.faculty_id
          WHERE l.id=$1 AND o.id=l.option_id AND f.university_id=ANY($2::bigint[])
-         RETURNING l.id`,
+         RETURNING l.id,f.university_id`,
         [id, scopeIds(req)]
       );
       if (!result.rowCount) return res.status(404).json({ error: "study_level_not_found" });
+      await closeRegistrationIfCatalogIncomplete(result.rows[0].university_id);
       return res.json({ message: "Niveau désactivé. Les données historiques sont conservées." });
     } catch { return res.status(503).json({ error: "study_level_deactivate_failed" }); }
   });
@@ -274,22 +295,20 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
     const scope = scopeFor(req, idOf(req.body?.scopeAssignmentId));
     if (!scope) return res.status(400).json({ error: "university_scope_selection_required" });
     try {
-      const counts = await pool.query(
-        `SELECT COUNT(DISTINCT f.id)::int faculties,
-                COUNT(DISTINCT o.id)::int options,
-                COUNT(DISTINCT l.id)::int levels
-         FROM faculties f
-         LEFT JOIN options o ON o.faculty_id=f.id AND o.is_active=TRUE
-         LEFT JOIN study_levels l ON l.option_id=o.id AND l.is_active=TRUE
-         WHERE f.university_id=$1 AND f.is_active=TRUE`,
+      const readiness = await pool.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM faculties f
+           JOIN options o ON o.faculty_id=f.id
+           JOIN study_levels l ON l.option_id=o.id
+           WHERE f.university_id=$1
+             AND f.is_active=TRUE AND o.is_active=TRUE AND l.is_active=TRUE
+         ) AS catalog_ready`,
         [scope.university_id]
       );
-      const c = counts.rows[0];
-      if (!c.faculties || !c.options || !c.levels) {
+      if (!readiness.rows[0]?.catalog_ready) {
         return res.status(409).json({
           error: "academic_catalog_incomplete",
-          message: "Ajoutez au moins une faculté active, une option active et un niveau d’études actif avant d’ouvrir les inscriptions.",
-          counts: c
+          message: "Ajoutez au moins une chaîne complète et active : faculté, option rattachée et niveau rattaché à cette option."
         });
       }
       const result = await pool.query(
@@ -302,6 +321,22 @@ export function createUniversityCatalogRouter({ pool, requireAuth }) {
       );
       return res.json({ university: result.rows[0], message: "Les inscriptions étudiantes sont maintenant ouvertes." });
     } catch { return res.status(503).json({ error: "registration_enable_failed" }); }
+  });
+
+  router.post("/university-admin/registration/disable", ...guard, async (req, res) => {
+    const scope = scopeFor(req, idOf(req.body?.scopeAssignmentId));
+    if (!scope) return res.status(400).json({ error: "university_scope_selection_required" });
+    try {
+      const result = await pool.query(
+        "UPDATE universities SET registration_enabled=FALSE,updated_at=NOW() WHERE id=$1 RETURNING id,name,registration_enabled",
+        [scope.university_id]
+      );
+      await pool.query(
+        "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,metadata) VALUES($1,'university.registration_disabled','university',$2,$2,'{}'::jsonb)",
+        [req.user.id, scope.university_id]
+      );
+      return res.json({ university: result.rows[0], message: "Les inscriptions étudiantes sont maintenant fermées. Les comptes existants ne sont pas supprimés." });
+    } catch { return res.status(503).json({ error: "registration_disable_failed" }); }
   });
 
   return router;
