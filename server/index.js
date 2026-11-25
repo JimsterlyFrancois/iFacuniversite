@@ -11,7 +11,7 @@ import helmet from "helmet";
 import nodemailer from "nodemailer";
 import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
 import { requireGeneralAdmin } from "./lib/roleAuthorization.js";
-import { listRegistrableUniversities, listActiveRoleUniversities, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
+import { listRegistrableUniversities, listActiveRoleUniversities, listProfessorUniversities, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
 import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
@@ -403,6 +403,16 @@ app.get("/api/v1/catalog/role-universities", requireDatabase, async (_req, res) 
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "role_catalog_unavailable", message: "La liste des établissements actifs est temporairement indisponible." });
+  }
+});
+
+app.get("/api/v1/catalog/professor-universities", requireDatabase, async (_req, res) => {
+  try {
+    const result = await listProfessorUniversities(pool);
+    res.set("Cache-Control", "no-store");
+    return res.json({ data: result.rows });
+  } catch {
+    return res.status(503).json({ error: "professor_catalog_unavailable", message: "La liste des établissements proposant des cours est temporairement indisponible." });
   }
 });
 

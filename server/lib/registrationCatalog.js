@@ -24,6 +24,21 @@ export async function listActiveRoleUniversities(queryable) {
   );
 }
 
+export async function listProfessorUniversities(queryable) {
+  return queryable.query(
+    `SELECT DISTINCT u.id, u.code, u.name
+     FROM universities u
+     JOIN faculties f ON f.university_id=u.id
+     JOIN options o ON o.faculty_id=f.id
+     JOIN study_levels l ON l.option_id=o.id
+     JOIN subjects s ON s.option_id=o.id AND s.study_level_id=l.id
+     JOIN courses course ON course.subject_id=s.id
+     WHERE u.is_active=TRUE AND f.is_active=TRUE AND o.is_active=TRUE
+       AND l.is_active=TRUE AND s.is_active=TRUE AND course.is_active=TRUE
+     ORDER BY u.name`
+  );
+}
+
 export async function findActiveAcademicProfile(queryable, {
   universityCode, facultyCode, optionCode, studyLevelCode
 }) {

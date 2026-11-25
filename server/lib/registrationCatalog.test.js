@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findActiveAcademicProfile, listActiveRoleUniversities, listRegistrableUniversities } from "./registrationCatalog.js";
+import { findActiveAcademicProfile, listActiveRoleUniversities, listProfessorUniversities, listRegistrableUniversities } from "./registrationCatalog.js";
 
 test("student catalogue lists only active universities with registration enabled and a complete active path", async () => {
   let receivedSql = "";
@@ -25,6 +25,18 @@ test("role applications can list active universities before their catalog is rea
   });
   assert.match(receivedSql, /FROM universities WHERE is_active = TRUE ORDER BY name/i);
   assert.doesNotMatch(receivedSql, /registration_enabled/i);
+  assert.deepEqual(result.rows, rows);
+});
+
+test("professor catalog lists only active universities that have an active course path", async () => {
+  let receivedSql = "";
+  const rows = [{ id: 73, code: "COURSES", name: "Université avec cours" }];
+  const result = await listProfessorUniversities({
+    async query(sql) { receivedSql = sql; return { rows, rowCount: rows.length }; }
+  });
+  assert.match(receivedSql, /JOIN subjects s ON s\.option_id=o\.id AND s\.study_level_id=l\.id/i);
+  assert.match(receivedSql, /JOIN courses course ON course\.subject_id=s\.id/i);
+  assert.match(receivedSql, /u\.is_active=TRUE/i);
   assert.deepEqual(result.rows, rows);
 });
 
