@@ -79,10 +79,20 @@ export function createRoleRegistrationRouter({ pool }) {
     if (!studyLevelId) return res.status(400).json({ error: "invalid_study_level_id" });
     try {
       const result = await pool.query(
-        "SELECT c.id,c.name,s.option_id,s.study_level_id FROM courses c JOIN subjects s ON s.id=c.subject_id JOIN options o ON o.id=s.option_id JOIN faculties f ON f.id=o.faculty_id JOIN universities u ON u.id=f.university_id JOIN study_levels l ON l.id=s.study_level_id WHERE l.id=$1 AND c.is_active=TRUE AND s.is_active=TRUE AND o.is_active=TRUE AND f.is_active=TRUE AND u.is_active=TRUE ORDER BY c.name",
+        `SELECT c.id,c.name,s.option_id,s.study_level_id
+         FROM courses c
+         JOIN subjects s ON s.id=c.subject_id
+         JOIN study_levels l ON l.id=s.study_level_id AND l.option_id=s.option_id
+         JOIN options o ON o.id=s.option_id
+         JOIN faculties f ON f.id=o.faculty_id
+         JOIN universities u ON u.id=f.university_id
+         WHERE l.id=$1 AND c.is_active=TRUE AND s.is_active=TRUE
+           AND l.is_active=TRUE AND o.is_active=TRUE
+           AND f.is_active=TRUE AND u.is_active=TRUE
+         ORDER BY c.name`,
         [studyLevelId]
       );
-      res.set("Cache-Control", "no-store");
+      res.set("Cache-Control", "public, max-age=60, s-maxage=60, stale-while-revalidate=300");
       return res.json({ data: result.rows });
     } catch {
       return res.status(503).json({ error: "course_catalog_unavailable", message: "Les cours ne peuvent pas être chargés pour le moment." });

@@ -45,23 +45,6 @@ export async function listProfessorUniversities(queryable) {
   );
 }
 
-export async function listActiveCoursesForStudyLevel(queryable, studyLevelId) {
-  return queryable.query(
-    `SELECT c.id, c.name
-     FROM courses c
-     JOIN subjects s ON s.id=c.subject_id
-     JOIN study_levels l ON l.id=s.study_level_id
-     JOIN options o ON o.id=s.option_id AND o.id=l.option_id
-     JOIN faculties f ON f.id=o.faculty_id
-     JOIN universities u ON u.id=f.university_id
-     WHERE l.id=$1
-       AND c.is_active=TRUE AND s.is_active=TRUE AND l.is_active=TRUE
-       AND o.is_active=TRUE AND f.is_active=TRUE AND u.is_active=TRUE
-     ORDER BY c.name`,
-    [studyLevelId]
-  );
-}
-
 export async function findActiveAcademicProfile(queryable, {
   universityCode, facultyCode, optionCode, studyLevelCode
 }) {

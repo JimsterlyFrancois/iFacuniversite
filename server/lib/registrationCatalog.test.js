@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findActiveAcademicProfile, listActiveCoursesForStudyLevel, listActiveRoleUniversities, listProfessorUniversities, listRegistrableUniversities } from "./registrationCatalog.js";
+import { findActiveAcademicProfile, listActiveRoleUniversities, listProfessorUniversities, listRegistrableUniversities } from "./registrationCatalog.js";
 
 test("student catalogue lists only active universities with an active administrator, registration enabled and a complete active path", async () => {
   let receivedSql = "";
@@ -61,26 +61,4 @@ test("student registration requires a complete active path and an open universit
   assert.match(receivedSql, /l\.is_active=TRUE/i);
   assert.deepEqual(receivedParams, ["NEWUNI", "SCI", "PSY", "L1"]);
   assert.equal(result.rowCount, 0);
-});
-
-
-test("course catalog returns only active courses within the selected active academic path", async () => {
-  let receivedSql = "";
-  let receivedParams = [];
-  const rows = [{ id: 202, name: "Psychologie de l’apprentissage" }];
-  const result = await listActiveCoursesForStudyLevel({
-    async query(sql, params) {
-      receivedSql = sql;
-      receivedParams = params;
-      return { rows, rowCount: rows.length };
-    }
-  }, 47);
-
-  assert.match(receivedSql, /JOIN subjects s ON s\.id=c\.subject_id/i);
-  assert.match(receivedSql, /JOIN study_levels l ON l\.id=s\.study_level_id/i);
-  assert.match(receivedSql, /JOIN options o ON o\.id=s\.option_id AND o\.id=l\.option_id/i);
-  assert.match(receivedSql, /c\.is_active=TRUE AND s\.is_active=TRUE AND l\.is_active=TRUE/i);
-  assert.match(receivedSql, /o\.is_active=TRUE AND f\.is_active=TRUE AND u\.is_active=TRUE/i);
-  assert.deepEqual(receivedParams, [47]);
-  assert.deepEqual(result.rows, rows);
 });
