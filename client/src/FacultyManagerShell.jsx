@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiUrl } from "./apiBase.js";
 import ThemeToggle from "./ThemeToggle.jsx";
 import useAutoRefresh from "./useAutoRefresh.js";
 
@@ -98,7 +99,7 @@ export default function FacultyManagerShell({token,user,onLogout,request,theme =
   async function downloadDocument(doc){
     setDownloadingId(doc.id);setFeedback("");
     try{
-      const response=await fetch(`/api/v1/faculty-manager/documents/${doc.id}/download`,{headers:{Authorization:`Bearer ${token}`}});
+      const response=await fetch(apiUrl(`/api/v1/faculty-manager/documents/${doc.id}/download`),{headers:{Authorization:`Bearer ${token}`}});
       if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.message||"Téléchargement impossible pour ce document.");}
       const blob=await response.blob(),url=URL.createObjectURL(blob),anchor=document.createElement("a");
       anchor.href=url;anchor.download=doc.file_name||`document-ifac-${doc.id}`;
