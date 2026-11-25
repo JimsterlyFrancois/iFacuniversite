@@ -77,6 +77,36 @@ const pool = databaseUrl
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+
+const configuredAppOrigin = (() => {
+  try {
+    return process.env.APP_BASE_URL ? new URL(process.env.APP_BASE_URL).origin : "";
+  } catch {
+    return "";
+  }
+})();
+const allowedOrigins = new Set([
+  "https://localhost",
+  "capacitor://localhost",
+  "http://localhost:3435",
+  "http://127.0.0.1:3435",
+  configuredAppOrigin,
+  ...(process.env.CORS_ALLOWED_ORIGINS || "").split(",").map(origin => origin.trim())
+].filter(Boolean));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.has(origin)) {
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Vary", "Origin");
+    res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res.set("Access-Control-Max-Age", "86400");
+  }
+  if (req.method === "OPTIONS") return res.status(204).end();
+  next();
+});
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "1mb" }));
 app.use("/api/v1/auth", rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }));
