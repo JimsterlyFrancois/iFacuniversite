@@ -41,7 +41,7 @@ test("platform announcement feed derives active roles and scopes together from t
     assert.match(calls[0].sql, /WITH user_contexts\(role,university_id,faculty_id,option_id,study_level_id\) AS/);
     assert.match(calls[0].sql, /ra\.role,ra\.university_id,ra\.faculty_id,ra\.option_id,ra\.study_level_id/);
     assert.match(calls[0].sql, /uc\.role=ANY\(t\.target_roles\)/);
-    assert.match(calls[0].sql, /uc\.university_id=uc\.university_id/);
+    assert.match(calls[0].sql, /t\.university_id=uc\.university_id/);
     assert.match(calls[0].sql, /uc\.role='university_admin'/);
     assert.match(calls[0].sql, /un\.is_active=TRUE/);
     assert.doesNotMatch(calls[0].sql, /WITH user_roles\(role\) AS/);
