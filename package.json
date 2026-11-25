@@ -15,7 +15,8 @@
     "cap:add:ios": "cap add ios",
     "cap:sync": "cap sync",
     "cap:open:android": "cap open android",
-    "cap:open:ios": "cap open ios"
+    "cap:open:ios": "cap open ios",
+    "android:configure-release": "node scripts/configure-android-release.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",
