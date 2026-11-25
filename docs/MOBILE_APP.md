@@ -30,7 +30,18 @@ Après les modifications de l'interface, exécuter `npm run build` puis `npx cap
 
 Le workflow GitHub Actions `Android debug APK` construit un APK de débogage et le publie comme artefact téléchargeable. Il peut être lancé manuellement depuis Actions ou automatiquement pour une Pull Request qui modifie les fichiers mobiles.
 
-Cet APK sert aux tests. Une publication Google Play nécessitera ultérieurement une version Android signée (AAB) et une clé de signature conservée dans des secrets GitHub.
+Cet APK sert uniquement aux tests techniques. Il ne remplace pas une version de diffusion.
+
+Le workflow `Android signed release` prépare une APK signée installable normalement ainsi qu’un Android App Bundle (AAB). Il se lance manuellement ou lorsqu’un tag de version `v*` est poussé. Il exige une clé permanente, à conserver hors du dépôt et à sauvegarder en lieu sûr, ainsi que les quatre secrets GitHub suivants : `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` et `ANDROID_KEY_PASSWORD`. Ne changez pas de clé entre deux versions : Android n’acceptera pas une mise à jour signée avec une autre clé.
+
+Pour préparer la clé une seule fois dans le terminal Linux :
+```sh
+keytool -genkeypair -v -keystore ifac-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias ifac-universite
+base64 -w 0 ifac-release-key.jks > ifac-release-key.base64
+```
+Conservez le fichier JKS et ses mots de passe dans un gestionnaire sûr. Copiez le contenu du fichier Base64 dans le secret `ANDROID_KEYSTORE_BASE64`, puis ajoutez les trois autres valeurs dans GitHub → Settings → Secrets and variables → Actions. Ne placez jamais le JKS, le Base64 ou les mots de passe dans le dépôt ni dans un commit.
+
+Tant que ces secrets ne sont pas configurés, une version signée ne peut pas être produite de manière sûre.
 
 ## iOS
 
