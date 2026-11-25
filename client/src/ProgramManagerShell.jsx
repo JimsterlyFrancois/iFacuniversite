@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiUrl } from "./apiBase.js";
 import ThemeToggle from "./ThemeToggle.jsx";
 import useAutoRefresh from "./useAutoRefresh.js";
 
@@ -101,7 +102,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
   async function downloadDocument(doc) {
     setDownloadingId(doc.id); setFeedback("");
     try {
-      const response = await fetch(`/api/v1/program-manager/documents/${doc.id}/download`, {
+      const response = await fetch(apiUrl(`/api/v1/program-manager/documents/${doc.id}/download`), {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) {
