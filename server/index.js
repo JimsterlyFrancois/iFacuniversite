@@ -294,7 +294,7 @@ function requireDatabase(_req, res, next) {
 app.get("/api/v1/catalog/universities", requireDatabase, async (_req, res) => {
   try {
     const result = await listRegistrableUniversities(pool);
-    res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=86400");
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
@@ -311,7 +311,7 @@ app.get("/api/v1/catalog/faculties", requireDatabase, async (req, res) => {
       "SELECT f.id, f.code, f.name FROM faculties f JOIN universities u ON u.id = f.university_id WHERE f.university_id = $1 AND f.is_active = TRUE AND u.is_active = TRUE ORDER BY f.name",
       [universityId]
     );
-    res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=86400");
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
@@ -328,7 +328,7 @@ app.get("/api/v1/catalog/options", requireDatabase, async (req, res) => {
       "SELECT o.id, o.code, o.name FROM options o JOIN faculties f ON f.id = o.faculty_id JOIN universities u ON u.id = f.university_id WHERE o.faculty_id = $1 AND o.is_active = TRUE AND f.is_active = TRUE AND u.is_active = TRUE ORDER BY o.name",
       [facultyId]
     );
-    res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=86400");
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
@@ -345,7 +345,7 @@ app.get("/api/v1/catalog/levels", requireDatabase, async (req, res) => {
       "SELECT l.id, l.code, l.label, l.sort_order FROM study_levels l JOIN options o ON o.id = l.option_id JOIN faculties f ON f.id = o.faculty_id JOIN universities u ON u.id = f.university_id WHERE l.option_id = $1 AND l.is_active = TRUE AND o.is_active = TRUE AND f.is_active = TRUE AND u.is_active = TRUE ORDER BY l.sort_order",
       [optionId]
     );
-    res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=86400");
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
