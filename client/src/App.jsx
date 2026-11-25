@@ -6,6 +6,7 @@ import ProgramManagerShell from "./ProgramManagerShell.jsx";
 import FacultyManagerShell from "./FacultyManagerShell.jsx";
 import UniversityAdminShell from "./UniversityAdminShell.jsx";
 import GeneralAdminShell from "./GeneralAdminShell.jsx";
+import PlatformAnnouncementFeed from "./PlatformAnnouncementFeed.jsx";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 import { readCatalogCache, writeCatalogCache } from "./catalogCache.js";
 
@@ -363,6 +364,7 @@ export default function App() {
           {roles.map(role => <option key={role} value={role}>{labels[role] || role}</option>)}
         </select>
       </div>}
+      <PlatformAnnouncementFeed token={token} />
       {workspace}
     </div>;
   }

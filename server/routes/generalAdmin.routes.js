@@ -7,6 +7,44 @@ const idOf = value => {
 };
 const textOf = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
 
+const announcementRoles = new Set([
+  "university_admin", "faculty_manager", "program_manager",
+  "professor", "student", "delegate", "admin_general"
+]);
+
+export function normalizePlatformAnnouncement(body = {}) {
+  const title = textOf(body.title, 220);
+  const message = textOf(body.body, 20000);
+  const rawTarget = body.target && typeof body.target === "object" ? body.target : {};
+  const readOptionalId = key => {
+    const value = rawTarget[key];
+    if (value === null || value === undefined || value === "") return { valid: true, value: null };
+    const parsed = idOf(value);
+    return { valid: Boolean(parsed), value: parsed };
+  };
+  const university = readOptionalId("universityId");
+  const faculty = readOptionalId("facultyId");
+  const option = readOptionalId("optionId");
+  const level = readOptionalId("studyLevelId");
+  const roles = rawTarget.roles === undefined ? [] : rawTarget.roles;
+  if (!title || !message || !university.valid || !faculty.valid || !option.valid || !level.valid ||
+      !Array.isArray(roles) || roles.length > announcementRoles.size ||
+      roles.some(role => typeof role !== "string" || !announcementRoles.has(role)) ||
+      new Set(roles).size !== roles.length) return null;
+  if (!university.value && (faculty.value || option.value || level.value)) return null;
+  if (option.value && !faculty.value) return null;
+  if (level.value && !option.value) return null;
+  return {
+    title, body: message,
+    universityId: university.value,
+    facultyId: faculty.value,
+    optionId: option.value,
+    studyLevelId: level.value,
+    roles
+  };
+}
+
+
 export function createGeneralAdminRouter({ pool, requireAuth }) {
   const router = express.Router();
 
@@ -396,6 +434,128 @@ export function createGeneralAdminRouter({ pool, requireAuth }) {
         ORDER BY f.created_at DESC LIMIT 300`);
       return res.json({ data: result.rows });
     } catch { return res.status(503).json({ error: "feedback_unavailable" }); }
+  });
+
+
+  router.get("/general-admin/announcement-catalog", ...guard, async (_req, res) => {
+    try {
+      const [universities, faculties, options, levels] = await Promise.all([
+        pool.query("SELECT id,name FROM universities WHERE is_active=TRUE ORDER BY name"),
+        pool.query("SELECT f.id,f.university_id,f.name FROM faculties f JOIN universities u ON u.id=f.university_id WHERE f.is_active=TRUE AND u.is_active=TRUE ORDER BY f.name"),
+        pool.query("SELECT o.id,o.faculty_id,o.name FROM options o JOIN faculties f ON f.id=o.faculty_id JOIN universities u ON u.id=f.university_id WHERE o.is_active=TRUE AND f.is_active=TRUE AND u.is_active=TRUE ORDER BY o.name"),
+        pool.query("SELECT l.id,l.option_id,l.label FROM study_levels l JOIN options o ON o.id=l.option_id JOIN faculties f ON f.id=o.faculty_id JOIN universities u ON u.id=f.university_id WHERE l.is_active=TRUE AND o.is_active=TRUE AND f.is_active=TRUE AND u.is_active=TRUE ORDER BY l.sort_order,l.label")
+      ]);
+      return res.json({ data: { universities: universities.rows, faculties: faculties.rows, options: options.rows, levels: levels.rows } });
+    } catch {
+      return res.status(503).json({ error: "platform_announcement_catalog_unavailable", message: "Le catalogue des destinataires est temporairement indisponible." });
+    }
+  });
+
+  router.get("/general-admin/announcements", ...guard, async (_req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT a.id,a.title,a.body,a.is_active,a.created_at,
+          t.university_id,t.faculty_id,t.option_id,t.study_level_id,t.target_roles,
+          COALESCE(un.name,'Toutes les universités actives') AS target_university_name,
+          f.name AS target_faculty_name,o.name AS target_option_name,l.label AS target_level_label
+        FROM platform_announcements a
+        JOIN platform_announcement_targets t ON t.announcement_id=a.id
+        LEFT JOIN universities un ON un.id=t.university_id
+        LEFT JOIN faculties f ON f.id=t.faculty_id
+        LEFT JOIN options o ON o.id=t.option_id
+        LEFT JOIN study_levels l ON l.id=t.study_level_id
+        ORDER BY a.created_at DESC LIMIT 300
+      `);
+      return res.json({ data: result.rows });
+    } catch (error) {
+      console.error("general-admin announcements:", error.message);
+      return res.status(503).json({ error: "platform_announcements_unavailable", message: "Appliquez la migration des annonces de plateforme avant de publier." });
+    }
+  });
+
+  router.post("/general-admin/announcements", ...guard, async (req, res) => {
+    const announcement = normalizePlatformAnnouncement(req.body);
+    if (!announcement) return res.status(400).json({
+      error: "invalid_platform_announcement",
+      message: "Vérifiez le titre, le message, les rôles et le parcours académique sélectionné."
+    });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (announcement.universityId) {
+        const validScope = await client.query(`
+          SELECT u.id
+          FROM universities u
+          LEFT JOIN faculties f ON f.id=$2 AND f.university_id=u.id AND f.is_active=TRUE
+          LEFT JOIN options o ON o.id=$3 AND o.faculty_id=f.id AND o.is_active=TRUE
+          LEFT JOIN study_levels l ON l.id=$4 AND l.option_id=o.id AND l.is_active=TRUE
+          WHERE u.id=$1 AND u.is_active=TRUE
+            AND ($2::bigint IS NULL OR f.id IS NOT NULL)
+            AND ($3::bigint IS NULL OR o.id IS NOT NULL)
+            AND ($4::bigint IS NULL OR l.id IS NOT NULL)
+          FOR SHARE OF u
+        `, [announcement.universityId,announcement.facultyId,announcement.optionId,announcement.studyLevelId]);
+        if (!validScope.rowCount) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ error: "invalid_announcement_scope", message: "Le parcours sélectionné est inactif ou ne dépend pas de cette université." });
+        }
+      }
+      const created = await client.query(
+        "INSERT INTO platform_announcements(title,body,is_active,created_by) VALUES($1,$2,TRUE,$3) RETURNING id,title,body,is_active,created_at",
+        [announcement.title,announcement.body,req.user.id]
+      );
+      const target = await client.query(
+        `INSERT INTO platform_announcement_targets(announcement_id,university_id,faculty_id,option_id,study_level_id,target_roles)
+         VALUES($1,$2,$3,$4,$5,$6::text[]) RETURNING id`,
+        [created.rows[0].id,announcement.universityId,announcement.facultyId,announcement.optionId,announcement.studyLevelId,announcement.roles]
+      );
+      await client.query(
+        "INSERT INTO admin_audit_logs(actor_user_id,action,target_type,target_id,university_id,metadata) VALUES($1,'platform_announcement.published','platform_announcement',$2,$3,$4::jsonb)",
+        [req.user.id,created.rows[0].id,announcement.universityId,JSON.stringify({
+          title: announcement.title,
+          roles: announcement.roles,
+          facultyId: announcement.facultyId,
+          optionId: announcement.optionId,
+          studyLevelId: announcement.studyLevelId,
+          targetId: target.rows[0].id
+        })]
+      );
+      await client.query("COMMIT");
+      return res.status(201).json({
+        announcement: {
+          ...created.rows[0],
+          university_id: announcement.universityId,
+          faculty_id: announcement.facultyId,
+          option_id: announcement.optionId,
+          study_level_id: announcement.studyLevelId,
+          target_roles: announcement.roles
+        },
+        message: "Annonce publiée. Elle sera affichée aux comptes correspondant au ciblage choisi."
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("platform announcement create:", error.message);
+      return res.status(503).json({ error: "platform_announcement_create_failed", message: "L’annonce n’a pas pu être publiée. Réessayez après vérification de la base." });
+    } finally {
+      client.release();
+    }
+  });
+
+  router.patch("/general-admin/announcements/:id/status", ...guard, async (req, res) => {
+    const id = idOf(req.params.id);
+    const active = req.body?.active;
+    if (!id || typeof active !== "boolean") return res.status(400).json({ error: "invalid_platform_announcement_status" });
+    try {
+      const result = await pool.query(
+        "UPDATE platform_announcements SET is_active=$1 WHERE id=$2 RETURNING id,title",
+        [active,id]
+      );
+      if (!result.rowCount) return res.status(404).json({ error: "platform_announcement_not_found" });
+      await audit(req, active ? "platform_announcement.activated" : "platform_announcement.paused", "platform_announcement", id, null, { title: result.rows[0].title });
+      return res.json({ message: active ? "Annonce réactivée." : "Annonce suspendue. Elle n’est plus affichée aux destinataires." });
+    } catch {
+      return res.status(503).json({ error: "platform_announcement_status_failed" });
+    }
   });
 
   return router;
