@@ -22,14 +22,14 @@ async function withApi(pool, run) {
   }
 }
 
-test("new universities are created active and visible to student registration immediately", async () => {
+test("new universities stay closed to student registration until their hierarchy is ready", async () => {
   const calls = [];
   const created = {
     id: 91,
     code: "NEWUNI",
     name: "Nouvelle université",
     is_active: true,
-    registration_enabled: true,
+    registration_enabled: false,
     created_at: "2026-11-10T00:00:00.000Z"
   };
   const pool = {
@@ -50,11 +50,11 @@ test("new universities are created active and visible to student registration im
     const body = await response.json();
 
     assert.equal(response.status, 201);
-    assert.equal(body.university.registration_enabled, true);
-    assert.match(body.message, /visible dans le formulaire d’inscription/i);
+    assert.equal(body.university.registration_enabled, false);
+    assert.match(body.message, /restera absente de l’inscription étudiante/i);
 
     const insert = calls.find(call => call.sql.includes("INSERT INTO universities"));
-    assert.match(insert.sql, /VALUES\(\$1,\$2,TRUE,TRUE\)/);
+    assert.match(insert.sql, /VALUES\(\$1,\$2,TRUE,FALSE\)/);
     assert.deepEqual(insert.params, ["NEWUNI", "Nouvelle université"]);
   });
 });

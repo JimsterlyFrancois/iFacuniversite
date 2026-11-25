@@ -11,7 +11,7 @@ import helmet from "helmet";
 import nodemailer from "nodemailer";
 import { updateSupabaseUserPassword } from "./lib/supabaseAdmin.js";
 import { requireGeneralAdmin } from "./lib/roleAuthorization.js";
-import { listRegistrableUniversities, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
+import { listRegistrableUniversities, listActiveRoleUniversities, findActiveAcademicProfile } from "./lib/registrationCatalog.js";
 import { resolveAuthUserId } from "./lib/authIdentity.js";
 import multer from "multer";
 import { createClassDocumentsRouter } from "./routes/classDocuments.routes.js";
@@ -174,7 +174,38 @@ async function getPublicUser(user) {
              LEFT JOIN faculties af ON af.id=a.faculty_id
              LEFT JOIN options ao ON ao.id=a.option_id
              LEFT JOIN study_levels al ON al.id=a.study_level_id
-             WHERE a.user_id=u.id AND a.status='active'),'[]'::json) AS workspaces,
+             WHERE a.user_id=u.id AND a.status='active' AND (
+       a.role='admin_general'
+       OR (a.role='university_admin' AND EXISTS (
+         SELECT 1 FROM universities vu WHERE vu.id=a.university_id AND vu.is_active=TRUE
+       ))
+       OR (a.role='faculty_manager' AND EXISTS (
+         SELECT 1 FROM universities vu JOIN faculties vf ON vf.university_id=vu.id
+         WHERE vu.id=a.university_id AND vf.id=a.faculty_id
+           AND vu.is_active=TRUE AND vf.is_active=TRUE
+       ))
+       OR (a.role='program_manager' AND EXISTS (
+         SELECT 1 FROM universities vu JOIN faculties vf ON vf.university_id=vu.id
+         JOIN options vo ON vo.faculty_id=vf.id
+         LEFT JOIN study_levels vl ON vl.option_id=vo.id AND vl.id=a.study_level_id
+         WHERE vu.id=a.university_id AND vf.id=a.faculty_id
+           AND vo.id=a.option_id AND vu.is_active=TRUE AND vf.is_active=TRUE
+           AND vo.is_active=TRUE
+           AND (a.study_level_id IS NULL OR (vl.id IS NOT NULL AND vl.is_active=TRUE))
+       ))
+       OR (a.role='professor' AND EXISTS (
+         SELECT 1 FROM professor_invites vpi
+         JOIN professor_assignments vpa ON vpa.invite_id=vpi.id
+         JOIN universities vu ON vu.id=vpa.university_id
+         JOIN faculties vf ON vf.id=vpa.faculty_id AND vf.university_id=vu.id
+         JOIN options vo ON vo.id=vpa.option_id AND vo.faculty_id=vf.id
+         JOIN study_levels vl ON vl.id=vpa.study_level_id AND vl.option_id=vo.id
+         WHERE vpi.user_id=a.user_id AND vpi.is_active=TRUE
+           AND vpa.is_active=TRUE AND vpa.approval_status='approved'
+           AND vpa.course_id IS NOT NULL AND vu.is_active=TRUE AND vf.is_active=TRUE
+           AND vo.is_active=TRUE AND vl.is_active=TRUE
+       ))
+     )),'[]'::json) AS workspaces,
             COALESCE((
               SELECT json_agg(application.item ORDER BY application.created_at DESC)
               FROM (
@@ -217,9 +248,40 @@ async function getPublicUser(user) {
      LEFT JOIN options o ON o.id=u.option_id
      LEFT JOIN study_levels l ON l.id=u.study_level_id
      LEFT JOIN LATERAL (
-       SELECT role FROM role_assignments
-       WHERE user_id=u.id AND status='active'
-       ORDER BY CASE role WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
+       SELECT rwa.role FROM role_assignments rwa
+       WHERE rwa.user_id=u.id AND rwa.status='active' AND (
+       rwa.role='admin_general'
+       OR (rwa.role='university_admin' AND EXISTS (
+         SELECT 1 FROM universities vu WHERE vu.id=rwa.university_id AND vu.is_active=TRUE
+       ))
+       OR (rwa.role='faculty_manager' AND EXISTS (
+         SELECT 1 FROM universities vu JOIN faculties vf ON vf.university_id=vu.id
+         WHERE vu.id=rwa.university_id AND vf.id=rwa.faculty_id
+           AND vu.is_active=TRUE AND vf.is_active=TRUE
+       ))
+       OR (rwa.role='program_manager' AND EXISTS (
+         SELECT 1 FROM universities vu JOIN faculties vf ON vf.university_id=vu.id
+         JOIN options vo ON vo.faculty_id=vf.id
+         LEFT JOIN study_levels vl ON vl.option_id=vo.id AND vl.id=rwa.study_level_id
+         WHERE vu.id=rwa.university_id AND vf.id=rwa.faculty_id
+           AND vo.id=rwa.option_id AND vu.is_active=TRUE AND vf.is_active=TRUE
+           AND vo.is_active=TRUE
+           AND (rwa.study_level_id IS NULL OR (vl.id IS NOT NULL AND vl.is_active=TRUE))
+       ))
+       OR (rwa.role='professor' AND EXISTS (
+         SELECT 1 FROM professor_invites vpi
+         JOIN professor_assignments vpa ON vpa.invite_id=vpi.id
+         JOIN universities vu ON vu.id=vpa.university_id
+         JOIN faculties vf ON vf.id=vpa.faculty_id AND vf.university_id=vu.id
+         JOIN options vo ON vo.id=vpa.option_id AND vo.faculty_id=vf.id
+         JOIN study_levels vl ON vl.id=vpa.study_level_id AND vl.option_id=vo.id
+         WHERE vpi.user_id=rwa.user_id AND vpi.is_active=TRUE
+           AND vpa.is_active=TRUE AND vpa.approval_status='approved'
+           AND vpa.course_id IS NOT NULL AND vu.is_active=TRUE AND vf.is_active=TRUE
+           AND vo.is_active=TRUE AND vl.is_active=TRUE
+       ))
+     )
+       ORDER BY CASE rwa.role WHEN 'admin_general' THEN 1 WHEN 'university_admin' THEN 2
          WHEN 'faculty_manager' THEN 3 WHEN 'program_manager' THEN 4 WHEN 'professor' THEN 5 ELSE 9 END
        LIMIT 1
      ) ra ON TRUE
@@ -241,7 +303,40 @@ async function requireAuth(req, res, next) {
     );
     if (!result.rowCount) return res.status(401).json({ error: "invalid_or_expired_session" });
     const assignments = await pool.query(
-      "SELECT id,role,university_id,faculty_id,option_id,study_level_id FROM role_assignments WHERE user_id=$1 AND status='active'",
+      `SELECT ra.id,ra.role,ra.university_id,ra.faculty_id,ra.option_id,ra.study_level_id
+       FROM role_assignments ra
+       WHERE ra.user_id=$1 AND ra.status='active' AND (
+       ra.role='admin_general'
+       OR (ra.role='university_admin' AND EXISTS (
+         SELECT 1 FROM universities vu WHERE vu.id=ra.university_id AND vu.is_active=TRUE
+       ))
+       OR (ra.role='faculty_manager' AND EXISTS (
+         SELECT 1 FROM universities vu JOIN faculties vf ON vf.university_id=vu.id
+         WHERE vu.id=ra.university_id AND vf.id=ra.faculty_id
+           AND vu.is_active=TRUE AND vf.is_active=TRUE
+       ))
+       OR (ra.role='program_manager' AND EXISTS (
+         SELECT 1 FROM universities vu JOIN faculties vf ON vf.university_id=vu.id
+         JOIN options vo ON vo.faculty_id=vf.id
+         LEFT JOIN study_levels vl ON vl.option_id=vo.id AND vl.id=ra.study_level_id
+         WHERE vu.id=ra.university_id AND vf.id=ra.faculty_id
+           AND vo.id=ra.option_id AND vu.is_active=TRUE AND vf.is_active=TRUE
+           AND vo.is_active=TRUE
+           AND (ra.study_level_id IS NULL OR (vl.id IS NOT NULL AND vl.is_active=TRUE))
+       ))
+       OR (ra.role='professor' AND EXISTS (
+         SELECT 1 FROM professor_invites vpi
+         JOIN professor_assignments vpa ON vpa.invite_id=vpi.id
+         JOIN universities vu ON vu.id=vpa.university_id
+         JOIN faculties vf ON vf.id=vpa.faculty_id AND vf.university_id=vu.id
+         JOIN options vo ON vo.id=vpa.option_id AND vo.faculty_id=vf.id
+         JOIN study_levels vl ON vl.id=vpa.study_level_id AND vl.option_id=vo.id
+         WHERE vpi.user_id=ra.user_id AND vpi.is_active=TRUE
+           AND vpa.is_active=TRUE AND vpa.approval_status='approved'
+           AND vpa.course_id IS NOT NULL AND vu.is_active=TRUE AND vf.is_active=TRUE
+           AND vo.is_active=TRUE AND vl.is_active=TRUE
+       ))
+     )`,
       [result.rows[0].id]
     );
     req.user = result.rows[0];
@@ -298,6 +393,16 @@ app.get("/api/v1/catalog/universities", requireDatabase, async (_req, res) => {
     return res.json({ data: result.rows });
   } catch {
     return res.status(503).json({ error: "catalog_unavailable", message: "Le catalogue est temporairement indisponible." });
+  }
+});
+
+app.get("/api/v1/catalog/role-universities", requireDatabase, async (_req, res) => {
+  try {
+    const result = await listActiveRoleUniversities(pool);
+    res.set("Cache-Control", "no-store");
+    return res.json({ data: result.rows });
+  } catch {
+    return res.status(503).json({ error: "role_catalog_unavailable", message: "La liste des établissements actifs est temporairement indisponible." });
   }
 });
 
