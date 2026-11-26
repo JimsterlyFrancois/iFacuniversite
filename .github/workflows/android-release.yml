@@ -71,6 +71,9 @@ jobs:
         run: npm run android:configure-release
 
       - name: Build signed APK and App Bundle
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('0.1.0-build.{0}', github.run_number) }}
         run: |
           cd android
           chmod +x gradlew
