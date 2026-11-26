@@ -20,19 +20,15 @@ const destinations = [
   { id: "profile", label: "Profil", short: "Profil" }
 ];
 
-const primaryDestinations = [
-  { id: "messages", label: "Messagerie", short: "Messagerie" },
-  { id: "home", label: "Accueil", short: "Accueil" },
-  { id: "notes", label: "Notes privées", short: "Notes" },
-  { id: "profile", label: "Profil", short: "Profil" }
-];
+
 
 function NavigationIcon({ name, theme = "light" }) {
-  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" };
   const christmas = theme === "christmas";
   return <svg viewBox="0 0 32 32" aria-hidden="true" {...common}>
-    {name === "messages" ? <><path d="M4 8.5A3.5 3.5 0 0 1 7.5 5h14A3.5 3.5 0 0 1 25 8.5v8a3.5 3.5 0 0 1-3.5 3.5H13l-5.5 4v-4.2A3.5 3.5 0 0 1 4 16.5Z"/><path d="M12 11h8M12 15h5"/>{christmas && <><path d="M5 7 9 2l5 4-2 3Z" fill="#b91c1c" stroke="#fff"/><path d="M5 7 9 8l3-2" stroke="#fff" strokeWidth="2.5"/><circle cx="14" cy="6" r="1.5" fill="#fff" stroke="none"/></>}</> :
+    {name === "messages" ? <><path d="M5 8.5A4.5 4.5 0 0 1 9.5 4h13A4.5 4.5 0 0 1 27 8.5v8a4.5 4.5 0 0 1-4.5 4.5H13l-7 5v-6.2A4.5 4.5 0 0 1 5 17Z"/><path d="M11 12h10M11 16h7"/>{christmas && <><path d="m6 7 4-5 5 4-2 4Z" fill="#b91c1c" stroke="#fff"/><path d="m6 7 5 1" stroke="#fff" strokeWidth="2.2"/><circle cx="14" cy="5" r="1.5" fill="#fff" stroke="none"/></>}</> :
     name === "home" ? <><path d="m3 14 13-10 13 10"/><path d="M6 12v15h20V12M13 27V17h7v10"/>{christmas && <><path d="m25 5 1.2 2.2 2.4.4-1.8 1.7.4 2.4-2.2-1.2-2.2 1.2.4-2.4-1.8-1.7 2.4-.4Z" fill="#eab308" stroke="none"/><path d="M5 14 2 11" stroke="#15803d" strokeWidth="3"/></>}</> :
+    name === "notifications" ? <><path d="M24 21H8c1.8-2 2.5-4.1 2.5-8a5.5 5.5 0 0 1 11 0c0 3.9.7 6 2.5 8Z"/><path d="M13 25a3 3 0 0 0 6 0"/></> :
     name === "notes" ? <><path d="M7 4h12l6 6v17H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Z"/><path d="M18 4v7h7M10 16h11M10 21h8"/>{christmas && <><path d="m5 5 2-3 2 3-2 3Z" fill="#15803d" stroke="none"/><circle cx="7" cy="5" r="1" fill="#dc2626" stroke="none"/></>}</> :
     <><circle cx="16" cy="11" r="5"/><path d="M6 28a10 10 0 0 1 20 0"/>{christmas && <><path d="m9 7 4-6 7 2 3 6-5 2-7-1Z" fill="#b91c1c" stroke="#fff" strokeWidth="1.2"/><path d="M9 7 20 9" stroke="#fff" strokeWidth="3"/><circle cx="21" cy="3" r="2" fill="#fff" stroke="none"/></>}</>}
   </svg>;
@@ -596,7 +592,13 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
-    <nav className="student-mobile-nav" aria-label="Navigation principale">{primaryDestinations.map(x => <button key={x.id} type="button" aria-current={active === x.id ? "page" : undefined} className={active === x.id ? "mobile-nav-item selected" : "mobile-nav-item"} onClick={() => setActive(x.id)}>{x.id === "profile" && profileImage ? <img className="mobile-nav-avatar" src={profileImage} alt="" /> : <span className="mobile-nav-symbol"><NavigationIcon name={x.id} theme={theme} /></span>}<span>{x.short}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}</nav>
+    <nav className="student-mobile-nav" aria-label="Navigation principale">
+      <button type="button" className={active === "home" || !["messages","notifications","profile","notes"].includes(active) ? "mobile-nav-item selected" : "mobile-nav-item"} aria-current={active === "home" ? "page" : undefined} aria-label="Accueil" title="Accueil" onClick={() => setActive("home")}><span className="mobile-nav-symbol"><NavigationIcon name="home" theme={theme} /></span><span className="mobile-nav-label">Accueil</span></button>
+      <button type="button" className={active === "messages" ? "mobile-nav-item selected" : "mobile-nav-item"} aria-current={active === "messages" ? "page" : undefined} aria-label="Messagerie" title="Messagerie" onClick={() => setActive("messages")}><span className="mobile-nav-symbol"><NavigationIcon name="messages" theme={theme} /></span><span className="mobile-nav-label">Messagerie</span></button>
+      <button type="button" className={active === "notes" ? "mobile-nav-item mobile-nav-create selected" : "mobile-nav-item mobile-nav-create"} aria-current={active === "notes" ? "page" : undefined} aria-label="Créer une note" title="Créer une note" onClick={() => setActive("notes")}><span className="mobile-nav-symbol mobile-nav-create-symbol"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 7v18M7 16h18" /></svg></span><span className="mobile-nav-label">Créer</span></button>
+      <button type="button" className={active === "notifications" ? "mobile-nav-item selected" : "mobile-nav-item"} aria-current={active === "notifications" ? "page" : undefined} aria-label="Notifications" title="Notifications" onClick={() => setActive("notifications")}><span className="mobile-nav-symbol"><NavigationIcon name="notifications" theme={theme} /></span><span className="mobile-nav-label">Notifications</span>{badgeCount("notifications")>0 && <span className="nav-count">{badgeText(badgeCount("notifications"))}</span>}</button>
+      <button type="button" className={active === "profile" ? "mobile-nav-item selected" : "mobile-nav-item"} aria-current={active === "profile" ? "page" : undefined} aria-label="Profil" title="Profil" onClick={() => setActive("profile")}>{profileImage ? <img className="mobile-nav-avatar" src={profileImage} alt="" /> : <span className="mobile-nav-symbol"><NavigationIcon name="profile" theme={theme} /></span>}<span className="mobile-nav-label">Profil</span></button>
+    </nav>
     {pdfViewer && <div className="pdf-reader-overlay" role="dialog" aria-modal="true" aria-label="Lecteur PDF"><section className="pdf-reader-panel"><header className="pdf-reader-header"><div><strong>{pdfViewer.title}</strong><small>Lecteur PDF intégré à iFacuniversite</small></div><button type="button" className="theme-button" onClick={() => setPdfViewer(null)}>Fermer</button></header><iframe className="pdf-reader-frame" src={pdfViewer.url} title={pdfViewer.title} /></section></div>}
   </main>;
 }
