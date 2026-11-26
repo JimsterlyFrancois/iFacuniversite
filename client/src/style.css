@@ -1051,74 +1051,301 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 }
 
 
-/* Thèmes saisonniers sélectionnables depuis le profil */
+
+/* Thème de Noël : espace universitaire festif, givré et lisible */
 .profile-theme-options{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .profile-theme-options .theme-button{min-height:36px;padding:0 12px;border:1px solid var(--student-border);border-radius:9px;background:var(--student-panel-alt);color:var(--student-text);font:inherit;font-size:11px;font-weight:750;cursor:pointer}
 .profile-theme-options .theme-button.selected{outline:2px solid var(--student-accent);outline-offset:2px}
-.student-theme-halloween{--student-accent:#f97316!important;--student-panel:#21172a!important;--student-panel-alt:#30203b!important;--student-border:#60416f!important;--student-text:#fff4e8!important;--student-muted:#d3b8d9!important;background:radial-gradient(ellipse at 90% 0%,rgba(124,58,237,.18),transparent 38%),#17111d!important;color:#fff4e8!important}
-.student-theme-halloween .student-topbar,.student-theme-halloween .student-sidebar,.student-theme-halloween .student-card,.student-theme-halloween .profile-stat-card{background-color:#21172a!important;border-color:#60416f!important;color:#fff4e8!important}
-.student-theme-halloween .student-topbar h1,.student-theme-halloween .student-card h2,.student-theme-halloween .profile-info-row strong{color:#fff4e8!important}
-.student-theme-halloween .student-card p,.student-theme-halloween .profile-info-row span{color:#d3b8d9!important}
-.student-theme-halloween .theme-button{background:#392044!important;border-color:#70458a!important;color:#fff4e8!important}
-.student-theme-christmas{--student-accent:#c62828!important;--student-panel:#fffdf6!important;--student-panel-alt:#f1f8ef!important;--student-border:#c9ddc5!important;--student-text:#183b2b!important;--student-muted:#55715e!important;background:radial-gradient(ellipse at 90% 0%,rgba(198,40,40,.10),transparent 38%),#f7fbf5!important;color:#183b2b!important}
-.student-theme-christmas .student-topbar,.student-theme-christmas .student-sidebar,.student-theme-christmas .student-card,.student-theme-christmas .profile-stat-card{background-color:#fffdf6!important;border-color:#c9ddc5!important;color:#183b2b!important}
-.student-theme-christmas .student-topbar h1,.student-theme-christmas .student-card h2,.student-theme-christmas .profile-info-row strong{color:#183b2b!important}
-.student-theme-christmas .student-card p,.student-theme-christmas .profile-info-row span{color:#55715e!important}
-.student-theme-christmas .theme-button{background:#eaf3e8!important;border-color:#b7d0b2!important;color:#183b2b!important}
-@media(max-width:650px){.profile-theme-options{justify-content:flex-start}.profile-setting-control{align-items:flex-start;flex-direction:column}}
-
 .profile-theme-options .theme-button{display:inline-flex;align-items:center;gap:7px}
 .profile-theme-options .theme-art{display:block;width:30px;height:30px;flex:0 0 30px}
 .profile-theme-options .theme-button span{white-space:nowrap}
+@media(max-width:650px){.profile-theme-options{justify-content:flex-start}.profile-setting-control{align-items:flex-start;flex-direction:column}}
+
+.student-theme-christmas{
+  --student-accent:#c62828!important;
+  --student-panel:rgba(10,31,58,.78)!important;
+  --student-panel-alt:rgba(255,255,255,.13)!important;
+  --student-border:rgba(205,235,255,.62)!important;
+  --student-text:#fff!important;
+  --student-muted:#d8e9f7!important;
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  min-height:100vh;
+  color:#fff!important;
+  background:
+    radial-gradient(ellipse at 14% 12%,rgba(255,255,255,.22),transparent 32%),
+    radial-gradient(ellipse at 88% 70%,rgba(14,93,59,.42),transparent 35%),
+    linear-gradient(135deg,#07172f 0%,#123b67 48%,#071a34 100%)!important;
+}
+.student-theme-christmas .christmas-atmosphere{position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse at 50% 10%,rgba(255,255,255,.12),transparent 55%)}
+.student-theme-christmas .christmas-atmosphere:before,
+.student-theme-christmas .christmas-atmosphere:after{content:"";position:absolute;inset:-15%;background-image:radial-gradient(circle,rgba(255,255,255,.9) 0 1px,transparent 2px),radial-gradient(circle,rgba(210,235,255,.7) 0 1.5px,transparent 3px);background-size:62px 62px,113px 113px;background-position:0 0,31px 44px;opacity:.4;animation:ifac-christmas-snowfall 24s linear infinite}
+.student-theme-christmas .christmas-atmosphere:after{background-size:91px 91px,147px 147px;background-position:44px 17px,9px 72px;opacity:.25;animation-duration:36s;animation-direction:reverse}
+@keyframes ifac-christmas-snowfall{from{transform:translate3d(0,-3%,0)}to{transform:translate3d(-2%,4%,0)}}
+.student-theme-christmas .christmas-snow{position:absolute;top:0;width:2px;height:2px;border-radius:50%;background:#fff;box-shadow:0 0 10px 3px rgba(255,255,255,.8)}
+.student-theme-christmas .snow-one{left:18%;top:16%}.student-theme-christmas .snow-two{left:76%;top:28%;width:4px;height:4px}.student-theme-christmas .snow-three{left:56%;top:72%;width:3px;height:3px}
+.student-theme-christmas .christmas-glow{position:absolute;width:210px;height:210px;border-radius:50%;filter:blur(36px);opacity:.22}
+.student-theme-christmas .glow-one{right:-65px;top:15%;background:#eab308}.student-theme-christmas .glow-two{left:-90px;bottom:8%;background:#16a34a}
+.student-theme-christmas .student-topbar,
+.student-theme-christmas .student-sidebar,
+.student-theme-christmas .student-card,
+.student-theme-christmas .profile-stat-card,
+.student-theme-christmas .mobile-dashboard-tile{
+  position:relative;
+  color:#fff!important;
+  background:linear-gradient(125deg,rgba(10,38,75,.82),rgba(20,59,94,.68) 60%,rgba(112,31,43,.58))!important;
+  border:1px solid rgba(219,241,255,.72)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.42),0 12px 32px rgba(0,0,0,.25),0 0 18px rgba(173,220,255,.14);
+  backdrop-filter:blur(14px) saturate(135%);
+  -webkit-backdrop-filter:blur(14px) saturate(135%);
+}
+.student-theme-christmas .student-topbar:before,
+.student-theme-christmas .student-card:before{
+  content:"";position:absolute;top:0;left:12px;right:12px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);pointer-events:none
+}
+.student-theme-christmas .student-topbar h1,
+.student-theme-christmas .student-card h2,
+.student-theme-christmas .student-card h3,
+.student-theme-christmas .profile-info-row strong,
+.student-theme-christmas .student-welcome h1,
+.student-theme-christmas .mobile-dashboard-label{color:#fff!important}
+.student-theme-christmas .student-card p,
+.student-theme-christmas .student-card small,
+.student-theme-christmas .profile-info-row span,
+.student-theme-christmas .student-welcome p,
+.student-theme-christmas .student-nav-caption{color:#d9eafa!important}
+.student-theme-christmas .student-main{position:relative;z-index:1}
+.student-theme-christmas .student-body{position:relative;z-index:1}
+.student-theme-christmas .student-topbar{border-radius:18px}
+.student-theme-christmas .student-nav-item{color:#eaf6ff!important;border-radius:12px}
+.student-theme-christmas .student-nav-item.selected{background:linear-gradient(135deg,rgba(255,255,255,.23),rgba(180,220,255,.10))!important;color:#fff!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.32),0 0 15px rgba(255,255,255,.12)}
+.student-theme-christmas .nav-symbol,
+.student-theme-christmas .mobile-dashboard-icon,
+.student-theme-christmas .mobile-nav-symbol{color:#fff!important;filter:drop-shadow(0 0 5px rgba(255,230,160,.55))}
+.student-theme-christmas .nav-symbol svg,
+.student-theme-christmas .mobile-dashboard-icon svg,
+.student-theme-christmas .mobile-nav-symbol svg{width:100%;height:100%;display:block}
+.student-theme-christmas .student-campus-badge,
+.student-theme-christmas .preview-pill{background:rgba(255,255,255,.16)!important;border:1px solid rgba(255,255,255,.38)!important;color:#fff!important}
+.student-theme-christmas .theme-button{background:rgba(255,255,255,.16)!important;border-color:rgba(255,255,255,.55)!important;color:#fff!important}
+.student-theme-christmas .theme-button.selected{background:rgba(190,36,52,.78)!important}
+.student-theme-christmas .profile-info-row{border-color:rgba(255,255,255,.22)!important}
+.student-theme-christmas .student-mobile-nav{background:rgba(5,22,45,.88)!important;border:1px solid rgba(218,239,255,.55)!important;box-shadow:0 0 24px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.25);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.student-theme-christmas .mobile-nav-item{color:#dcecff!important}
+.student-theme-christmas .mobile-nav-item.selected{color:#fff!important;background:linear-gradient(145deg,rgba(189,39,56,.9),rgba(131,26,46,.82))!important;border:1px solid rgba(255,255,255,.4);box-shadow:0 0 18px rgba(255,205,130,.32)}
+.student-theme-christmas .mobile-nav-item.selected .mobile-nav-symbol{color:#fff!important}
+.student-theme-christmas input,
+.student-theme-christmas select,
+.student-theme-christmas textarea{background:rgba(5,22,45,.72)!important;color:#fff!important;border-color:rgba(220,239,255,.5)!important}
+.student-theme-christmas input::placeholder,
+.student-theme-christmas textarea::placeholder{color:#d2e2f1!important}
+.student-theme-christmas .student-data-item{border-color:rgba(255,255,255,.2)!important}
+@media(max-width:650px){
+  .student-theme-christmas .student-mobile-nav{background:rgba(5,22,45,.94)!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .student-theme-christmas .christmas-atmosphere:before,
+  .student-theme-christmas .christmas-atmosphere:after{animation:none!important}
+}
 
 
-/* Éclairage autonome des thèmes saisonniers */
-.student-theme-christmas .profile-theme-options .theme-art-christmas circle {
-  transform-box: fill-box;
-  transform-origin: center;
-  filter: drop-shadow(0 0 2px currentColor);
-  animation: ifac-tree-light-pulse 2.4s ease-in-out infinite;
+
+/* Barre de navigation iFac : pilule flottante inspirée de la maquette */
+.student-body{padding-bottom:150px!important}
+.student-mobile-nav{
+  position:fixed!important;
+  z-index:1200!important;
+  left:50%!important;
+  right:auto!important;
+  bottom:max(20px,env(safe-area-inset-bottom))!important;
+  transform:translateX(-50%)!important;
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  align-items:center;
+  gap:4px;
+  width:min(620px,calc(100vw - 32px))!important;
+  min-height:78px;
+  padding:9px 12px!important;
+  border:1px solid rgba(15,45,42,.12)!important;
+  border-radius:999px!important;
+  background:rgba(255,255,255,.88)!important;
+  box-shadow:0 14px 38px rgba(13,34,32,.16),inset 0 1px 0 rgba(255,255,255,.95)!important;
+  backdrop-filter:blur(22px) saturate(155%)!important;
+  -webkit-backdrop-filter:blur(22px) saturate(155%)!important;
 }
-.student-theme-christmas .profile-theme-options .theme-art-christmas circle:nth-of-type(2) {
-  animation-delay: .8s;
+.mobile-nav-item{
+  position:relative;
+  display:flex!important;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:0;
+  min-width:0;
+  min-height:54px;
+  padding:0 3px;
+  border:0!important;
+  border-radius:50%!important;
+  background:transparent!important;
+  color:#4c5b5a!important;
+  cursor:pointer;
+  transition:color .2s ease,transform .2s ease,filter .2s ease;
 }
-.student-theme-christmas .profile-theme-options .theme-art-christmas circle:nth-of-type(3) {
-  animation-delay: 1.6s;
+.mobile-nav-symbol{
+  position:relative;
+  display:grid;
+  place-items:center;
+  width:30px;
+  height:30px;
+  flex:0 0 30px;
+  border:0!important;
+  border-radius:50%!important;
+  background:transparent!important;
+  color:inherit!important;
+  filter:none!important;
 }
-.student-theme-christmas .profile-theme-options .theme-art-christmas path:nth-of-type(3) {
-  filter: drop-shadow(0 0 3px rgba(250,204,21,.85));
-  animation: ifac-tree-star-glow 2.8s ease-in-out infinite;
+.mobile-nav-symbol svg{display:block;width:25px;height:25px;overflow:visible}
+.mobile-nav-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.mobile-nav-item.selected{color:var(--student-accent)!important;background:transparent!important}
+.mobile-nav-item.selected .mobile-nav-symbol:after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:-8px;
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:currentColor;
+  box-shadow:0 0 9px currentColor;
+  transform:translateX(-50%);
 }
-@keyframes ifac-tree-light-pulse {
-  0%, 100% { opacity: .62; filter: drop-shadow(0 0 1px currentColor); }
-  50% { opacity: 1; filter: drop-shadow(0 0 5px currentColor) brightness(1.35); }
+.mobile-nav-item .nav-count{top:0;right:calc(50% - 22px);min-width:16px;height:16px;padding:0 4px;font-size:9px}
+.mobile-nav-create{z-index:2;transform:translateY(-13px);margin-bottom:-24px;color:#fff!important}
+.mobile-nav-create .mobile-nav-create-symbol{
+  width:58px;
+  height:58px;
+  flex-basis:58px;
+  border:0!important;
+  border-radius:50%!important;
+  color:#fff!important;
+  background:linear-gradient(145deg,#27a99a,#0f766e 70%)!important;
+  box-shadow:0 8px 20px rgba(15,118,110,.32),0 0 0 7px rgba(15,118,110,.08),inset 0 1px 0 rgba(255,255,255,.55)!important;
+  transition:transform .2s ease,box-shadow .2s ease;
 }
-@keyframes ifac-tree-star-glow {
-  0%, 100% { opacity: .82; }
-  50% { opacity: 1; filter: drop-shadow(0 0 7px #facc15) brightness(1.3); }
+.mobile-nav-create .mobile-nav-create-symbol svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mobile-nav-create.selected .mobile-nav-create-symbol{
+  box-shadow:0 8px 22px rgba(15,118,110,.4),0 0 0 8px rgba(15,118,110,.12),inset 0 1px 0 rgba(255,255,255,.6)!important;
+}
+.mobile-nav-create.selected .mobile-nav-create-symbol:after{display:none}
+.mobile-nav-create:active .mobile-nav-create-symbol{transform:scale(.94)}
+.mobile-nav-avatar{width:29px;height:29px;border:2px solid currentColor;border-radius:50%;object-fit:cover}
+.student-theme-christmas{overflow:visible!important}
+.student-theme-christmas .student-mobile-nav{
+  border-color:rgba(207,232,255,.72)!important;
+  background:rgba(8,25,53,.88)!important;
+  box-shadow:0 15px 42px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.22),0 0 22px rgba(186,220,255,.13)!important;
+}
+.student-theme-christmas .mobile-nav-item{color:#d9ebff!important}
+.student-theme-christmas .mobile-nav-item.selected{color:#fff!important}
+.student-theme-christmas .mobile-nav-item.selected .mobile-nav-symbol:after{background:#f6d36d;box-shadow:0 0 9px #f6d36d}
+.student-theme-christmas .mobile-nav-create{color:#fff!important}
+.student-theme-christmas .mobile-nav-create .mobile-nav-create-symbol{
+  background:linear-gradient(145deg,#f04a55,#b91f37 72%)!important;
+  box-shadow:0 8px 20px rgba(185,31,55,.42),0 0 0 7px rgba(246,211,109,.13),0 0 24px rgba(255,215,135,.22),inset 0 1px 0 rgba(255,255,255,.65)!important;
+}
+.student-theme-christmas .mobile-nav-create.selected .mobile-nav-create-symbol{
+  box-shadow:0 8px 22px rgba(185,31,55,.5),0 0 0 8px rgba(246,211,109,.18),0 0 28px rgba(255,215,135,.28),inset 0 1px 0 rgba(255,255,255,.65)!important;
+}
+@media(max-width:520px){
+  .student-body{padding-bottom:145px!important}
+  .student-mobile-nav{width:calc(100vw - 24px)!important;min-height:72px;padding:7px 9px!important;gap:1px}
+  .mobile-nav-item{min-height:51px}
+  .mobile-nav-symbol{width:28px;height:28px;flex-basis:28px}
+  .mobile-nav-symbol svg{width:23px;height:23px}
+  .mobile-nav-create{transform:translateY(-12px);margin-bottom:-22px}
+  .mobile-nav-create .mobile-nav-create-symbol{width:54px;height:54px;flex-basis:54px}
+}
+@media(prefers-reduced-motion:reduce){
+  .mobile-nav-item,.mobile-nav-create .mobile-nav-create-symbol{transition:none!important}
 }
 
-/* Lueurs diffuses et lentes dans le décor Halloween */
-.student-theme-halloween {
-  background-image:
-    radial-gradient(ellipse at 88% 8%, rgba(168,85,247,.24), transparent 34%),
-    radial-gradient(ellipse at 8% 82%, rgba(249,115,22,.13), transparent 30%),
-    radial-gradient(ellipse at 72% 72%, rgba(124,58,237,.10), transparent 32%),
-    linear-gradient(#17111d,#17111d) !important;
-  background-size: 145% 145%, 155% 155%, 135% 135%, auto !important;
-  background-position: 88% 8%, 8% 82%, 72% 72%, 0 0;
-  animation: ifac-halloween-ambient-glow 16s ease-in-out infinite alternate;
+
+.student-dark .student-mobile-nav{
+  border-color:rgba(185,213,207,.2)!important;
+  background:rgba(22,31,30,.9)!important;
+  box-shadow:0 15px 38px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.07)!important;
 }
-@keyframes ifac-halloween-ambient-glow {
-  0% { background-position: 88% 8%, 8% 82%, 72% 72%, 0 0; }
-  50% { background-position: 78% 18%, 18% 72%, 62% 82%, 0 0; }
-  100% { background-position: 96% 14%, 5% 90%, 80% 64%, 0 0; }
+.student-dark .mobile-nav-item{color:#bdcfca!important}
+.student-dark .mobile-nav-item.selected{color:#2dd4bf!important}
+.student-dark .mobile-nav-create .mobile-nav-create-symbol{
+  background:linear-gradient(145deg,#37c9b5,#0f766e 72%)!important;
+  box-shadow:0 8px 20px rgba(15,118,110,.38),0 0 0 7px rgba(45,212,191,.1),inset 0 1px 0 rgba(255,255,255,.42)!important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .student-theme-christmas .profile-theme-options .theme-art-christmas circle,
-  .student-theme-christmas .profile-theme-options .theme-art-christmas path:nth-of-type(3),
-  .student-theme-halloween {
-    animation: none !important;
-  }
+
+/* Recherche instantanée dans la bibliothèque documentaire */
+.document-search-card{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+  margin-bottom:14px;
+  padding:16px 18px;
+}
+.document-search-card .field{
+  color:var(--student-text);
+  font-size:12px;
+  font-weight:800;
+}
+.document-search-control{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:48px;
+  padding:0 13px;
+  border:1px solid var(--student-border);
+  border-radius:12px;
+  background:var(--student-panel-alt);
+  transition:border-color .18s ease,box-shadow .18s ease;
+}
+.document-search-control:focus-within{
+  border-color:var(--student-accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--student-accent) 16%,transparent);
+}
+.document-search-control svg{
+  display:block;
+  flex:0 0 20px;
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:var(--student-muted);
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.document-search-control input,
+.student-card .document-search-control input{
+  width:100%;
+  min-width:0;
+  min-height:46px;
+  padding:0;
+  border:0!important;
+  outline:0;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:var(--student-text)!important;
+  font:inherit;
+  font-size:13px;
+}
+.document-search-control input::placeholder{color:var(--student-muted)!important;opacity:.85}
+.document-search-count{
+  margin:0!important;
+  color:var(--student-muted)!important;
+  font-size:11px!important;
+}
+@media(max-width:520px){
+  .document-search-card{padding:14px}
+  .document-search-control{min-height:46px}
+}
+@media(prefers-reduced-motion:reduce){
+  .document-search-control{transition:none}
 }
