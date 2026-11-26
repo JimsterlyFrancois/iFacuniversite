@@ -486,6 +486,18 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
             <button className="subtle-button profile-logout" onClick={onLogout}>Déconnexion</button>
           </section>
 
+          {active === "profile" && <nav className="mobile-dashboard profile-quick-access" aria-label="Accès rapides du profil">
+          <div className="mobile-dashboard-heading"><span>MES SERVICES</span><small>Accès rapides depuis mon profil</small></div>
+          <div className="mobile-dashboard-grid">
+            {homeDestinations.map(x => <button key={x.id} type="button" className="mobile-dashboard-tile" onClick={() => setActive(x.id)}>
+              <span className={"mobile-dashboard-icon nav-symbol-" + x.id}><NavigationIcon name={x.id} theme={theme} /></span>
+              <span className="mobile-dashboard-label">{x.label}</span>
+              {serviceCount(x.id)>0 && <span className="mobile-dashboard-count">{badgeText(serviceCount(x.id))} {x.id === "class" ? "annonce(s)" : x.id === "notifications" ? "notification(s)" : x.id === "classDocs" ? "document(s)" : "élément(s)"}</span>}
+              <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
+            </button>)}
+          </div>
+        </nav>}
+
           {user.role === "professor" && <section className="student-card"><h2>Mes affectations pédagogiques</h2>{professorAssignments.length ? <ul>{professorAssignments.map((a,i)=><li key={i}>{a.university_name} · {a.faculty_name} · {a.option_name} · {a.level_label}</li>)}</ul> : <p>Aucune affectation active n’est disponible.</p>}</section>}
           <div className="profile-summary-grid">
             <section className="student-card profile-info-card">
@@ -595,17 +607,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
           <p className="document-search-count" aria-live="polite">{filteredDocuments.length} document{filteredDocuments.length > 1 ? "s" : ""} trouvé{filteredDocuments.length > 1 ? "s" : ""}</p>
         </section></div>}
         {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{displayedItems.length === 0 && !busy ? <p>{active === "home" && documentSearch.trim() ? "Aucun document ne correspond à votre recherche." : active === "home" ? "Aucun document disponible pour le moment." : "Aucun élément disponible pour le moment."}</p> : displayedItems.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
-        {active === "home" && <nav className="mobile-dashboard" aria-label="Services universitaires">
-          <div className="mobile-dashboard-heading"><span>MES SERVICES</span><small>Accès rapides</small></div>
-          <div className="mobile-dashboard-grid">
-            {homeDestinations.map(x => <button key={x.id} type="button" className="mobile-dashboard-tile" onClick={() => setActive(x.id)}>
-              <span className={"mobile-dashboard-icon nav-symbol-" + x.id}><NavigationIcon name={x.id} theme={theme} /></span>
-              <span className="mobile-dashboard-label">{x.label}</span>
-              {serviceCount(x.id)>0 && <span className="mobile-dashboard-count">{badgeText(serviceCount(x.id))} {x.id === "class" ? "annonce(s)" : x.id === "notifications" ? "notification(s)" : x.id === "classDocs" ? "document(s)" : "élément(s)"}</span>}
-              <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
-            </button>)}
-          </div>
-        </nav>}
+        
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
