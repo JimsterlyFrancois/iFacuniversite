@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiUrl } from "./apiBase.js";
+import { isNativeApp, cacheNativeDocument } from "./nativeStorage.js";
 import ThemeToggle from "./ThemeToggle.jsx";
 import useAutoRefresh from "./useAutoRefresh.js";
 
@@ -109,13 +110,8 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
         const data = await response.json().catch(() => ({}));
         throw new Error(data.message || "Téléchargement impossible pour ce document.");
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = doc.file_name || `document-ifac-${doc.id}`;
-      document.body.appendChild(anchor); anchor.click(); anchor.remove();
-      URL.revokeObjectURL(url);
+      await cacheNativeDocument(doc.id, doc.file_name || doc.title, await response.blob());
+      setFeedback("Document enregistré dans le cache de l’application pour une consultation hors connexion.");
     } catch (error) { setFeedback(error.message); }
     finally { setDownloadingId(null); }
   }
@@ -275,7 +271,7 @@ export default function ProgramManagerShell({ token, user, onLogout, request, th
             </section>
           </>}
           {active === "documents" && <section className="program-card"><h2>Documents pédagogiques du programme</h2>
-            {documents.length ? <div className="program-list">{documents.map(doc => <article className="program-item" key={doc.id}><div><strong>{doc.title}</strong><div className="program-muted">{doc.course || "Cours"} · {doc.option_name} · {doc.level_label}</div>{doc.description && <div className="program-muted">{doc.description}</div>}</div><div className="program-form-actions"><span className="program-pill">{doc.status === "approved" ? "Publié" : doc.status === "pending" ? "En attente" : "Refusé"}</span>{doc.status === "approved" && <button className="program-button secondary" type="button" onClick={() => downloadDocument(doc)} disabled={downloadingId === doc.id}>{downloadingId === doc.id ? "Téléchargement…" : "Télécharger"}</button>}</div></article>)}</div> : <div className="program-empty">Aucun document disponible dans votre périmètre.</div>}
+            {documents.length ? <div className="program-list">{documents.map(doc => <article className="program-item" key={doc.id}><div><strong>{doc.title}</strong><div className="program-muted">{doc.course || "Cours"} · {doc.option_name} · {doc.level_label}</div>{doc.description && <div className="program-muted">{doc.description}</div>}</div><div className="program-form-actions"><span className="program-pill">{doc.status === "approved" ? "Publié" : doc.status === "pending" ? "En attente" : "Refusé"}</span>{isNativeApp() && doc.status === "approved" && <button className="program-button secondary" type="button" onClick={() => downloadDocument(doc)} disabled={downloadingId === doc.id}>{downloadingId === doc.id ? "Téléchargement…" : "Télécharger dans l’application"}</button>}</div></article>)}</div> : <div className="program-empty">Aucun document disponible dans votre périmètre.</div>}
           </section>}
         </>}
       </section>
