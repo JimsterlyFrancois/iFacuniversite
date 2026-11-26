@@ -17,7 +17,7 @@ if not LOGO_PATH.is_file():
     raise SystemExit(f"Official iFac logo not found: {LOGO_PATH}")
 
 logo = LOGO_PATH.read_text(encoding="utf-8")
-match = re.search(r"<svg\\b[^>]*>(.*)</svg>\\s*$", logo, flags=re.DOTALL | re.IGNORECASE)
+match = re.search(r"<svg\b[^>]*>(.*)</svg>\s*$", logo, flags=re.DOTALL | re.IGNORECASE)
 if not match:
     raise SystemExit("The official iFac SVG logo could not be parsed.")
 logo_body = match.group(1)
