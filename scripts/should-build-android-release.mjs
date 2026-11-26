@@ -54,10 +54,10 @@ export function shouldBuildAndroidRelease({
 }
 
 async function main() {
-  const eventName = process.env.GITHUB_EVENT_NAME ?? "";
-  const refType = process.env.GITHUB_REF_TYPE ?? "";
-  const before = process.env.GITHUB_EVENT_BEFORE ?? "";
-  const sha = process.env.GITHUB_SHA ?? "";
+  const eventName = process.env.ANDROID_RELEASE_EVENT ?? process.env.GITHUB_EVENT_NAME ?? "";
+  const refType = process.env.ANDROID_RELEASE_REF_TYPE ?? process.env.GITHUB_REF_TYPE ?? "";
+  const before = process.env.ANDROID_RELEASE_BEFORE ?? "";
+  const sha = process.env.ANDROID_RELEASE_SHA ?? process.env.GITHUB_SHA ?? "";
 
   let changedFiles = [];
   let previousPackage = null;
