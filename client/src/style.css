@@ -1070,3 +1070,55 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 .profile-theme-options .theme-button{display:inline-flex;align-items:center;gap:7px}
 .profile-theme-options .theme-art{display:block;width:30px;height:30px;flex:0 0 30px}
 .profile-theme-options .theme-button span{white-space:nowrap}
+
+
+/* Éclairage autonome des thèmes saisonniers */
+.student-theme-christmas .profile-theme-options .theme-art-christmas circle {
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: drop-shadow(0 0 2px currentColor);
+  animation: ifac-tree-light-pulse 2.4s ease-in-out infinite;
+}
+.student-theme-christmas .profile-theme-options .theme-art-christmas circle:nth-of-type(2) {
+  animation-delay: .8s;
+}
+.student-theme-christmas .profile-theme-options .theme-art-christmas circle:nth-of-type(3) {
+  animation-delay: 1.6s;
+}
+.student-theme-christmas .profile-theme-options .theme-art-christmas path:nth-of-type(3) {
+  filter: drop-shadow(0 0 3px rgba(250,204,21,.85));
+  animation: ifac-tree-star-glow 2.8s ease-in-out infinite;
+}
+@keyframes ifac-tree-light-pulse {
+  0%, 100% { opacity: .62; filter: drop-shadow(0 0 1px currentColor); }
+  50% { opacity: 1; filter: drop-shadow(0 0 5px currentColor) brightness(1.35); }
+}
+@keyframes ifac-tree-star-glow {
+  0%, 100% { opacity: .82; }
+  50% { opacity: 1; filter: drop-shadow(0 0 7px #facc15) brightness(1.3); }
+}
+
+/* Lueurs diffuses et lentes dans le décor Halloween */
+.student-theme-halloween {
+  background-image:
+    radial-gradient(ellipse at 88% 8%, rgba(168,85,247,.24), transparent 34%),
+    radial-gradient(ellipse at 8% 82%, rgba(249,115,22,.13), transparent 30%),
+    radial-gradient(ellipse at 72% 72%, rgba(124,58,237,.10), transparent 32%),
+    linear-gradient(#17111d,#17111d) !important;
+  background-size: 145% 145%, 155% 155%, 135% 135%, auto !important;
+  background-position: 88% 8%, 8% 82%, 72% 72%, 0 0;
+  animation: ifac-halloween-ambient-glow 16s ease-in-out infinite alternate;
+}
+@keyframes ifac-halloween-ambient-glow {
+  0% { background-position: 88% 8%, 8% 82%, 72% 72%, 0 0; }
+  50% { background-position: 78% 18%, 18% 72%, 62% 82%, 0 0; }
+  100% { background-position: 96% 14%, 5% 90%, 80% 64%, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .student-theme-christmas .profile-theme-options .theme-art-christmas circle,
+  .student-theme-christmas .profile-theme-options .theme-art-christmas path:nth-of-type(3),
+  .student-theme-halloween {
+    animation: none !important;
+  }
+}
