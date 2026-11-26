@@ -1,6 +1,7 @@
 import { createHash, createPrivateKey, createSign } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { deflateRawSync } from "node:zlib";
 
 const OUTPUT_DIR = path.resolve("dist");
@@ -166,4 +167,6 @@ async function buildProductionOtaBundle() {
   console.info("[iFac OTA] Bundle de production signé et publié :", bundleId);
 }
 
-await buildProductionOtaBundle();
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+  await buildProductionOtaBundle();
+}
