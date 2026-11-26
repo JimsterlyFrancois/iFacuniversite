@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiUrl } from "./apiBase.js";
+import { isNativeApp, cacheNativeDocument } from "./nativeStorage.js";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import useAutoRefresh from "./useAutoRefresh.js";
@@ -158,12 +159,8 @@ export default function ProfessorShell({ token, user, onLogout, request, theme =
         const result = await response.json().catch(() => ({}));
         throw new Error(result.message || result.error || "Téléchargement impossible.");
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url; anchor.download = name || `document-${id}.pdf`;
-      document.body.appendChild(anchor); anchor.click(); anchor.remove();
-      URL.revokeObjectURL(url);
+      await cacheNativeDocument(id, name || `document-${id}.pdf`, await response.blob());
+      setFeedback("Document enregistré dans le cache de l’application pour une consultation hors connexion.");
     } catch (error) { setFeedback(error.message); }
   }
 
@@ -225,7 +222,7 @@ export default function ProfessorShell({ token, user, onLogout, request, theme =
               </form>}
             </section>
             <section className="professor-card"><h2>Documents déjà publiés</h2>
-              {documents.length ? <div className="professor-list">{documents.map(item => <div className="professor-list-item" key={item.id}><div><div className="professor-doc-title">{item.title}</div><div className="professor-muted">{item.course || "Cours"} · {dateLabel(item.created_at)} · {item.file_name || "PDF"}</div>{item.description && <div className="professor-file-meta">{item.description}</div>}</div><button className="professor-button secondary" onClick={() => downloadDocument(item.id,item.file_name)}>Télécharger</button></div>)}</div> : <div className="professor-empty">Aucun document publié ou accessible dans vos cours.</div>}
+              {documents.length ? <div className="professor-list">{documents.map(item => <div className="professor-list-item" key={item.id}><div><div className="professor-doc-title">{item.title}</div><div className="professor-muted">{item.course || "Cours"} · {dateLabel(item.created_at)} · {item.file_name || "PDF"}</div>{item.description && <div className="professor-file-meta">{item.description}</div>}</div>{isNativeApp() && <button className="professor-button secondary" onClick={() => downloadDocument(item.id,item.file_name)}>Télécharger dans l’application</button>}</div>)}</div> : <div className="professor-empty">Aucun document publié ou accessible dans vos cours.</div>}
             </section>
           </>}
           {active === "notifications" && <section className="professor-card"><h2>Vos notifications</h2>
