@@ -9,6 +9,7 @@ import GeneralAdminShell from "./GeneralAdminShell.jsx";
 import PlatformAnnouncementFeed from "./PlatformAnnouncementFeed.jsx";
 import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 import { readCatalogCache, writeCatalogCache } from "./catalogCache.js";
+import { isNativeApp, getNativeSession, getNativeSavedEmail, saveNativeSession, clearNativeSession } from "./nativeStorage.js";
 
 const API = apiUrl("/api/v1");
 async function request(path, { token, ...options } = {}) {
@@ -26,7 +27,9 @@ async function request(path, { token, ...options } = {}) {
 function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label>; }
 
 export default function App() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("ifac_token") || "");
+  const [token, setToken] = useState("");
+  const [savedEmail, setSavedEmail] = useState("");
+  const [authReady, setAuthReady] = useState(false);
   const [theme, setTheme] = useState(() => {
     try { return window.localStorage.getItem("ifac_theme") === "dark" ? "dark" : "light"; }
     catch { return "light"; }
@@ -163,7 +166,32 @@ export default function App() {
     loadCatalogList("levels", `/catalog/levels?optionId=${encodeURIComponent(optionId)}`, setLevels);
   }, [optionId]);
 
-  useEffect(() => { if (token) request("/auth/me", { token }).then(r => setUser(r.user)).catch(() => { sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); }); }, [token]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (isNativeApp()) {
+          const [storedToken, email] = await Promise.all([getNativeSession(), getNativeSavedEmail()]);
+          if (!active) return;
+          setSavedEmail(email);
+          if (storedToken) setToken(storedToken);
+        } else {
+          setToken(sessionStorage.getItem("ifac_token") || "");
+        }
+      } catch { /* Une absence de session native renvoie vers la connexion. */ }
+      finally { if (active) setAuthReady(true); }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    request("/auth/me", { token }).then(r => setUser(r.user)).catch(async () => {
+      if (isNativeApp()) await clearNativeSession().catch(() => {});
+      else sessionStorage.removeItem("ifac_token");
+      setToken(""); setUser(null);
+    });
+  }, [token]);
 
   const pendingRoleApplications = (user?.roleApplications || []).some(item => item.status === "pending");
   useEffect(() => {
@@ -253,7 +281,13 @@ export default function App() {
         setMode("login"); setFeedback(""); setIdentityFeedback(result.message || "Consultez votre e-mail pour confirmer votre compte."); setIdentityScreen(true);
       } else {
         const result = await request("/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
-        sessionStorage.setItem("ifac_token", result.token); setToken(result.token); setUser(result.user); setIdentityFeedback(""); setIdentityScreen(true);
+        if (isNativeApp()) {
+          await saveNativeSession(result.token, String(form.get("email") || "").trim());
+          setSavedEmail(String(form.get("email") || "").trim());
+        } else {
+          sessionStorage.setItem("ifac_token", result.token);
+        }
+        setToken(result.token); setUser(result.user); setIdentityFeedback(""); setIdentityScreen(true);
       }
     } catch (error) { setFeedback(error.message); } finally { setBusy(false); }
   }
@@ -268,7 +302,9 @@ export default function App() {
 
   async function logout() {
     try { await request("/auth/logout", { method: "POST", token }); } catch {}
-    sessionStorage.removeItem("ifac_token"); setToken(""); setUser(null); setMode("login"); setAdminView("general"); setFeedback("Vous êtes déconnecté.");
+    if (isNativeApp()) await clearNativeSession().catch(() => {});
+    else sessionStorage.removeItem("ifac_token");
+    setToken(""); setUser(null); setMode("login"); setAdminView("general"); setFeedback("Vous êtes déconnecté.");
   }
 
   async function refreshRoleStatus() {
@@ -305,9 +341,10 @@ export default function App() {
     }
     setBusy(true);
     request("/auth/verify-email", { method: "POST", body: JSON.stringify(payload) })
-      .then(result => {
+      .then(async result => {
         if (result.token && result.user) {
-          sessionStorage.setItem("ifac_token", result.token);
+          if (isNativeApp()) await saveNativeSession(result.token, result.user.email);
+          else sessionStorage.setItem("ifac_token", result.token);
           setToken(result.token);
           setUser(result.user);
           setFeedback("");
@@ -325,6 +362,8 @@ export default function App() {
       })
       .finally(() => setBusy(false));
   }, [verifyToken, verifyTokenHash, verifyType, authAccessToken]);
+
+  if (!authReady) return <main className="identity-splash"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-caption">Ouverture de votre espace…</p></div></main>;
 
   if (identityScreen) return <main className="identity-splash" role="status" aria-live="polite"><div className="identity-splash-content"><img src="/ifac-logo.svg" alt="Emblème iFac Université" className="identity-splash-logo" /><p className="identity-splash-kicker">L’IDENTITÉ UNIVERSITAIRE</p><h1>iFAC <span>UNIVERSITÉ</span></h1><p className="identity-splash-caption">Votre parcours universitaire, mieux organisé.</p><span className="identity-splash-progress" aria-hidden="true" /></div></main>;
 
@@ -397,7 +436,7 @@ export default function App() {
             {responsibleRole !== "university_admin" && <Field label="Faculté / école"><select required value={facultyId} onChange={e => setFacultyId(e.target.value)} disabled={!universityId}><option value="">{catalogLoading.faculties ? "Chargement des facultés…" : faculties.length ? "Choisir la faculté" : "Aucune faculté active configurée"}</option>{faculties.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.faculties && <small className="form-feedback" role="status">{catalogErrors.faculties}</small>}</Field>}
             {responsibleRole === "program_manager" && <><Field label="Programme / option"><select required value={optionId} onChange={e => setOptionId(e.target.value)} disabled={!facultyId}><option value="">{catalogLoading.options ? "Chargement des options…" : options.length ? "Choisir le programme" : "Aucune option active configurée"}</option>{options.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>{catalogErrors.options && <small className="form-feedback" role="status">{catalogErrors.options}</small>}</Field><Field label="Niveau (facultatif)"><select value={studyLevelId} onChange={e => setStudyLevelId(e.target.value)} disabled={!optionId}><option value="">{catalogLoading.levels ? "Chargement des niveaux…" : "Tous les niveaux du programme"}</option>{levels.map(x => <option key={x.id} value={x.id}>{x.label}</option>)}</select>{catalogErrors.levels && <small className="form-feedback" role="status">{catalogErrors.levels}</small>}</Field></>}
           </>}
-        <Field label="Adresse e-mail"><input name="email" type="email" required autoComplete="email" placeholder="vous@exemple.com" /></Field>
+        <Field label="Adresse e-mail"><input key={savedEmail} name="email" type="email" required autoComplete="email" defaultValue={isNativeApp() ? savedEmail : ""} placeholder="vous@exemple.com" /></Field>
           <Field label="Mot de passe"><div className="password-wrap"><input name="password" type={showPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete={mode === "login" ? "current-password" : "new-password"} /><button className="password-toggle" type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}>{showPassword ? "Masquer" : "Voir"}</button></div></Field>
           {(mode === "signup" || mode === "professor" || mode === "responsible") && <Field label={mode === "professor" ? "Confirmer le code secret" : "Confirmer le mot de passe"}><div className="password-wrap"><input name="confirmPassword" type={showConfirmPassword ? "text" : "password"} required minLength="10" maxLength="128" autoComplete="new-password" /><button className="password-toggle" type="button" onClick={() => setShowConfirmPassword(v => !v)} aria-label={showConfirmPassword ? "Masquer la confirmation" : "Afficher la confirmation"}>{showConfirmPassword ? "Masquer" : "Voir"}</button></div></Field>}
           {mode === "login" && <div className="forgot-row"><button type="button" onClick={resetPassword}>Mot de passe oublié ?</button></div>}
