@@ -53,6 +53,12 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Generate Android launcher icons from the iFac logo
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ifac-icon-venv"
+          "$RUNNER_TEMP/ifac-icon-venv/bin/python" -m pip install --disable-pip-version-check --quiet CairoSVG
+          "$RUNNER_TEMP/ifac-icon-venv/bin/python" scripts/generate-android-icons.py
+
       - name: Prepare permanent release keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
