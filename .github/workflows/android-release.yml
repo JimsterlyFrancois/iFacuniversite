@@ -38,6 +38,11 @@ jobs:
 
       - name: Detect native changes
         id: check
+        env:
+          ANDROID_RELEASE_EVENT: ${{ github.event_name }}
+          ANDROID_RELEASE_REF_TYPE: ${{ github.ref_type }}
+          ANDROID_RELEASE_BEFORE: ${{ github.event.before }}
+          ANDROID_RELEASE_SHA: ${{ github.sha }}
         run: node scripts/should-build-android-release.mjs
 
   release:
