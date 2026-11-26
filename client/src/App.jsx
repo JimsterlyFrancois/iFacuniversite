@@ -396,7 +396,7 @@ export default function App() {
     else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "program_manager") workspace = <ProgramManagerShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "professor") workspace = <ProfessorShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
-    else workspace = <StudentShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
+    else workspace = <StudentShell theme={theme} onToggleTheme={toggleTheme} onSelectDisplayTheme={selectDisplayTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     return <div className="ifac-workspace-root">
       {roles.length > 1 && <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,padding:"8px 16px",background:"#171717",color:"#fff",fontSize:12}}>
         <label htmlFor="ifac-workspace-select">Changer d’espace</label>
