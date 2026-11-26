@@ -35,9 +35,10 @@ function NavigationIcon({ name }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>;
 }
 
-export default function StudentShell({ token, user, onLogout, request, onOpenGeneralAdmin, theme = "light", onToggleTheme }) {
+export default function StudentShell({ token, user, onLogout, request, onOpenGeneralAdmin, theme = "light", onToggleTheme, onSelectDisplayTheme }) {
   const [active, setActive] = useState("home");
   const dark = theme === "dark";
+  const displayThemeLabels = { light: "Clair", dark: "Sombre", halloween: "Halloween", christmas: "Noël" };
   const [items, setItems] = useState([]);
   const [groups, setGroups] = useState([]);
   const [adminGroups, setAdminGroups] = useState([]);
@@ -458,7 +459,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
   const badgeText = count => count >= 100 ? "99+" : String(count);
   const serviceCount = id => id === "class" ? serviceCounts.class : id === "notifications" ? serviceCounts.notifications : id === "classDocs" ? serviceCounts.classDocs : badgeCount(id);
-  return <main className={dark ? "student-app student-dark" : "student-app student-light"}>
+  return <main className={`student-app ${dark ? "student-dark" : "student-light"} student-theme-${theme}`}>
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="preview-pill">{user.firstName} {user.lastName}</span>{onOpenGeneralAdmin && <button className="subtle-button" onClick={onOpenGeneralAdmin}>Console générale</button>}<button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}>{x.short[0]}</span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">{displayUniversityName}</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">{displayUniversityName}</span></div>
@@ -500,7 +501,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
             <section className="student-card profile-settings-card">
               <h2>Préférences d’affichage</h2>
               <p>Adaptez l’apparence de votre espace de travail.</p>
-              <div className="profile-setting-control"><span><strong>Thème de l’interface</strong><small>{dark ? "Mode sombre activé" : "Mode clair activé"}</small></span><button className="theme-button" onClick={onToggleTheme}>{dark ? "Passer au thème clair" : "Passer au thème sombre"}</button></div>
+              <div className="profile-setting-control"><span><strong>Thème de l’interface</strong><small>Actuel : {displayThemeLabels[theme] || "Clair"}</small></span><div className="profile-theme-options"><button type="button" className={theme === "light" ? "theme-button selected" : "theme-button"} aria-pressed={theme === "light"} onClick={() => onSelectDisplayTheme?.("light")}>Clair</button><button type="button" className={theme === "dark" ? "theme-button selected" : "theme-button"} aria-pressed={theme === "dark"} onClick={() => onSelectDisplayTheme?.("dark")}>Sombre</button><button type="button" className={theme === "halloween" ? "theme-button selected theme-halloween" : "theme-button theme-halloween"} aria-pressed={theme === "halloween"} onClick={() => onSelectDisplayTheme?.("halloween")}><svg className="theme-art theme-art-halloween" viewBox="0 0 40 40" role="img" aria-label="Citrouille d’Halloween"><path d="M20 8c-1-4 1-6 5-6-1 3-2 5-5 6Z" fill="#65a30d"/><path d="M20 9c-10-7-18 2-17 14 1 10 7 14 17 14s16-4 17-14C38 11 30 2 20 9Z" fill="#f97316" stroke="#9a3412" strokeWidth="1.5"/><path d="M20 10v26M11 13c-4 6-4 15 0 20M29 13c4 6 4 15 0 20" fill="none" stroke="#fdba74" strokeWidth="1.5"/><path d="m11 19 6 3-5 4Zm18 0-6 3 5 4ZM16 30h8l-4 4Z" fill="#2b1734"/></svg><span>Halloween</span></button><button type="button" className={theme === "christmas" ? "theme-button selected theme-christmas" : "theme-button theme-christmas"} aria-pressed={theme === "christmas"} onClick={() => onSelectDisplayTheme?.("christmas")}><svg className="theme-art theme-art-christmas" viewBox="0 0 40 40" role="img" aria-label="Sapin de Noël"><path d="M19 3h3v6h-3z" fill="#8b5e3c"/><path d="m20 6 11 13h-6l9 10H6l9-10H9Z" fill="#15803d" stroke="#14532d" strokeWidth="1.3" strokeLinejoin="round"/><path d="M17 29h6v8h-6z" fill="#8b5e3c"/><path d="m20 11 1.3 2.5 2.7.4-2 1.9.5 2.7-2.5-1.3-2.5 1.3.5-2.7-2-1.9 2.7-.4Z" fill="#facc15"/><circle cx="13" cy="25" r="1.6" fill="#dc2626"/><circle cx="27" cy="24" r="1.6" fill="#dc2626"/><circle cx="20" cy="31" r="1.6" fill="#facc15"/></svg><span>Noël</span></button></div></div>
             </section>
           </div>
 

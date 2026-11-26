@@ -31,13 +31,14 @@ export default function App() {
   const [savedEmail, setSavedEmail] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [theme, setTheme] = useState(() => {
-    try { return window.localStorage.getItem("ifac_theme") === "dark" ? "dark" : "light"; }
+    try { const saved = window.localStorage.getItem("ifac_theme"); return ["light", "dark", "halloween", "christmas"].includes(saved) ? saved : "light"; }
     catch { return "light"; }
   });
   function toggleTheme() { setTheme(current => current === "dark" ? "light" : "dark"); }
+  function selectDisplayTheme(nextTheme) { if (["light", "dark", "halloween", "christmas"].includes(nextTheme)) setTheme(nextTheme); }
   useEffect(() => {
     document.documentElement.dataset.ifacTheme = theme;
-    document.documentElement.style.colorScheme = theme;
+    document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light";
     try { window.localStorage.setItem("ifac_theme", theme); } catch {}
   }, [theme]);
   const [adminView, setAdminView] = useState("general");
@@ -390,12 +391,12 @@ export default function App() {
     if (activeRole === "admin" || activeRole === "admin_general") {
       workspace = adminView === "general"
         ? <GeneralAdminShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} onOpenAcademicAdmin={user.baseRole === "admin" ? () => setAdminView("academic") : undefined} />
-        : <StudentShell theme={theme} onToggleTheme={toggleTheme} token={token} user={studentAdminUser} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
+        : <StudentShell theme={theme} onToggleTheme={toggleTheme} onSelectDisplayTheme={selectDisplayTheme} token={token} user={studentAdminUser} onLogout={logout} request={request} onOpenGeneralAdmin={() => setAdminView("general")} />;
     } else if (activeRole === "university_admin") workspace = <UniversityAdminShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "faculty_manager") workspace = <FacultyManagerShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "program_manager") workspace = <ProgramManagerShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     else if (activeRole === "professor") workspace = <ProfessorShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
-    else workspace = <StudentShell theme={theme} onToggleTheme={toggleTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
+    else workspace = <StudentShell theme={theme} onToggleTheme={toggleTheme} onSelectDisplayTheme={selectDisplayTheme} token={token} user={workspaceUser} onLogout={logout} request={request} />;
     return <div className="ifac-workspace-root">
       {roles.length > 1 && <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,padding:"8px 16px",background:"#171717",color:"#fff",fontSize:12}}>
         <label htmlFor="ifac-workspace-select">Changer d’espace</label>
