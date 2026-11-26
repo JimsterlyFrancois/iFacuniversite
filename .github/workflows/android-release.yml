@@ -8,11 +8,12 @@ on:
     tags:
       - "v*"
     paths:
-      - ".github/workflows/android-release.yml"
+      # Only native-capability, signing/build, or launcher-icon changes need a new APK.
+      - "package.json"
+      - "capacitor.config.json"
       - "client/public/ifac-logo.svg"
-      - "client/src/App.jsx"
-      - "client/src/style.css"
       - "scripts/generate-android-icons.py"
+      - "scripts/configure-android-release.mjs"
 
 permissions:
   contents: read
