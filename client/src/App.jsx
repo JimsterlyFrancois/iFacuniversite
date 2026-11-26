@@ -341,7 +341,7 @@ export default function App() {
     }
     setBusy(true);
     request("/auth/verify-email", { method: "POST", body: JSON.stringify(payload) })
-      .then(result => {
+      .then(async result => {
         if (result.token && result.user) {
           if (isNativeApp()) await saveNativeSession(result.token, result.user.email);
           else sessionStorage.setItem("ifac_token", result.token);
