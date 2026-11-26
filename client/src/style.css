@@ -1268,3 +1268,16 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 @media(prefers-reduced-motion:reduce){
   .mobile-nav-item,.mobile-nav-create .mobile-nav-create-symbol{transition:none!important}
 }
+
+
+.student-dark .student-mobile-nav{
+  border-color:rgba(185,213,207,.2)!important;
+  background:rgba(22,31,30,.9)!important;
+  box-shadow:0 15px 38px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.07)!important;
+}
+.student-dark .mobile-nav-item{color:#bdcfca!important}
+.student-dark .mobile-nav-item.selected{color:#2dd4bf!important}
+.student-dark .mobile-nav-create .mobile-nav-create-symbol{
+  background:linear-gradient(145deg,#37c9b5,#0f766e 72%)!important;
+  box-shadow:0 8px 20px rgba(15,118,110,.38),0 0 0 7px rgba(45,212,191,.1),inset 0 1px 0 rgba(255,255,255,.42)!important;
+}
