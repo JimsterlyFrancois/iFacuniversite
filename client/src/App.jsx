@@ -31,14 +31,14 @@ export default function App() {
   const [savedEmail, setSavedEmail] = useState("");
   const [authReady, setAuthReady] = useState(false);
   const [theme, setTheme] = useState(() => {
-    try { const saved = window.localStorage.getItem("ifac_theme"); return ["light", "dark", "christmas"].includes(saved) ? saved : "light"; }
+    try { const saved = window.localStorage.getItem("ifac_theme"); return ["light", "dark", "halloween", "christmas"].includes(saved) ? saved : "light"; }
     catch { return "light"; }
   });
   function toggleTheme() { setTheme(current => current === "dark" ? "light" : "dark"); }
-  function selectDisplayTheme(nextTheme) { if (["light", "dark", "christmas"].includes(nextTheme)) setTheme(nextTheme); }
+  function selectDisplayTheme(nextTheme) { if (["light", "dark", "halloween", "christmas"].includes(nextTheme)) setTheme(nextTheme); }
   useEffect(() => {
     document.documentElement.dataset.ifacTheme = theme;
-    document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light";
+    document.documentElement.style.colorScheme = theme === "dark" || theme === "halloween" ? "dark" : "light";
     try { window.localStorage.setItem("ifac_theme", theme); } catch {}
   }, [theme]);
   const [adminView, setAdminView] = useState("general");

@@ -1052,6 +1052,155 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 
 
 
+
+/* Thème Halloween : ambiance saisonnière douce, limitée à l’espace connecté */
+.profile-theme-options .theme-button.theme-halloween.selected {
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249,115,22,.16);
+}
+.student-theme-halloween {
+  --student-accent: #fb923c !important;
+  --student-panel: rgba(35, 23, 46, .92) !important;
+  --student-panel-alt: rgba(54, 37, 68, .92) !important;
+  --student-border: rgba(184, 133, 205, .38) !important;
+  --student-text: #fff7ed !important;
+  --student-muted: #dfc9e8 !important;
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  color: #fff7ed !important;
+  background:
+    radial-gradient(ellipse at 88% 5%, rgba(249,115,22,.20), transparent 27%),
+    radial-gradient(ellipse at 10% 90%, rgba(124,58,237,.18), transparent 34%),
+    linear-gradient(145deg,#17101f 0%,#24162f 54%,#120e1a 100%) !important;
+}
+.student-theme-halloween .halloween-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.student-theme-halloween .halloween-atmosphere:before,
+.student-theme-halloween .halloween-atmosphere:after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.student-theme-halloween .halloween-atmosphere:before {
+  width: 190px;
+  height: 190px;
+  right: 7%;
+  top: 5%;
+  border-radius: 50%;
+  background: radial-gradient(circle,rgba(251,146,60,.20) 0%,rgba(251,146,60,.08) 48%,transparent 72%);
+  filter: blur(3px);
+}
+.student-theme-halloween .halloween-atmosphere:after {
+  inset: 0;
+  opacity: .22;
+  background-image:
+    radial-gradient(circle,rgba(255,237,213,.72) 0 1px,transparent 1.8px),
+    radial-gradient(circle,rgba(196,181,253,.62) 0 1px,transparent 1.8px);
+  background-size: 73px 73px,117px 117px;
+  background-position: 11px 17px,42px 53px;
+}
+.student-theme-halloween > :not(.halloween-atmosphere) {
+  position: relative;
+  z-index: 1;
+}
+.student-theme-halloween .student-topbar,
+.student-theme-halloween .student-sidebar,
+.student-theme-halloween .student-card,
+.student-theme-halloween .profile-stat-card,
+.student-theme-halloween .mobile-dashboard-tile {
+  color: #fff7ed !important;
+  background: linear-gradient(135deg,rgba(39,25,51,.94),rgba(49,31,62,.90)) !important;
+  border: 1px solid rgba(196,160,216,.32) !important;
+  box-shadow: 0 12px 28px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.student-theme-halloween .student-topbar h1,
+.student-theme-halloween .student-card h2,
+.student-theme-halloween .student-card h3,
+.student-theme-halloween .profile-info-row strong,
+.student-theme-halloween .student-welcome h1,
+.student-theme-halloween .mobile-dashboard-label {
+  color: #fff7ed !important;
+}
+.student-theme-halloween .student-card p,
+.student-theme-halloween .student-card small,
+.student-theme-halloween .profile-info-row span,
+.student-theme-halloween .student-welcome p,
+.student-theme-halloween .student-nav-caption {
+  color: #dfc9e8 !important;
+}
+.student-theme-halloween .student-nav-item {
+  color: #eadcf3 !important;
+}
+.student-theme-halloween .student-nav-item.selected {
+  color: #fed7aa !important;
+  background: rgba(249,115,22,.14) !important;
+  box-shadow: inset 0 0 0 1px rgba(249,115,22,.24);
+}
+.student-theme-halloween .nav-symbol,
+.student-theme-halloween .mobile-dashboard-icon,
+.student-theme-halloween .mobile-nav-symbol {
+  color: #fed7aa !important;
+}
+.student-theme-halloween .student-campus-badge,
+.student-theme-halloween .preview-pill {
+  color: #fff7ed !important;
+  background: rgba(249,115,22,.12) !important;
+  border: 1px solid rgba(249,115,22,.24) !important;
+}
+.student-theme-halloween .theme-button {
+  color: #fff7ed !important;
+  background: rgba(79,48,94,.72) !important;
+  border-color: rgba(196,160,216,.42) !important;
+}
+.student-theme-halloween .theme-button.selected {
+  background: rgba(194,91,23,.55) !important;
+  border-color: rgba(251,146,60,.72) !important;
+}
+.student-theme-halloween .profile-info-row,
+.student-theme-halloween .student-data-item {
+  border-color: rgba(196,160,216,.22) !important;
+}
+.student-theme-halloween input,
+.student-theme-halloween select,
+.student-theme-halloween textarea {
+  color: #fff7ed !important;
+  background: rgba(23,14,31,.82) !important;
+  border-color: rgba(196,160,216,.42) !important;
+}
+.student-theme-halloween input::placeholder,
+.student-theme-halloween textarea::placeholder {
+  color: #d8c2e4 !important;
+}
+.student-theme-halloween .student-mobile-nav {
+  background: rgba(25,15,34,.92) !important;
+  border-color: rgba(196,160,216,.38) !important;
+  box-shadow: 0 15px 38px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+.student-theme-halloween .mobile-nav-item {
+  color: #dfc9e8 !important;
+}
+.student-theme-halloween .mobile-nav-item.selected {
+  color: #fed7aa !important;
+}
+.student-theme-halloween .mobile-nav-create .mobile-nav-create-symbol {
+  background: linear-gradient(145deg,#fb923c,#c2410c 72%) !important;
+  box-shadow: 0 8px 20px rgba(194,65,12,.34),0 0 0 7px rgba(251,146,60,.10),inset 0 1px 0 rgba(255,255,255,.42) !important;
+}
+@media (max-width: 650px) {
+  .student-theme-halloween .student-mobile-nav {
+    background: rgba(25,15,34,.96) !important;
+  }
+}
+
+
 /* Thème de Noël : espace universitaire festif, givré et lisible */
 .profile-theme-options{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .profile-theme-options .theme-button{min-height:36px;padding:0 12px;border:1px solid var(--student-border);border-radius:9px;background:var(--student-panel-alt);color:var(--student-text);font:inherit;font-size:11px;font-weight:750;cursor:pointer}
