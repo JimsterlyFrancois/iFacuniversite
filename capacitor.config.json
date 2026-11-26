@@ -4,5 +4,13 @@
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "LiveUpdate": {
+      "publicKey": "-----BEGIN PUBLIC KEY-----MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAq6yzl3NAsps8x4CPqYToXjSdNpLkTUQaFULciytrRwKsauEqKls1WwKhVzq8APgRUc3S+4vjlqvsm7bqhMozT4E6zXk0J6ai0w2nun63p+O3NVFH7u8eG9N3Dus+26kgOoxeAxHof+QF4/wnB6DHlWrz8ZQuKjCzf+QLG0hQ/rXTGPsXtMxJ4eYbnfdJS5VbMu7CzKdQX/GyApSlQ4HIAJQUqsyeOE0iQ1duUIQ05Cc5a2WIiZyGybNQXiJSxmzcC85Pej3k7wDcyTwN9rdk0vPE+dALe1CbkX4qxYiDpbepjv1823zYPBxT/zHdM45O78hIwekXtaC/zlxk/OAGBJo6xttTAF11ES5QS9zQKk2OoRPYyo+B+KfFiK08p4OnI+uvNA7XDpWxwAxuAMKlDtApnqACecjbq+PF70q4nRT/HIdB47uAPJtkQoHX2NLcNR5Ork+hLo4N7Ulp7qHIv3pg2WB1AdywLaicNe/IecPVxPtosN13VcdM8nVVRdJokojcMnIm17yjjsFkfyX8uMBJ4NuBBhJsygiXeMq5mCQLk2Tt7x1X54MFu5qjDPbhUP2BpakZQ+5AjiKBsujIL0C3I/4nDLP+PyMxCa0P+f6pD0cu9vrKZ06JZHdjRufIZYyB7c/PtA/gsCpOReHmuaBQW8OCJ08aVcIZckVbiUkCAwEAAQ==-----END PUBLIC KEY-----",
+      "readyTimeout": 15000,
+      "autoBlockRolledBackBundles": true,
+      "httpTimeout": 30000
+    }
   }
 }
