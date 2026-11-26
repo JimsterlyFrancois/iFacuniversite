@@ -1049,3 +1049,20 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
     transform: none !important;
   }
 }
+
+
+/* Thèmes saisonniers sélectionnables depuis le profil */
+.profile-theme-options{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.profile-theme-options .theme-button{min-height:36px;padding:0 12px;border:1px solid var(--student-border);border-radius:9px;background:var(--student-panel-alt);color:var(--student-text);font:inherit;font-size:11px;font-weight:750;cursor:pointer}
+.profile-theme-options .theme-button.selected{outline:2px solid var(--student-accent);outline-offset:2px}
+.student-theme-halloween{--student-accent:#f97316!important;--student-panel:#21172a!important;--student-panel-alt:#30203b!important;--student-border:#60416f!important;--student-text:#fff4e8!important;--student-muted:#d3b8d9!important;background:radial-gradient(ellipse at 90% 0%,rgba(124,58,237,.18),transparent 38%),#17111d!important;color:#fff4e8!important}
+.student-theme-halloween .student-topbar,.student-theme-halloween .student-sidebar,.student-theme-halloween .student-card,.student-theme-halloween .profile-stat-card{background-color:#21172a!important;border-color:#60416f!important;color:#fff4e8!important}
+.student-theme-halloween .student-topbar h1,.student-theme-halloween .student-card h2,.student-theme-halloween .profile-info-row strong{color:#fff4e8!important}
+.student-theme-halloween .student-card p,.student-theme-halloween .profile-info-row span{color:#d3b8d9!important}
+.student-theme-halloween .theme-button{background:#392044!important;border-color:#70458a!important;color:#fff4e8!important}
+.student-theme-christmas{--student-accent:#c62828!important;--student-panel:#fffdf6!important;--student-panel-alt:#f1f8ef!important;--student-border:#c9ddc5!important;--student-text:#183b2b!important;--student-muted:#55715e!important;background:radial-gradient(ellipse at 90% 0%,rgba(198,40,40,.10),transparent 38%),#f7fbf5!important;color:#183b2b!important}
+.student-theme-christmas .student-topbar,.student-theme-christmas .student-sidebar,.student-theme-christmas .student-card,.student-theme-christmas .profile-stat-card{background-color:#fffdf6!important;border-color:#c9ddc5!important;color:#183b2b!important}
+.student-theme-christmas .student-topbar h1,.student-theme-christmas .student-card h2,.student-theme-christmas .profile-info-row strong{color:#183b2b!important}
+.student-theme-christmas .student-card p,.student-theme-christmas .profile-info-row span{color:#55715e!important}
+.student-theme-christmas .theme-button{background:#eaf3e8!important;border-color:#b7d0b2!important;color:#183b2b!important}
+@media(max-width:650px){.profile-theme-options{justify-content:flex-start}.profile-setting-control{align-items:flex-start;flex-direction:column}}
