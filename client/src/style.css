@@ -1066,3 +1066,7 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 .student-theme-christmas .student-card p,.student-theme-christmas .profile-info-row span{color:#55715e!important}
 .student-theme-christmas .theme-button{background:#eaf3e8!important;border-color:#b7d0b2!important;color:#183b2b!important}
 @media(max-width:650px){.profile-theme-options{justify-content:flex-start}.profile-setting-control{align-items:flex-start;flex-direction:column}}
+
+.profile-theme-options .theme-button{display:inline-flex;align-items:center;gap:7px}
+.profile-theme-options .theme-art{display:block;width:30px;height:30px;flex:0 0 30px}
+.profile-theme-options .theme-button span{white-space:nowrap}
