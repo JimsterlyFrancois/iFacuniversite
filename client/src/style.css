@@ -1349,3 +1349,37 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 @media(prefers-reduced-motion:reduce){
   .document-search-control{transition:none}
 }
+
+
+/* Écran d'authentification sans image de couverture */
+.auth-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100svh - 170px);
+  margin: 24px 0 30px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.form-panel {
+  width: min(100%, 620px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #111113;
+  box-shadow: 0 18px 55px #00000028;
+}
+.form-inner { max-width: 470px; }
+@media (max-width: 600px) {
+  .auth-layout {
+    min-height: 0;
+    margin: 12px 0 22px;
+  }
+  .form-panel {
+    width: 100%;
+    border-radius: 14px;
+    padding: 24px 16px 25px;
+  }
+}
