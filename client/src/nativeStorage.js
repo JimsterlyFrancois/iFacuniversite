@@ -58,9 +58,9 @@ function toBase64(buffer) {
   return btoa(binary);
 }
 
-export async function cacheNativeDocument(id, title, blob) {
+export async function cacheNativeDocument(id, title, blob, kind = "class") {
   if (!(await ensureNativeStorage())) throw new Error("Cette fonction est réservée à l’application native.");
-  const key = safeDocumentKey(id);
+  const key = safeDocumentKey(`${kind}-${id}`);
   const path = `documents/${key}.pdf`;
   await Filesystem.writeFile({
     path,
@@ -69,14 +69,14 @@ export async function cacheNativeDocument(id, title, blob) {
     recursive: true
   });
   const index = await readIndex();
-  index[key] = { id: String(id), title: title || `Document ${id}`, path, cachedAt: new Date().toISOString() };
+  index[key] = { id: String(id), kind, title: title || `Document ${id}`, path, cachedAt: new Date().toISOString() };
   await SecureStorage.set(INDEX_KEY, index);
   return index[key];
 }
 
-export async function getCachedNativeDocument(id) {
+export async function getCachedNativeDocument(id, kind = "class") {
   if (!(await ensureNativeStorage())) return null;
-  const key = safeDocumentKey(id);
+  const key = safeDocumentKey(`${kind}-${id}`);
   const index = await readIndex();
   const entry = index[key];
   if (!entry) return null;
