@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { initializeOtaUpdates } from "./otaUpdates.js";
 import { apiUrl } from "./apiBase.js";
 import StudentShell from "./StudentShell.jsx";
 import ProfessorShell from "./ProfessorShell.jsx";
@@ -27,6 +28,7 @@ async function request(path, { token, ...options } = {}) {
 function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label>; }
 
 export default function App() {
+  useEffect(() => initializeOtaUpdates(), []);
   const [token, setToken] = useState("");
   const [savedEmail, setSavedEmail] = useState("");
   const [authReady, setAuthReady] = useState(false);
