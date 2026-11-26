@@ -3,6 +3,7 @@ import { apiUrl } from "./apiBase.js";
 import ProfessorManagement from "./ProfessorManagement.jsx";
 import CourseManagement from "./CourseManagement.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
+import { isNativeApp, cacheNativeDocument, getCachedNativeDocument } from "./nativeStorage.js";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
@@ -225,14 +226,27 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
       setPdfViewer({ url: URL.createObjectURL(blob), title: title || "Lecture du document PDF" });
     } catch (error) { setFeedback(error.message); }
   }
-  function viewDocument(id, title) { return viewPdf(`/api/v1/documents/${id}/download`, title); }
-  function viewClassDocument(id, title) { return viewPdf(`/api/v1/class-documents/${id}/download`, title); }
+  async function viewDocument(id, title) {
+    if (isNativeApp()) {
+      const cached = await getCachedNativeDocument(id);
+      if (cached) { setPdfViewer({ url: URL.createObjectURL(cached.blob), title: cached.title || title }); return; }
+    }
+    return viewPdf(`/api/v1/documents/${id}/download`, title);
+  }
+  async function viewClassDocument(id, title) {
+    if (isNativeApp()) {
+      const cached = await getCachedNativeDocument(id);
+      if (cached) { setPdfViewer({ url: URL.createObjectURL(cached.blob), title: cached.title || title }); return; }
+    }
+    return viewPdf(`/api/v1/class-documents/${id}/download`, title);
+  }
   async function downloadClassDocument(id, name) {
     try {
       const response = await fetch(apiUrl(`/api/v1/class-documents/${id}/download`), { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || data.error || "Téléchargement impossible."); }
-      const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a");
-      a.href = url; a.download = name || `document-${id}.pdf`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      const blob = await response.blob();
+      await cacheNativeDocument(id, name || `document-${id}.pdf`, blob);
+      setFeedback("Document enregistré dans le cache de l’application. Il reste consultable hors connexion.");
     } catch (error) { setFeedback(error.message); }
   }
   async function deleteNote(id) {
@@ -422,8 +436,9 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
     try {
       const response = await fetch(apiUrl(`/api/v1/documents/${id}/download`), { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) { const r = await response.json().catch(() => ({})); throw new Error(r.message || r.error || "Téléchargement impossible."); }
-      const blob = await response.blob(); const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = title || `document-${id}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      const blob = await response.blob();
+      await cacheNativeDocument(id, title || `document-${id}`, blob);
+      setFeedback("Document enregistré dans le cache de l’application. Il reste consultable hors connexion.");
     } catch (e) { setFeedback(e.message); }
   }
 
@@ -548,7 +563,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
             <label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label>
             <button className="theme-button" disabled={busy || (user.role === "professor" && !professorAssignments.some(a=>String(a.course_id)===String(classDocCourse)))}>Publier le document</button>
           </form>}
-          <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe ou mes cours</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => viewClassDocument(item.id,item.title)}>Lire le PDF</button><button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger</button></article>)}</section>
+          <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe ou mes cours</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => viewClassDocument(item.id,item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger dans l’application</button>}</article>)}</section>
         </>}
         {active === "groupAdmin" && user.role === "admin" && <div className="profile-tools-grid">              <form className="student-card note-form profile-tool-card" onSubmit={createGroup}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">GROUPE</span><div><h3>Groupes de messagerie</h3><p>Créer un groupe selon le parcours.</p></div></div>
@@ -567,7 +582,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
         {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
         {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>{g.faculty_name || "Faculté"}{g.option_name ? " · "+g.option_name : ""}{g.study_level_label ? " · "+g.study_level_label : ""}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small>{user.role === "admin" && <div className="admin-review-actions"><button className="theme-button" onClick={() => editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteGroupMessage(m.id)}>Supprimer</button></div>}</article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
         {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
-        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button><button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger</button>{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
