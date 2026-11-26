@@ -10,6 +10,8 @@ on:
     paths:
       - ".github/workflows/android-release.yml"
       - "client/public/ifac-logo.svg"
+      - "client/src/App.jsx"
+      - "client/src/style.css"
       - "scripts/generate-android-icons.py"
 
 permissions:
