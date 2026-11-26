@@ -1,54 +1,65 @@
 # iFac Université
 
-iFac est un portail numérique destiné aux communautés universitaires. Il centralise les ressources académiques, les échanges et les espaces de gestion dans une application accessible sur ordinateur, tablette et téléphone.
+iFac Université est une plateforme numérique multi-établissements qui centralise les ressources pédagogiques, les échanges et les espaces de gestion des communautés universitaires. Elle organise les accès selon les responsabilités et les affectations réelles de chaque compte.
+
+**Application :** https://i-facuniversite.vercel.app  
+**Dépôt :** https://github.com/JimsterlyFrancois/iFacuniversite
+
+## Documentation de référence
+
+Commencez par le **[Guide complet d’iFac Université](docs/GUIDE_COMPLET_IFAC_UNIVERSITE.md)**. Il explique le projet de A à Z : importance, publics, hiérarchie institutionnelle et académique, rôles, limites de responsabilité, parcours d’une université, inscriptions, documents, communications, architecture, sécurité, application mobile et limites actuelles.
+
+Consultez également l’[index de la documentation](docs/README.md) pour retrouver les guides fonctionnels et techniques spécialisés.
 
 ## Espaces et fonctionnalités
 
-- **Étudiants et délégués :** documents de cours, dépôt de documents de classe, notes privées, annonces, groupes de discussion et profil.
-- **Professeurs :** demandes d’accès et gestion des cours ou affectations autorisées.
-- **Responsables de programme et de faculté :** gestion des contenus et des utilisateurs dans leur périmètre.
-- **Administrateurs d’établissement :** gestion du catalogue, des annonces, des documents et des comptes.
-- **Administration générale :** gestion multi-établissements, attribution des rôles, suivi des comptes, journal d’audit et gestion des forfaits.
+- **Étudiants et délégués :** bibliothèque documentaire, documents de classe, notes privées, annonces, groupes de discussion, notifications et profil.
+- **Professeurs :** demandes et suivi des affectations, supports pédagogiques publiés dans les cours attribués.
+- **Responsables de programme :** matières, cours, demandes professorales et ressources du programme.
+- **Responsables de faculté :** programmes, nominations et supervision du périmètre de la faculté.
+- **Responsables d’université :** catalogue des facultés, options et niveaux, responsables de faculté, inscriptions et annonces.
+- **Administration générale :** gestion multi-établissements, comptes, annonces de plateforme, journal d’audit, forfaits et factures.
 
-Les établissements, facultés, programmes et niveaux sont chargés depuis la base de données. Aucun établissement particulier n’est imposé dans l’interface.
+Les établissements, facultés, options et niveaux sont chargés depuis la base de données. Aucun établissement particulier n’est codé en dur comme établissement privilégié.
 
 ## Architecture
 
 - React 19 et Vite pour l’interface.
-- Express 5 pour l’API.
+- Node.js et Express 5 pour l’API.
 - **Neon PostgreSQL** pour les données applicatives.
-- Supabase Auth pour les identités et les confirmations d’adresse e-mail.
-- Supabase Storage pour les fichiers privés.
+- **Supabase Auth** pour les identités et la confirmation des adresses e-mail.
+- **Supabase Storage** pour les fichiers privés.
 - Vercel pour l’hébergement du site et des routes API.
+- Capacitor 8 pour l’application mobile et Live Update pour les mises à jour Android compatibles.
+
+Neon contient les données applicatives. Supabase Auth et Supabase Storage ont des responsabilités distinctes ; Supabase n’est pas la base PostgreSQL applicative de ce dépôt.
 
 ## Démarrage local
 
 Prérequis : Node.js 20 ou plus récent.
 
-```sh
-npm install
-cp .env.example .env
-npm run dev
-```
+    npm install
+    cp .env.example .env
+    npm run dev
 
-L’interface locale utilise le port 3435 et l’API Express le port 3434. Les requêtes `/api` sont transmises à l’API.
+L’interface locale utilise le port 3435 et l’API Express le port 3434.
 
 ## Configuration
 
-- `DATABASE_URL` : connexion Neon avec pooler pour les requêtes applicatives.
-- `DIRECT_URL` : connexion directe facultative pour les migrations contrôlées.
-- `SUPABASE_URL` et `SUPABASE_PUBLISHABLE_KEY` : Auth.
-- `SUPABASE_SECRET_KEY` : clé serveur pour les opérations d’administration Auth et Storage.
-- `SUPABASE_STORAGE_BUCKET` et `SUPABASE_ANNOUNCEMENTS_BUCKET` : buckets privés.
-- `APP_BASE_URL`, `ADMIN_EMAIL` et les variables SMTP : URL publique, compte administrateur et e-mails.
+Les variables essentielles sont décrites dans .env.example et server/CONFIGURATION.md :
+
+- DATABASE_URL : connexion Neon avec pooler pour les requêtes applicatives.
+- DIRECT_URL : connexion directe facultative pour les migrations contrôlées.
+- SUPABASE_URL et SUPABASE_PUBLISHABLE_KEY : opérations Auth.
+- SUPABASE_SECRET_KEY : opérations serveur sensibles Auth et Storage.
+- SUPABASE_STORAGE_BUCKET et SUPABASE_ANNOUNCEMENTS_BUCKET : buckets privés.
+- APP_BASE_URL, ADMIN_EMAIL et les variables SMTP : URL de l’application, compte administrateur et e-mails.
 
 Ne jamais publier les valeurs secrètes ni les placer dans le code du navigateur.
 
 ## Vérifications
 
-```sh
-npm test
-npm run build
-```
+    npm test
+    npm run build
 
-Les paiements en ligne et la synchronisation hors ligne complète restent des évolutions distinctes. Toute modification de schéma ou de connexion doit d’abord être validée sur une branche Neon d’aperçu avant de toucher à la production.
+Les paiements en ligne, les notifications push natives et la synchronisation hors ligne complète ne sont pas activés dans la version documentée. Les limites et les procédures de mise à jour sont précisées dans le guide complet.
