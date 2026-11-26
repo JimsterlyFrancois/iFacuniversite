@@ -1,3 +1,7 @@
+> **Statut de ce document : conception historique.** Depuis sa rédaction, les six espaces de travail et plusieurs contrôles de permission décrits ici ont été intégrés au produit. Les sections qui parlent d’une « fondation de conception », de livraisons futures ou de fonctions non encore activées reflètent l’état du projet à la date de rédaction initiale et ne doivent pas être interprétées comme l’état actuel. Pour la présentation à jour des fonctions, règles, limites et éléments non activés, consultez le [Guide complet d’iFac Université](GUIDE_COMPLET_IFAC_UNIVERSITE.md). Le code, les configurations de production et les tests actuels restent les références du comportement effectivement déployé.
+
+---
+
 # iFac Université — six espaces et modèle de permissions
 
 ## Objet
