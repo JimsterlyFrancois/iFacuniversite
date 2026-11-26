@@ -39,6 +39,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   const dark = theme === "dark";
   const displayThemeLabels = { light: "Clair", dark: "Sombre", christmas: "Noël" };
   const [items, setItems] = useState([]);
+  const [documentSearch, setDocumentSearch] = useState("");
   const [groups, setGroups] = useState([]);
   const [adminGroups, setAdminGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState("");
@@ -455,6 +456,13 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
       || user.workspaces.find(workspace => workspace.universityName)
     : null;
   const displayUniversityName = assignedWorkspace?.universityName || user.universityName || "Université non renseignée";
+  const normalizedDocumentSearch = documentSearch.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const filteredDocuments = normalizedDocumentSearch
+    ? items.filter(item => [item.title, item.subject, item.description, item.body, item.file_name, item.mime_type]
+      .filter(Boolean).join(" ").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .includes(normalizedDocumentSearch))
+    : items;
+  const displayedItems = active === "home" ? filteredDocuments : items;
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
   const badgeText = count => count >= 100 ? "99+" : String(count);
   const serviceCount = id => id === "class" ? serviceCounts.class : id === "notifications" ? serviceCounts.notifications : id === "classDocs" ? serviceCounts.classDocs : badgeCount(id);
@@ -588,7 +596,15 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
         {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
         {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>{g.faculty_name || "Faculté"}{g.option_name ? " · "+g.option_name : ""}{g.study_level_label ? " · "+g.study_level_label : ""}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small>{user.role === "admin" && <div className="admin-review-actions"><button className="theme-button" onClick={() => editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteGroupMessage(m.id)}>Supprimer</button></div>}</article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
         {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
-        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucun élément disponible pour le moment.</p> : items.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
+        {active === "home" && <section className="student-card document-search-card">
+          <label className="field" htmlFor="document-search">Rechercher dans les documents</label>
+          <div className="document-search-control">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+            <input id="document-search" type="search" value={documentSearch} onChange={e => setDocumentSearch(e.target.value)} placeholder="Titre, matière, description…" autoComplete="off" />
+          </div>
+          <p className="document-search-count" aria-live="polite">{filteredDocuments.length} document{filteredDocuments.length > 1 ? "s" : ""} trouvé{filteredDocuments.length > 1 ? "s" : ""}</p>
+        </section>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{displayedItems.length === 0 && !busy ? <p>{active === "home" && documentSearch.trim() ? "Aucun document ne correspond à votre recherche." : active === "home" ? "Aucun document disponible pour le moment." : "Aucun élément disponible pour le moment."}</p> : displayedItems.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>
