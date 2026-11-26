@@ -471,17 +471,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
     <header className="student-topbar"><a className="brand" href="#accueil" onClick={e => {e.preventDefault();setActive("home");}}><img className="brand-logo" src="/ifac-logo.svg" alt="" /><span>iFac <span className="brand-light">universite</span></span></a><div className="student-top-actions"><ThemeToggle theme={theme} onToggleTheme={onToggleTheme} /><span className="preview-pill">{user.firstName} {user.lastName}</span>{onOpenGeneralAdmin && <button className="subtle-button" onClick={onOpenGeneralAdmin}>Console générale</button>}<button className="subtle-button" onClick={onLogout}>Déconnexion</button></div></header>
     <div className="student-body"><aside className="student-sidebar" aria-label="Navigation principale"><p className="student-nav-caption">ESPACE ÉTUDIANT</p>{visibleDestinations.map(x => <button key={x.id} className={active === x.id ? "student-nav-item selected" : "student-nav-item"} onClick={() => setActive(x.id)}><span className={"nav-symbol nav-symbol-" + x.id}><NavigationIcon name={x.id} theme={theme} /></span><span>{x.label}</span>{badgeCount(x.id)>0 && <span className="nav-count">{badgeText(badgeCount(x.id))}</span>}</button>)}<div className="student-sidebar-note">{displayUniversityName}</div></aside>
       <section className="student-main" aria-live="polite"><div className="student-welcome"><div><p className="student-eyebrow">ESPACE UNIVERSITAIRE</p><h1>{headings[active][0]}</h1><p>{headings[active][1]}</p></div><span className="student-campus-badge">{displayUniversityName}</span></div>
-        {active === "home" && <nav className="mobile-dashboard" aria-label="Services universitaires">
-          <div className="mobile-dashboard-heading"><span>MES SERVICES</span><small>Accès rapides</small></div>
-          <div className="mobile-dashboard-grid">
-            {homeDestinations.map(x => <button key={x.id} type="button" className="mobile-dashboard-tile" onClick={() => setActive(x.id)}>
-              <span className={"mobile-dashboard-icon nav-symbol-" + x.id}><NavigationIcon name={x.id} theme={theme} /></span>
-              <span className="mobile-dashboard-label">{x.label}</span>
-              {serviceCount(x.id)>0 && <span className="mobile-dashboard-count">{badgeText(serviceCount(x.id))} {x.id === "class" ? "annonce(s)" : x.id === "notifications" ? "notification(s)" : x.id === "classDocs" ? "document(s)" : "élément(s)"}</span>}
-              <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
-            </button>)}
-          </div>
-        </nav>}
+        
         {active === "professors" && user.role === "admin" && <ProfessorManagement token={token} request={request} />}
         {active === "courses" && user.role === "admin" && <CourseManagement token={token} request={request} />}
         {active === "profile" && <div className="profile-page">
@@ -596,15 +586,26 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
         {active === "notes" && <form className="student-card note-form" onSubmit={saveNote}><h2>Ajouter une note</h2><input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="Titre de la note" maxLength="180" required /><textarea value={noteBody} onChange={e => setNoteBody(e.target.value)} placeholder="Écrire votre note privée…" maxLength="50000" rows="4" /><button className="theme-button" disabled={busy}>Enregistrer la note</button></form>}
         {active === "messages" && groups.length > 0 && <div className="student-card"><label>Groupe <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}>{groups.map(g => <option key={g.id} value={g.id}>{g.faculty_name || "Faculté"}{g.option_name ? " · "+g.option_name : ""}{g.study_level_label ? " · "+g.study_level_label : ""}</option>)}</select></label><div className="student-data-list">{messages.map(m => <article className="student-data-item" key={m.id}><strong>{m.first_name} {m.last_name}</strong><p>{m.body}</p><small>{new Date(m.created_at).toLocaleString()}</small>{user.role === "admin" && <div className="admin-review-actions"><button className="theme-button" onClick={() => editGroupMessage(m)}>Modifier</button><button className="theme-button" onClick={() => deleteGroupMessage(m.id)}>Supprimer</button></div>}</article>)}</div><form onSubmit={sendMessage}><textarea value={messageBody} onChange={e => setMessageBody(e.target.value)} placeholder="Votre message…" maxLength="5000" required /><button className="theme-button">Envoyer</button></form></div>}
         {busy && <p role="status">Chargement…</p>}{feedback && <p className="form-feedback" role="status">{feedback}</p>}
-        {active === "home" && <section className="student-card document-search-card">
+        {active === "home" && <div className="document-search-sticky"><section className="student-card document-search-card">
           <label className="field" htmlFor="document-search">Rechercher dans les documents</label>
           <div className="document-search-control">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
             <input id="document-search" type="search" value={documentSearch} onChange={e => setDocumentSearch(e.target.value)} placeholder="Titre, matière, description…" autoComplete="off" />
           </div>
           <p className="document-search-count" aria-live="polite">{filteredDocuments.length} document{filteredDocuments.length > 1 ? "s" : ""} trouvé{filteredDocuments.length > 1 ? "s" : ""}</p>
-        </section>}
+        </section></div>}
         {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{displayedItems.length === 0 && !busy ? <p>{active === "home" && documentSearch.trim() ? "Aucun document ne correspond à votre recherche." : active === "home" ? "Aucun document disponible pour le moment." : "Aucun élément disponible pour le moment."}</p> : displayedItems.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
+        {active === "home" && <nav className="mobile-dashboard" aria-label="Services universitaires">
+          <div className="mobile-dashboard-heading"><span>MES SERVICES</span><small>Accès rapides</small></div>
+          <div className="mobile-dashboard-grid">
+            {homeDestinations.map(x => <button key={x.id} type="button" className="mobile-dashboard-tile" onClick={() => setActive(x.id)}>
+              <span className={"mobile-dashboard-icon nav-symbol-" + x.id}><NavigationIcon name={x.id} theme={theme} /></span>
+              <span className="mobile-dashboard-label">{x.label}</span>
+              {serviceCount(x.id)>0 && <span className="mobile-dashboard-count">{badgeText(serviceCount(x.id))} {x.id === "class" ? "annonce(s)" : x.id === "notifications" ? "notification(s)" : x.id === "classDocs" ? "document(s)" : "élément(s)"}</span>}
+              <span className="mobile-dashboard-arrow" aria-hidden="true">›</span>
+            </button>)}
+          </div>
+        </nav>}
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}
       </section></div>

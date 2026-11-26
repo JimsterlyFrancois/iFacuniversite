@@ -1383,3 +1383,44 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
     padding: 24px 16px 25px;
   }
 }
+
+
+/* Accès rapides déplacés après la bibliothèque ; recherche épinglée pendant le scroll. */
+.document-search-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  margin: 0 0 14px;
+  padding: 8px 0 5px;
+  background: var(--student-panel);
+  isolation: isolate;
+}
+.document-search-sticky .document-search-card {
+  margin-bottom: 0;
+  box-shadow: 0 8px 22px rgba(8, 28, 25, .08);
+}
+.mobile-dashboard {
+  margin-top: 24px;
+  margin-bottom: 18px;
+}
+.student-theme-christmas .document-search-sticky {
+  background: rgba(10, 31, 58, .94);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+}
+.student-dark .document-search-sticky {
+  background: rgba(18, 28, 27, .96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+@media (max-width: 760px) {
+  .document-search-sticky {
+    top: 0;
+    margin-left: -2px;
+    margin-right: -2px;
+    padding-top: 7px;
+  }
+  .document-search-sticky .document-search-card {
+    border-radius: 13px;
+  }
+}
