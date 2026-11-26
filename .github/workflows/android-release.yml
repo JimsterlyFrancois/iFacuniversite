@@ -8,17 +8,46 @@ on:
     tags:
       - "v*"
     paths:
+      # package.json is filtered by the detector to ignore web-only dependencies.
       - ".github/workflows/android-release.yml"
+      - "package.json"
+      - "capacitor.config.json"
       - "client/public/ifac-logo.svg"
-      - "client/src/App.jsx"
-      - "client/src/style.css"
       - "scripts/generate-android-icons.py"
+      - "scripts/configure-android-release.mjs"
+      - "scripts/should-build-android-release.mjs"
 
 permissions:
   contents: read
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.check.outputs.required }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect native changes
+        id: check
+        env:
+          ANDROID_RELEASE_EVENT: ${{ github.event_name }}
+          ANDROID_RELEASE_REF_TYPE: ${{ github.ref_type }}
+          ANDROID_RELEASE_BEFORE: ${{ github.event.before }}
+          ANDROID_RELEASE_SHA: ${{ github.sha }}
+        run: node scripts/should-build-android-release.mjs
+
   release:
+    needs: detect
+    if: needs.detect.outputs.required == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
