@@ -3,7 +3,7 @@ import { apiUrl } from "./apiBase.js";
 import ProfessorManagement from "./ProfessorManagement.jsx";
 import CourseManagement from "./CourseManagement.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
-import { isNativeApp, cacheNativeDocument, getCachedNativeDocument } from "./nativeStorage.js";
+import { isNativeApp, cacheNativeDocument, getCachedNativeDocument, listCachedNativeDocuments } from "./nativeStorage.js";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
@@ -59,6 +59,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   const [selectedClassKey, setSelectedClassKey] = useState("");
   const [classStudents, setClassStudents] = useState([]);
   const [classDocuments, setClassDocuments] = useState([]);
+  const [cachedDocuments, setCachedDocuments] = useState([]);
   const [pendingClassDocuments, setPendingClassDocuments] = useState([]);
   const [adminDocuments, setAdminDocuments] = useState([]);
   const [adminAnnouncements, setAdminAnnouncements] = useState([]);
@@ -153,6 +154,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
     } catch (e) { setFeedback(e.message); } finally { setBusy(false); }
   }
   useEffect(() => { load(); }, [active, selectedGroup, selectedClassKey]);
+  useEffect(() => { if (isNativeApp()) listCachedNativeDocuments().then(setCachedDocuments).catch(() => {}); }, []);
   useEffect(() => () => { if (pdfViewer?.url) URL.revokeObjectURL(pdfViewer.url); }, [pdfViewer?.url]);
   useEffect(() => {
     let alive = true;
@@ -246,6 +248,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
       if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || data.error || "Téléchargement impossible."); }
       const blob = await response.blob();
       await cacheNativeDocument(id, name || `document-${id}.pdf`, blob);
+      setCachedDocuments(await listCachedNativeDocuments());
       setFeedback("Document enregistré dans le cache de l’application. Il reste consultable hors connexion.");
     } catch (error) { setFeedback(error.message); }
   }
@@ -438,6 +441,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
       if (!response.ok) { const r = await response.json().catch(() => ({})); throw new Error(r.message || r.error || "Téléchargement impossible."); }
       const blob = await response.blob();
       await cacheNativeDocument(id, title || `document-${id}`, blob);
+      setCachedDocuments(await listCachedNativeDocuments());
       setFeedback("Document enregistré dans le cache de l’application. Il reste consultable hors connexion.");
     } catch (e) { setFeedback(e.message); }
   }
@@ -550,6 +554,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
         </div>}
         {active === "class" && user.role === "admin" && <section className="student-card student-data-list"><h2>Gérer les annonces</h2>{adminAnnouncements.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>{item.has_image ? "Visuel joint" : "Sans visuel"}</small><div className="admin-review-actions"><button className="theme-button" onClick={() => editAnnouncement(item)}>Modifier</button><button className="theme-button" onClick={() => deleteAnnouncement(item.id)}>Supprimer</button></div></article>)}</section>}
         {active === "classDocs" && <>
+          {isNativeApp() && cachedDocuments.length > 0 && <section className="student-card student-data-list"><h2>Documents enregistrés dans l’application</h2><p>Ces fichiers restent accessibles sans connexion Internet.</p>{cachedDocuments.map(doc => <article className="student-data-item" key={doc.id}><strong>{doc.title}</strong><small>Disponible hors connexion · {new Date(doc.cachedAt).toLocaleString()}</small><button className="theme-button" type="button" onClick={() => viewClassDocument(doc.id,doc.title)}>Ouvrir le document</button></article>)}</section>}
           {(user.role === "delegate" || user.role === "professor") && <form className="student-card note-form" onSubmit={uploadClassDocument}>
             <h2>Publier une ressource pédagogique</h2>
             <p>{user.role === "professor" ? "La publication est limitée aux cours qui vous ont été attribués." : "Votre document sera partagé avec les étudiants de votre classe."}</p>
