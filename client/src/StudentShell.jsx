@@ -4,6 +4,7 @@ import ProfessorManagement from "./ProfessorManagement.jsx";
 import CourseManagement from "./CourseManagement.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { isNativeApp, cacheNativeDocument, getCachedNativeDocument, listCachedNativeDocuments } from "./nativeStorage.js";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 const destinations = [
   { id: "class", label: "Annonces", short: "Infos" },
@@ -21,6 +22,62 @@ const destinations = [
 ];
 
 
+
+
+const pdfCoverCache = new Map();
+function PdfCoverPreview({ id, title, token, endpoint, compact = false }) {
+  const hostRef = useRef(null);
+  const [cover, setCover] = useState(() => pdfCoverCache.get(String(endpoint)) || "");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    let started = false;
+    let observer;
+    const renderCover = async () => {
+      if (started) return;
+      started = true;
+      try {
+        const response = await fetch(apiUrl(endpoint), { headers: { Authorization: `Bearer ${token}` } });
+        if (!response.ok) throw new Error("preview_unavailable");
+        const bytes = await response.arrayBuffer();
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        const page = await pdf.getPage(1);
+        const base = page.getViewport({ scale: 1 });
+        const targetWidth = compact ? 82 : 190;
+        const viewport = page.getViewport({ scale: targetWidth / base.width });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        await page.render({ canvas, canvasContext: canvas.getContext("2d"), viewport }).promise;
+        const image = canvas.toDataURL("image/jpeg", 0.76);
+        pdfCoverCache.set(String(endpoint), image);
+        if (!cancelled) setCover(image);
+        page.cleanup();
+        await pdf.destroy();
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    };
+    const node = hostRef.current;
+    if (node && "IntersectionObserver" in window) {
+      observer = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          observer.disconnect();
+          void renderCover();
+        }
+      }, { rootMargin: "180px" });
+      observer.observe(node);
+    } else {
+      void renderCover();
+    }
+    return () => { cancelled = true; observer?.disconnect(); };
+  }, [endpoint, token, compact]);
+  return <div ref={hostRef} className={compact ? "pdf-cover-preview compact" : "pdf-cover-preview"} aria-label={`Aperçu de la première page : ${title}`}>
+    {cover ? <img src={cover} alt={`Première page de ${title}`} loading="lazy" /> : <div className="pdf-cover-placeholder"><span>PDF</span><small>{failed ? "Aperçu indisponible" : "Aperçu de couverture"}</small></div>}
+  </div>;
+}
 
 function NavigationIcon({ name, theme = "light" }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" };
@@ -40,6 +97,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
   const displayThemeLabels = { light: "Clair", dark: "Sombre", christmas: "Noël" };
   const [items, setItems] = useState([]);
   const [documentSearch, setDocumentSearch] = useState("");
+  const [documentViewMode, setDocumentViewMode] = useState(() => { try { return localStorage.getItem("ifac_document_view") === "list" ? "list" : "grid"; } catch { return "grid"; } });
   const [groups, setGroups] = useState([]);
   const [adminGroups, setAdminGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState("");
@@ -463,6 +521,8 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
       .includes(normalizedDocumentSearch))
     : items;
   const displayedItems = active === "home" ? filteredDocuments : items;
+  const isDocumentCached = (kind, id) => cachedDocuments.some(doc => doc.kind === kind && String(doc.id) === String(id));
+  function changeDocumentView(mode) { setDocumentViewMode(mode); try { localStorage.setItem("ifac_document_view", mode); } catch {} }
   const badgeCount = id => id === "notifications" ? unreadNotificationCount : id === "adminMessages" ? unreadDelegateCount : 0;
   const badgeText = count => count >= 100 ? "99+" : String(count);
   const serviceCount = id => id === "class" ? serviceCounts.class : id === "notifications" ? serviceCounts.notifications : id === "classDocs" ? serviceCounts.classDocs : badgeCount(id);
@@ -579,7 +639,7 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
             <label className="field">Fichier PDF<input name="file" type="file" accept="application/pdf,.pdf" required /></label>
             <button className="theme-button" disabled={busy || (user.role === "professor" && !professorAssignments.some(a=>String(a.course_id)===String(classDocCourse)))}>Publier le document</button>
           </form>}
-          <section className="student-card student-data-list"><h2>Documents approuvés pour ma classe ou mes cours</h2>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => viewClassDocument(item.id,item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger dans l’application</button>}</article>)}</section>
+          <div className="document-toolbar class-document-toolbar"><strong>Documents approuvés pour ma classe ou mes cours</strong><div className="document-view-switch" role="group" aria-label="Mode d’affichage"><button type="button" className={documentViewMode === "grid" ? "selected" : ""} aria-pressed={documentViewMode === "grid"} onClick={() => changeDocumentView("grid")}>Carré</button><button type="button" className={documentViewMode === "list" ? "selected" : ""} aria-pressed={documentViewMode === "list"} onClick={() => changeDocumentView("list")}>En ligne</button></div></div><section className={`student-card student-data-list class-document-library ${documentViewMode === "grid" ? "document-grid-mode" : "document-list-mode"}`}>{classDocuments.length === 0 ? <p>Aucun document approuvé pour le moment.</p> : classDocuments.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<div className="document-cover-row"><PdfCoverPreview id={item.id} title={item.title} token={token} endpoint={`/api/v1/class-documents/${item.id}/download`} compact={documentViewMode === "list"} /><div className="document-cover-details"><strong>{item.title}</strong><p>{item.course} {item.professor ? `· ${item.professor}` : ""}</p>{item.description && <p>{item.description}</p>}<button className="theme-button" onClick={() => viewClassDocument(item.id,item.title)}>Lire le PDF</button>{isNativeApp() && !isDocumentCached("class", item.id) && <button className="theme-button" onClick={() => downloadClassDocument(item.id,item.file_name)}>Télécharger dans l’application</button>}{isNativeApp() && isDocumentCached("class", item.id) && <small className="cached-document-label">Déjà disponible hors connexion</small>}</div></div></article>)}</section>
         </>}
         {active === "groupAdmin" && user.role === "admin" && <div className="profile-tools-grid">              <form className="student-card note-form profile-tool-card" onSubmit={createGroup}>
                 <div className="profile-tool-heading"><span className="profile-tool-icon">GROUPE</span><div><h3>Groupes de messagerie</h3><p>Créer un groupe selon le parcours.</p></div></div>
@@ -604,9 +664,9 @@ export default function StudentShell({ token, user, onLogout, request, onOpenGen
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
             <input id="document-search" type="search" value={documentSearch} onChange={e => setDocumentSearch(e.target.value)} placeholder="Titre, matière, description…" autoComplete="off" />
           </div>
-          <p className="document-search-count" aria-live="polite">{filteredDocuments.length} document{filteredDocuments.length > 1 ? "s" : ""} trouvé{filteredDocuments.length > 1 ? "s" : ""}</p>
+          <div className="document-toolbar"><p className="document-search-count" aria-live="polite">{filteredDocuments.length} document{filteredDocuments.length > 1 ? "s" : ""} trouvé{filteredDocuments.length > 1 ? "s" : ""}</p><div className="document-view-switch" role="group" aria-label="Mode d’affichage"><button type="button" className={documentViewMode === "grid" ? "selected" : ""} aria-pressed={documentViewMode === "grid"} onClick={() => changeDocumentView("grid")}>Carré</button><button type="button" className={documentViewMode === "list" ? "selected" : ""} aria-pressed={documentViewMode === "list"} onClick={() => changeDocumentView("list")}>En ligne</button></div></div>
         </section></div>}
-        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className="student-card student-data-list">{displayedItems.length === 0 && !busy ? <p>{active === "home" && documentSearch.trim() ? "Aucun document ne correspond à votre recherche." : active === "home" ? "Aucun document disponible pour le moment." : "Aucun élément disponible pour le moment."}</p> : displayedItems.map(item => <article className="student-data-item" key={item.id}>{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<strong>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</article>)}</section>}
+        {active !== "profile" && active !== "notes" && active !== "messages" && active !== "groupAdmin" && <section className={active === "home" ? `student-card student-data-list document-library ${documentViewMode === "grid" ? "document-grid-mode" : "document-list-mode"}` : "student-card student-data-list"}>{displayedItems.length === 0 && !busy ? <p>{active === "home" && documentSearch.trim() ? "Aucun document ne correspond à votre recherche." : active === "home" ? "Aucun document disponible pour le moment." : "Aucun élément disponible pour le moment."}</p> : displayedItems.map(item => <article className="student-data-item" key={item.id}>{active === "home" && <PdfCoverPreview id={item.id} title={item.title} token={token} endpoint={`/api/v1/documents/${item.id}/download`} compact={documentViewMode === "list"} />}{item.imageUrl && <img className="announcement-flyer" src={item.imageUrl} alt="Visuel de l’annonce" />}<div className="document-item-content"><strong title={item.title}>{item.title}</strong>{item.subject && <p>Matière : {item.subject}</p>}<p>{item.body || (item.mime_type ? `${item.mime_type} · ${Math.round(Number(item.file_size_bytes || 0)/1024)} Ko` : "")}</p><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}</small>{active === "home" && <><button className="theme-button" onClick={() => viewDocument(item.id, item.title)}>Lire le PDF</button>{isNativeApp() && !isDocumentCached("library", item.id) && <button className="theme-button" onClick={() => downloadDocument(item.id, item.title)}>Télécharger dans l’application</button>}{isNativeApp() && isDocumentCached("library", item.id) && <small className="cached-document-label">Déjà disponible hors connexion</small>}{user.role === "admin" && <button className="theme-button" onClick={() => deleteDocument(item.id)}>Retirer le document</button>}</>}</div></article>)}</section>}
         
         {active === "notes" && <section className="student-card student-data-list">{items.length === 0 && !busy ? <p>Aucune note enregistrée.</p> : items.map(item => <article className="student-data-item" key={item.id}><strong>{item.title}</strong><p>{item.body}</p><small>Modifiée : {new Date(item.updated_at).toLocaleString()}</small><button className="theme-button" onClick={() => deleteNote(item.id)}>Supprimer</button></article>)}</section>}
         {active === "messages" && groups.length === 0 && !busy && <section className="student-card"><p>Aucun groupe de messagerie ne vous est encore attribué.</p></section>}

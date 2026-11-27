@@ -34,7 +34,8 @@
     "@capacitor/ios": "^8.0.0",
     "@aparajita/capacitor-secure-storage": "^8.0.1",
     "@capacitor/filesystem": "^8.0.0",
-    "@capawesome/capacitor-live-update": "^8.10.0"
+    "@capawesome/capacitor-live-update": "^8.10.0",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
