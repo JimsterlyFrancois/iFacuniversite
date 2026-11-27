@@ -18,9 +18,23 @@ export function isNativeApp() {
   return native;
 }
 
+async function readSecureValue(key, fallback = null) {
+  if (!(await ensureNativeStorage())) return fallback;
+  try {
+    return (await SecureStorage.get(key)) ?? fallback;
+  } catch (error) {
+    // The plugin reports invalidData when one encrypted entry is corrupted.
+    // Remove only that entry; never clear the whole Android Keystore namespace.
+    if (error?.code === "invalidData") {
+      try { await SecureStorage.remove(key); } catch {}
+      return fallback;
+    }
+    throw error;
+  }
+}
+
 export async function getNativeSession() {
-  if (!(await ensureNativeStorage())) return null;
-  return (await SecureStorage.get("session_token")) || null;
+  return (await readSecureValue("session_token", null)) || null;
 }
 
 export async function saveNativeSession(token, email) {
@@ -30,8 +44,7 @@ export async function saveNativeSession(token, email) {
 }
 
 export async function getNativeSavedEmail() {
-  if (!(await ensureNativeStorage())) return "";
-  return (await SecureStorage.get("account_email")) || "";
+  return (await readSecureValue("account_email", "")) || "";
 }
 
 export async function clearNativeSession() {
@@ -40,8 +53,8 @@ export async function clearNativeSession() {
 }
 
 async function readIndex() {
-  if (!(await ensureNativeStorage())) return {};
-  return (await SecureStorage.get(INDEX_KEY)) || {};
+  const value = await readSecureValue(INDEX_KEY, {});
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function safeDocumentKey(id) {
