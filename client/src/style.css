@@ -1453,3 +1453,11 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
 .document-cover-details strong{overflow-wrap:anywhere}
 .cached-document-label{display:inline-block;margin-top:8px;color:var(--student-accent);font-size:10px;font-weight:750}
 @media(max-width:600px){.document-library.document-grid-mode{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.document-library.document-grid-mode>.student-data-item{padding:9px}.document-toolbar{align-items:flex-start;flex-direction:column}.document-library.document-list-mode>.student-data-item{gap:10px}.pdf-cover-preview.compact{width:68px;min-width:68px}}
+
+.class-document-toolbar{margin:14px 0 9px;padding:0 3px}
+.class-document-toolbar>strong{font-size:13px}
+.class-document-library.document-grid-mode>.student-data-item{display:flex;flex-direction:column;gap:10px;min-width:0}
+.class-document-library.document-grid-mode .document-cover-row{display:flex;flex-direction:column;gap:10px}
+.class-document-library.document-grid-mode .pdf-cover-preview{max-height:230px}
+.class-document-library.document-grid-mode .document-cover-details{width:100%}
+.class-document-library.document-list-mode>.student-data-item{display:block}
