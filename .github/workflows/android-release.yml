@@ -12,6 +12,7 @@ on:
       - ".github/workflows/android-release.yml"
       - "package.json"
       - "capacitor.config.json"
+      - "client/src/nativeStorage.js"
       - "client/public/ifac-logo.svg"
       - "scripts/generate-android-icons.py"
       - "scripts/configure-android-release.mjs"
