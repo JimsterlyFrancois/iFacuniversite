@@ -22,7 +22,11 @@ async function request(path, { token, ...options } = {}) {
     throw new Error("network_unreachable");
   }
   const data = response.status === 204 ? null : await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.message || data?.error || `http_${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data?.message || data?.error || `http_${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label>; }
@@ -189,10 +193,18 @@ export default function App() {
 
   useEffect(() => {
     if (!token) return;
-    request("/auth/me", { token }).then(r => setUser(r.user)).catch(async () => {
-      if (isNativeApp()) await clearNativeSession().catch(() => {});
-      else sessionStorage.removeItem("ifac_token");
-      setToken(""); setUser(null);
+    request("/auth/me", { token }).then(r => setUser(r.user)).catch(async error => {
+      // A timeout, offline device, or server error does not invalidate a session.
+      // Only an explicit authentication rejection should remove the saved token.
+      if (error?.status === 401 || error?.status === 403) {
+        if (isNativeApp()) await clearNativeSession().catch(() => {});
+        else sessionStorage.removeItem("ifac_token");
+        setToken("");
+        setUser(null);
+        setFeedback("Votre session a expiré. Connectez-vous à nouveau.");
+      } else {
+        setFeedback("Connexion au serveur impossible. Votre session est conservée ; réessayez lorsque le réseau sera disponible.");
+      }
     });
   }, [token]);
 
