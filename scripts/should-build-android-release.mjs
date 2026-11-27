@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 const NATIVE_FILES = new Set([
   ".github/workflows/android-release.yml",
   "capacitor.config.json",
+  // Secure Android session storage changes must ship in a fresh native binary.
+  "client/src/nativeStorage.js",
   "client/public/ifac-logo.svg",
   "scripts/generate-android-icons.py",
   "scripts/configure-android-release.mjs",
