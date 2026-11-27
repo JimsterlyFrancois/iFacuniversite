@@ -35,3 +35,13 @@ test("workflow edits still trigger a release", () => {
 test("manual workflow dispatch always builds a release", () => {
   assert.equal(shouldBuildAndroidRelease({ eventName: "workflow_dispatch" }), true);
 });
+
+
+test("native session storage changes trigger a signed Android release", () => {
+  assert.equal(shouldBuildAndroidRelease({
+    eventName: "push",
+    refType: "branch",
+    before: "a".repeat(40),
+    changedFiles: ["client/src/nativeStorage.js"]
+  }), true);
+});
