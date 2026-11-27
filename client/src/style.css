@@ -1424,3 +1424,32 @@ html[data-ifac-theme="dark"] .student-dark table td,html[data-ifac-theme="dark"]
     border-radius: 13px;
   }
 }
+
+
+/* Bibliothèque documentaire : aperçu de la première page et modes grille/liste */
+.pdf-cover-preview{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:0.72;background:var(--student-panel-alt);border:1px solid var(--student-border);border-radius:9px;overflow:hidden}
+.pdf-cover-preview img{display:block;width:100%;height:100%;object-fit:contain;background:#fff}
+.pdf-cover-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;height:100%;color:var(--student-muted);font-size:11px;text-align:center;padding:8px}
+.pdf-cover-placeholder span{display:grid;place-items:center;width:48px;height:58px;border:1px solid var(--student-border);border-radius:5px;color:var(--student-accent);font-size:15px;font-weight:900;background:var(--student-panel)}
+.pdf-cover-placeholder small{font-size:9px;line-height:1.35}
+.pdf-cover-preview.compact{width:76px;min-width:76px;aspect-ratio:0.72}
+.document-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
+.document-toolbar .document-search-count{margin:0}
+.document-view-switch{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--student-border);border-radius:9px;background:var(--student-panel-alt)}
+.document-view-switch button{min-height:31px;padding:0 11px;border:0;border-radius:6px;background:transparent;color:var(--student-muted);font-size:11px;font-weight:750;cursor:pointer}
+.document-view-switch button.selected{background:var(--student-accent);color:#fff}
+.document-library.document-grid-mode{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:13px}
+.document-library.document-grid-mode>.student-data-item{display:flex;flex-direction:column;gap:10px;min-width:0}
+.document-library.document-grid-mode .pdf-cover-preview{max-height:230px}
+.document-library.document-grid-mode .document-item-content{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;width:100%}
+.document-library.document-grid-mode .document-item-content>strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
+.document-library.document-list-mode{display:flex;flex-direction:column;gap:10px}
+.document-library.document-list-mode>.student-data-item{display:flex;align-items:flex-start;gap:13px;min-width:0}
+.document-library.document-list-mode .document-item-content{display:flex;flex:1;flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.document-library.document-list-mode .document-item-content>strong{overflow-wrap:anywhere;white-space:normal;line-height:1.45}
+.document-library .document-item-content p{margin:2px 0}
+.document-cover-row{display:flex;gap:14px;align-items:flex-start}
+.document-cover-details{display:flex;flex:1;flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.document-cover-details strong{overflow-wrap:anywhere}
+.cached-document-label{display:inline-block;margin-top:8px;color:var(--student-accent);font-size:10px;font-weight:750}
+@media(max-width:600px){.document-library.document-grid-mode{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.document-library.document-grid-mode>.student-data-item{padding:9px}.document-toolbar{align-items:flex-start;flex-direction:column}.document-library.document-list-mode>.student-data-item{gap:10px}.pdf-cover-preview.compact{width:68px;min-width:68px}}
