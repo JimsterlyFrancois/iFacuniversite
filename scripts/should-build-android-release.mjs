@@ -4,6 +4,11 @@ import { execFileSync } from "node:child_process";
 const NATIVE_FILES = new Set([
   ".github/workflows/android-release.yml",
   "capacitor.config.json",
+  // Changes in these files alter the web app bundled in the signed APK.
+  "client/src/apiBase.js",
+  "client/src/apiRequest.js",
+  "client/src/otaUpdates.js",
+  "client/src/otaManifest.js",
   // Secure Android session storage changes must ship in a fresh native binary.
   "client/src/nativeStorage.js",
   "client/public/ifac-logo.svg",
@@ -92,8 +97,8 @@ async function main() {
   });
 
   console.info(required
-    ? "[Android release] A native change was detected; build required."
-    : "[Android release] Web-only change detected; signed APK build skipped.");
+    ? "[Android release] A native or embedded mobile change was detected; build required."
+    : "[Android release] Unrelated change detected; signed APK build skipped.");
 
   if (process.env.GITHUB_OUTPUT) {
     await appendFile(process.env.GITHUB_OUTPUT, `required=${required}\n`);
