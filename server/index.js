@@ -23,6 +23,7 @@ import { createUniversityAdminRouter } from "./routes/universityAdmin.routes.js"
 import { createUniversityCatalogRouter } from "./routes/universityCatalog.routes.js";
 import { createGeneralAdminRouter } from "./routes/generalAdmin.routes.js";
 import { createPlatformAnnouncementsRouter } from "./routes/platformAnnouncements.routes.js";
+import { parseSingleByteRange } from "./lib/httpRange.js";
 import { mkdir } from "node:fs/promises";
 
 const { Pool } = pg;
@@ -56,6 +57,25 @@ async function readPrivateObject(key, bucket = storageBucket) {
   });
   if (!response.ok) throw new Error(response.status === 404 ? "storage_object_missing" : `storage_download_failed_${response.status}`);
   return Buffer.from(await response.arrayBuffer());
+}
+async function readPrivateObjectRange(key, range, bucket = storageBucket) {
+  if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
+  const encodedPath = key.split("/").map(encodeURIComponent).join("/");
+  const downloadUrl = `${storageUrl}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${encodedPath}`;
+  const response = await fetch(downloadUrl, {
+    headers: {
+      apikey: storageKey,
+      Authorization: `Bearer ${storageKey}`,
+      Range: `bytes=${range.start}-${range.end}`
+    }
+  });
+  if (response.status === 404) throw new Error("storage_object_missing");
+  if (response.status === 416) throw new Error("range_not_satisfiable");
+  // Never silently fall back to a full PDF transfer for a thumbnail request.
+  if (response.status !== 206) throw new Error(`storage_range_not_supported_${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length !== range.length) throw new Error("storage_range_length_mismatch");
+  return buffer;
 }
 async function deletePrivateObject(key, bucket = storageBucket) {
   if (!persistentStorageReady) throw new Error("persistent_storage_not_configured");
@@ -101,7 +121,8 @@ app.use((req, res, next) => {
     res.set("Access-Control-Allow-Origin", origin);
     res.set("Vary", "Origin");
     res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res.set("Access-Control-Allow-Headers", "Content-Type,Authorization,Range");
+    res.set("Access-Control-Expose-Headers", "Accept-Ranges,Content-Length,Content-Range");
     res.set("Access-Control-Max-Age", "86400");
   }
   if (req.method === "OPTIONS") return res.status(204).end();
@@ -393,7 +414,7 @@ async function requireAuth(req, res, next) {
 const requireAdmin = requireGeneralAdmin;
 
 app.use("/api/v1", createClassDocumentsRouter({
-  pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject
+  pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, readPrivateObjectRange, deletePrivateObject
 }));
 app.use("/api/v1", createRoleRegistrationRouter({ pool }));
 app.use("/api/v1", createProfessorsRouter({ pool, requireAuth, requireAdmin }));
@@ -919,12 +940,32 @@ app.get("/api/v1/documents/:id/download", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(`SELECT d.title,d.file_key,d.mime_type,d.file_size_bytes FROM documents d JOIN subjects s ON s.id=d.subject_id WHERE d.id=$1 AND d.is_active=TRUE AND d.status='approved' AND s.is_active=TRUE AND s.option_id=$2 AND s.study_level_id=$3`, [id,req.user.option_id,req.user.study_level_id]);
     if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
-    const file = await readPrivateObject(result.rows[0].file_key);
-    res.set("Content-Type", result.rows[0].mime_type);
-    res.set("Content-Length", String(file.length));
+    const document = result.rows[0];
+    const contentType = document.mime_type || "application/pdf";
+    const rangeHeader = req.get("range");
+
+    res.set("Content-Type", contentType);
     res.set("Content-Disposition", `inline; filename="ifac-document-${id}.pdf"`);
     res.set("X-Content-Type-Options", "nosniff");
     res.set("Cache-Control", "private, no-store");
+    res.set("Accept-Ranges", "bytes");
+
+    if (rangeHeader) {
+      let range;
+      try {
+        range = parseSingleByteRange(rangeHeader, Number(document.file_size_bytes));
+      } catch (error) {
+        return res.status(error.status || 416).set("Content-Range", error.contentRange || `bytes */${document.file_size_bytes}`).end();
+      }
+      const partialFile = await readPrivateObjectRange(document.file_key, range);
+      res.status(206);
+      res.set("Content-Range", `bytes ${range.start}-${range.end}/${range.totalSize}`);
+      res.set("Content-Length", String(partialFile.length));
+      return res.send(partialFile);
+    }
+
+    const file = await readPrivateObject(document.file_key);
+    res.set("Content-Length", String(file.length));
     return res.send(file);
   } catch (error) {
     if (error.message === "storage_object_missing") return res.status(404).json({ error: "document_file_missing" });
