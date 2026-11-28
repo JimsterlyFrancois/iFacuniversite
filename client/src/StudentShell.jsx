@@ -37,12 +37,17 @@ function PdfCoverPreview({ id, title, token, endpoint, compact = false }) {
       if (started) return;
       started = true;
       try {
-        const response = await fetch(apiUrl(endpoint), { headers: { Authorization: `Bearer ${token}` } });
-        if (!response.ok) throw new Error("preview_unavailable");
-        const bytes = await response.arrayBuffer();
         const pdfjs = await import("pdfjs-dist");
         pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-        const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+        // PDF.js requests only the byte ranges needed for page one. The API
+        // supports HTTP 206 responses so previews do not download full PDFs.
+        const pdf = await pdfjs.getDocument({
+          url: apiUrl(endpoint),
+          httpHeaders: { Authorization: `Bearer ${token}` },
+          disableStream: true,
+          disableAutoFetch: true,
+          rangeChunkSize: 64 * 1024
+        }).promise;
         const page = await pdf.getPage(1);
         const base = page.getViewport({ scale: 1 });
         const targetWidth = compact ? 82 : 190;
