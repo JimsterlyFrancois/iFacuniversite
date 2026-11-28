@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { initializeOtaUpdates } from "./otaUpdates.js";
-import { apiUrl } from "./apiBase.js";
+import { request } from "./apiRequest.js";
 import StudentShell from "./StudentShell.jsx";
 import ProfessorShell from "./ProfessorShell.jsx";
 import ProgramManagerShell from "./ProgramManagerShell.jsx";
@@ -12,23 +12,6 @@ import AcademicCourseRequestFields from "./AcademicCourseRequestFields.jsx";
 import { readCatalogCache, writeCatalogCache } from "./catalogCache.js";
 import { isNativeApp, getNativeSession, getNativeSavedEmail, saveNativeSession, clearNativeSession } from "./nativeStorage.js";
 
-const API = apiUrl("/api/v1");
-async function request(path, { token, ...options } = {}) {
-  const headers = { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers };
-  let response;
-  try {
-    response = await fetch(`${API}${path}`, { ...options, headers });
-  } catch {
-    throw new Error("network_unreachable");
-  }
-  const data = response.status === 204 ? null : await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(data?.message || data?.error || `http_${response.status}`);
-    error.status = response.status;
-    throw error;
-  }
-  return data;
-}
 function Field({ label, children }) { return <label className="field"><span>{label}</span>{children}</label>; }
 
 export default function App() {
@@ -96,13 +79,17 @@ export default function App() {
       writeCatalogCache(path, result.data);
       setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
     } catch (error) {
-      if (cached === null) setter([]);
-      const message = cached !== null
-        ? "Synchronisation indisponible. La dernière liste enregistrée reste affichée."
-        : error?.message === "network_unreachable"
-          ? "Le serveur iFac ne répond pas actuellement. Votre connexion Internet n’est pas nécessairement en cause."
-          : "Le catalogue iFac est temporairement indisponible. Réessayez dans quelques instants.";
-      setCatalogErrors(previous => ({ ...previous, [kind]: message }));
+      if (cached !== null) {
+        // Cached data remains usable on weak or intermittent networks.
+        setter(cached);
+        setCatalogErrors(previous => ({ ...previous, [kind]: "" }));
+      } else {
+        setter([]);
+        const message = error?.message === "network_unreachable" || error?.message === "network_timeout"
+          ? "Connexion trop faible pour charger cette liste. Réessayez dès que le réseau revient."
+          : "Le catalogue est temporairement indisponible. Réessayez dans quelques instants.";
+        setCatalogErrors(previous => ({ ...previous, [kind]: message }));
+      }
     } finally {
       if (!silent && cached === null) setCatalogLoading(previous => ({ ...previous, [kind]: false }));
     }
@@ -124,8 +111,8 @@ export default function App() {
       const active = document.activeElement;
       return Boolean(active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.closest("form")));
     };
-    const refresh = async () => {
-      if (inFlight || document.visibilityState === "hidden" || isEditing() || Date.now() - lastRefreshAt < 300000) return;
+    const refresh = async (force = false) => {
+      if (inFlight || document.visibilityState === "hidden" || (!force && (isEditing() || Date.now() - lastRefreshAt < 300000))) return;
       inFlight = true;
       lastRefreshAt = Date.now();
       try {
@@ -136,13 +123,16 @@ export default function App() {
         }
       } finally { inFlight = false; }
     };
-    const onFocus = () => window.setTimeout(refresh, 1200);
-    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(refresh, 1200); };
+    const onFocus = () => window.setTimeout(() => refresh(false), 1200);
+    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(() => refresh(false), 1200); };
+    const onOnline = () => window.setTimeout(() => refresh(true), 800);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
     };
   }, [mode]);
 
