@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
 import { hasActiveRole, isGeneralAdmin } from "../lib/roleAuthorization.js";
+import { parseSingleByteRange } from "../lib/httpRange.js";
 
 const CLASS_BUCKET = "class-documents";
 let delegateMessagesTableReady;
@@ -19,7 +20,7 @@ const positiveId = value => {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 };
 
-export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, deletePrivateObject }) {
+export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, storePrivateObject, readPrivateObject, readPrivateObjectRange, deletePrivateObject }) {
   const router = express.Router();
 
   router.get("/admin/classes", requireAuth, requireAdmin, async (req, res) => {
@@ -331,7 +332,7 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
     const isProfessor = hasActiveRole(req, "professor");
     try {
       const result = await pool.query(
-        `SELECT d.id,d.file_key,d.file_name,d.mime_type
+        `SELECT d.id,d.file_key,d.file_name,d.mime_type,d.file_size_bytes
          FROM documents d
          WHERE d.id=$1 AND d.is_active=TRUE AND d.storage_bucket='class-documents' AND (
            ($6=TRUE)
@@ -355,13 +356,31 @@ export function createClassDocumentsRouter({ pool, requireAuth, requireAdmin, st
       );
       if (!result.rowCount) return res.status(404).json({ error: "document_not_found" });
       const row = result.rows[0];
-      const file = await readPrivateObject(row.file_key, CLASS_BUCKET);
-      const safeName = (row.file_name || ("ifac-document-" + row.id + ".pdf")).replace(/[\r\n"]/g,"_");
-      res.set("Content-Type",row.mime_type || "application/pdf");
-      res.set("Content-Length",String(file.length));
-      res.set("Content-Disposition","inline; filename=\"ifac-document-" + row.id + ".pdf\"; filename*=UTF-8''" + encodeURIComponent(safeName));
+      const safeName = (row.file_name || ("ifac-document-" + row.id + ".pdf")).replace(/[\\r\\n"]/g,"_");
+      const contentType = row.mime_type || "application/pdf";
+      res.set("Content-Type",contentType);
+      res.set("Content-Disposition","inline; filename=\\"ifac-document-" + row.id + ".pdf\\"; filename*=UTF-8''" + encodeURIComponent(safeName));
       res.set("X-Content-Type-Options","nosniff");
       res.set("Cache-Control","private, no-store");
+      res.set("Accept-Ranges","bytes");
+
+      const rangeHeader = req.get("range");
+      if (rangeHeader) {
+        let range;
+        try {
+          range = parseSingleByteRange(rangeHeader, Number(row.file_size_bytes));
+        } catch (error) {
+          return res.status(error.status || 416).set("Content-Range", error.contentRange || `bytes */${row.file_size_bytes}`).end();
+        }
+        const partialFile = await readPrivateObjectRange(row.file_key, range, CLASS_BUCKET);
+        res.status(206);
+        res.set("Content-Range", `bytes ${range.start}-${range.end}/${range.totalSize}`);
+        res.set("Content-Length",String(partialFile.length));
+        return res.send(partialFile);
+      }
+
+      const file = await readPrivateObject(row.file_key, CLASS_BUCKET);
+      res.set("Content-Length",String(file.length));
       return res.send(file);
     } catch (error) {
       console.error("Téléchargement document de classe échoué:", error?.message);
