@@ -8,11 +8,15 @@ on:
     tags:
       - "v*"
     paths:
-      # package.json is filtered by the detector to ignore web-only dependencies.
+      # Rebuild the native package when its embedded web startup or API routing changes.
       - ".github/workflows/android-release.yml"
       - "package.json"
       - "capacitor.config.json"
       - "client/src/nativeStorage.js"
+      - "client/src/apiBase.js"
+      - "client/src/apiRequest.js"
+      - "client/src/otaUpdates.js"
+      - "client/src/otaManifest.js"
       - "client/public/ifac-logo.svg"
       - "scripts/generate-android-icons.py"
       - "scripts/configure-android-release.mjs"
@@ -79,6 +83,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Run OTA and API regression tests
+        run: npm test
 
       - name: Build web assets for the mobile app
         run: npm run build
