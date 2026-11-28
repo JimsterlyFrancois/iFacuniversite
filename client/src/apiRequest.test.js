@@ -101,3 +101,20 @@ test("mutating requests are not retried after a network interruption", async () 
   );
   assert.equal(calls, 1);
 });
+
+test("login mutations reach the /api/v1 server route", async () => {
+  let capturedUrl;
+  const { request } = await import("./apiRequest.js");
+  // The default request helper must use apiUrl, not a path relative to the SPA.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    capturedUrl = String(url);
+    return ok({ token: "test-token" });
+  };
+  try {
+    await request("/auth/login", { method: "POST", body: JSON.stringify({ email: "student@example.com" }) });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(capturedUrl, "/api/v1/auth/login");
+});
