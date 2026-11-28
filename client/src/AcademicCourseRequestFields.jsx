@@ -32,9 +32,8 @@ export default function AcademicCourseRequestFields({
     } catch {
       if (!isCancelled()) {
         if (cached === null) setter([]);
-        setError(cached !== null
-          ? "Synchronisation indisponible. La dernière liste enregistrée reste affichée."
-          : message);
+        // A valid local list is a usable offline result, not a blocking error.
+        setError(cached !== null ? "" : message);
       }
     } finally {
       if (!isCancelled()) onFinally?.();
@@ -51,21 +50,24 @@ export default function AcademicCourseRequestFields({
     let cancelled = false;
     let inFlight = false;
     let lastRefreshAt = Date.now();
-    const refresh = () => {
-      if (cancelled || inFlight || document.visibilityState === "hidden" || Date.now() - lastRefreshAt < 300000) return;
+    const refresh = (force = false) => {
+      if (cancelled || inFlight || document.visibilityState === "hidden" || (!force && Date.now() - lastRefreshAt < 300000)) return;
       inFlight = true;
       lastRefreshAt = Date.now();
       loadCatalog("/catalog/professor-universities", setUniversities, "Impossible de charger le catalogue des universités.", () => cancelled)
         .finally(() => { inFlight = false; });
     };
-    const onFocus = () => window.setTimeout(refresh, 1200);
-    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(refresh, 1200); };
+    const onFocus = () => window.setTimeout(() => refresh(false), 1200);
+    const onVisibility = () => { if (document.visibilityState === "visible") window.setTimeout(() => refresh(false), 1200); };
+    const onOnline = () => window.setTimeout(() => refresh(true), 800);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
     };
   }, [request]);
 
@@ -100,6 +102,31 @@ export default function AcademicCourseRequestFields({
     loadCatalog("/catalog/courses?studyLevelId=" + encodeURIComponent(value.studyLevelId), setCourses, "Impossible de charger les cours de ce niveau.", () => cancelled);
     return () => { cancelled = true; };
   }, [request, value.studyLevelId]);
+
+  // When connectivity returns, refresh only the small catalog lists currently in use.
+  useEffect(() => {
+    let cancelled = false;
+    const refreshSelectedLists = () => {
+      if (cancelled) return;
+      if (value.universityId) {
+        loadCatalog("/catalog/faculties?universityId=" + encodeURIComponent(value.universityId), setFaculties, "Impossible de charger les facultés de cette université.", () => cancelled);
+      }
+      if (value.facultyId) {
+        loadCatalog("/catalog/options?facultyId=" + encodeURIComponent(value.facultyId), setOptions, "Impossible de charger les programmes de cette faculté.", () => cancelled);
+      }
+      if (value.optionId) {
+        loadCatalog("/catalog/levels?optionId=" + encodeURIComponent(value.optionId), setLevels, "Impossible de charger les niveaux de ce programme.", () => cancelled);
+      }
+      if (value.studyLevelId) {
+        loadCatalog("/catalog/courses?studyLevelId=" + encodeURIComponent(value.studyLevelId), setCourses, "Impossible de charger les cours de ce niveau.", () => cancelled);
+      }
+    };
+    window.addEventListener("online", refreshSelectedLists);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", refreshSelectedLists);
+    };
+  }, [request, value.universityId, value.facultyId, value.optionId, value.studyLevelId]);
 
   const fieldClass = variant === "professor" ? "professor-field" : "field";
   const wrapperClass = variant === "professor" ? "professor-request-card" : "registration-request-card";
